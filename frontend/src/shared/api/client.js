@@ -1,7 +1,10 @@
 // Shared: API Client
 import axios from 'axios';
 
-const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:3000/api';
+// Use environment variable or fallback to relative path
+// In development, Vite proxy forwards /api to backend
+// In production, frontend is served by backend, so /api works directly
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const api = axios.create({
     baseURL: API_BASE,

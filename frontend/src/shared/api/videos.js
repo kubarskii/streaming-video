@@ -1,7 +1,10 @@
 // Shared: Videos API
 import api from './client';
 
-const VIDEO_BASE = import.meta.env.PROD ? '/video' : 'http://localhost:3000/video';
+// Use environment variable or fallback to relative path
+// In development, Vite proxy forwards /video to backend
+// In production, frontend is served by backend, so /video works directly
+const VIDEO_BASE = import.meta.env.VITE_VIDEO_BASE_URL || '/video';
 
 export const videosAPI = {
     getVideos: async ({ limit = 20, offset = 0, status, userId, search } = {}) => {
