@@ -2,10 +2,12 @@
 
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+const ffmpegPath = ffmpegInstaller.path;
 
 class ThumbnailGenerator {
     /**
@@ -23,6 +25,14 @@ class ThumbnailGenerator {
             size = '640x360',
         } = options;
 
+        const [widthStr, heightStr] = size.split('x');
+        const width = Number.parseInt(widthStr, 10);
+        const height = Number.parseInt(heightStr, 10);
+
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+            throw new Error(`Invalid thumbnail size provided: "${size}"`);
+        }
+
         // Ensure output directory exists
         const outputDir = path.dirname(outputPath);
         if (!fs.existsSync(outputDir)) {
@@ -35,10 +45,10 @@ class ThumbnailGenerator {
         try {
             // Check if ffmpeg is available
             try {
-                await execAsync('ffmpeg -version');
+                await execFileAsync(ffmpegPath, ['-version']);
             } catch (ffmpegCheckError) {
-                console.warn('FFmpeg not found in PATH');
-                throw new Error('FFmpeg is not installed or not in PATH');
+                console.warn(`FFmpeg binary unavailable or not executable at path: ${ffmpegPath}`);
+                throw new Error('FFmpeg is not installed or not accessible');
             }
 
             // Extract frame from video using ffmpeg
@@ -48,10 +58,17 @@ class ThumbnailGenerator {
             // -vf scale: resize the frame
             // -q:v 2: high quality JPEG (scale 2-31, lower is better)
             // -y: overwrite output file
-            const command = `ffmpeg -ss ${timestamp} -i "${videoPath}" -vframes 1 -vf "scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2" -q:v 2 -y "${jpgOutputPath}"`;
-
             console.log('🎬 Extracting thumbnail from video using ffmpeg...');
-            const { stdout, stderr } = await execAsync(command, {
+            const ffmpegArgs = [
+                '-ss', timestamp,
+                '-i', videoPath,
+                '-vframes', '1',
+                '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+                '-q:v', '2',
+                '-y', jpgOutputPath,
+            ];
+
+            await execFileAsync(ffmpegPath, ffmpegArgs, {
                 timeout: 30000,  // 30 second timeout
                 maxBuffer: 10 * 1024 * 1024  // 10MB buffer
             });
