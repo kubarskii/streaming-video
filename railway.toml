@@ -15,5 +15,5 @@ healthcheckTimeout = 100
 
 # Volume configuration for SQLite database
 [[volumes]]
-mountPath = "/app/prisma"
+mountPath = "/app/data"
 
