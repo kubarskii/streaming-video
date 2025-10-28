@@ -2,17 +2,18 @@
 
 function corsMiddleware(req, res, next) {
     const origin = req.headers.origin;
-    const allowedOrigins = [
-        'http://localhost:5173',
-        'http://localhost:5174',
-        'http://localhost:3000',
-        'http://127.0.0.1:5173',
-        'http://127.0.0.1:3000',
-    ];
+    
+    // Get allowed origins from environment variable or use defaults for development
+    const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
+    const allowedOrigins = allowedOriginsEnv
+        ? allowedOriginsEnv.split(',').map(o => o.trim())
+        : [];
 
     if (process.env.NODE_ENV === 'development') {
+        // In development, allow all origins
         res.setHeader('Access-Control-Allow-Origin', origin || '*');
     } else if (origin && allowedOrigins.includes(origin)) {
+        // In production, only allow configured origins
         res.setHeader('Access-Control-Allow-Origin', origin);
     }
 

@@ -9,7 +9,8 @@ class LocalStorageRepository extends IStorageRepository {
     constructor(config) {
         super();
         this.storagePath = config.storagePath || path.join(process.cwd(), 'videos');
-        this.baseUrl = config.baseUrl || 'http://localhost:3000/video';
+        // Use relative path - works in any environment (config can override)
+        this.baseUrl = config.baseUrl || '/video';
 
         // Ensure storage directory exists
         if (!fs.existsSync(this.storagePath)) {

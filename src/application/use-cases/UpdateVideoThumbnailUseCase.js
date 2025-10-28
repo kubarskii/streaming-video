@@ -62,7 +62,7 @@ class UpdateVideoThumbnailUseCase {
 
     extractStorageKeyFromUrl(url) {
         // Extract storage key from URL
-        // For local: http://localhost:3000/video?file=filename.jpg -> filename.jpg
+        // For local storage: /video?file=filename.jpg -> filename.jpg
         // For B2: https://cdn.example.com/filename.jpg -> filename.jpg
         if (url.includes('?file=')) {
             const urlObj = new URL(url);

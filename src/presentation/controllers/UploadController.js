@@ -103,8 +103,8 @@ class UploadController {
         const match = url.match(/\/([^/]+\.(svg|jpg|jpeg|png|gif|webp))$/i);
         if (match) {
             const filename = match[1];
-            const baseUrl = process.env.SERVER_BASE_URL || 'http://localhost:3000';
-            return `${baseUrl}/video?file=${filename}`;
+            // Use relative path - works in any environment
+            return `/video?file=${filename}`;
         }
 
         return url;
