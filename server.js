@@ -34,6 +34,8 @@ const HOST = process.env.HOST || '127.0.0.1';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const SPA_STATIC_PATHS = new Set(['/', '/login', '/register', '/upload', '/profile']);
+const SPA_PREFIXES = ['/video/'];
 
 // Dependency Injection Container
 class Container {
@@ -117,11 +119,18 @@ async function startServer() {
                     return serveFile(res, safePath, contentType);
                 }
 
-                // SPA fallback: For any non-API route, serve index.html (for React Router/TanStack Router)
-                if (!pathname.startsWith('/api') && !pathname.startsWith('/video')) {
-                    const indexPath = path.join(PUBLIC_DIR, 'index.html');
-                    if (fs.existsSync(indexPath)) {
-                        return serveFile(res, indexPath, 'text/html');
+                // SPA fallback: Serve index.html for known frontend routes handled client-side
+                if (!pathname.startsWith('/api') && pathname !== '/video') {
+                    const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+                    const isSpaRoute =
+                        SPA_STATIC_PATHS.has(normalizedPath) ||
+                        SPA_PREFIXES.some((prefix) => normalizedPath.startsWith(prefix));
+
+                    if (isSpaRoute) {
+                        const indexPath = path.join(PUBLIC_DIR, 'index.html');
+                        if (fs.existsSync(indexPath)) {
+                            return serveFile(res, indexPath, 'text/html');
+                        }
                     }
                 }
 
