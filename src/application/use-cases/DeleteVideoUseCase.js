@@ -1,6 +1,8 @@
 // Application: DeleteVideoUseCase
 // Use case for deleting a video
 
+const path = require('path');
+
 class DeleteVideoUseCase {
     constructor(videoRepository, storageRepository) {
         this.videoRepository = videoRepository;
@@ -40,14 +42,19 @@ class DeleteVideoUseCase {
         // 2. Delete thumbnail from storage (if exists)
         if (video.thumbnailUrl) {
             // Extract thumbnail key from URL
-            const thumbnailKey = `thumb_${videoId}.jpg`;
-            try {
-                console.log(`Deleting thumbnail from storage: ${thumbnailKey}`);
-                await this.storageRepository.delete(thumbnailKey);
-            } catch (error) {
-                console.error(`Failed to delete thumbnail ${thumbnailKey}:`, error.message);
-                errors.push(`Thumbnail: ${error.message}`);
-                // Don't throw - continue with database deletion
+            const thumbnailKey = this.extractThumbnailKey(video.thumbnailUrl, videoId);
+
+            if (thumbnailKey) {
+                try {
+                    console.log(`Deleting thumbnail from storage: ${thumbnailKey}`);
+                    await this.storageRepository.delete(thumbnailKey);
+                } catch (error) {
+                    console.error(`Failed to delete thumbnail ${thumbnailKey}:`, error.message);
+                    errors.push(`Thumbnail: ${error.message}`);
+                    // Don't throw - continue with database deletion
+                }
+            } else {
+                console.warn('Unable to determine thumbnail storage key for deletion');
             }
         }
 
@@ -71,6 +78,32 @@ class DeleteVideoUseCase {
             console.error(`Failed to delete video from database:`, error.message);
             throw new Error(`Database deletion failed: ${error.message}`);
         }
+}
+
+    extractThumbnailKey(thumbnailUrl, videoId) {
+        if (!thumbnailUrl) {
+            return null;
+        }
+
+        try {
+            // Handle local proxy URLs like /video?file=thumb_xxx.svg
+            if (thumbnailUrl.includes('?file=')) {
+                const urlObj = new URL(thumbnailUrl, 'http://localhost');
+                return urlObj.searchParams.get('file');
+            }
+
+            // Handle direct CDN/storage URLs
+            const parsedUrl = new URL(thumbnailUrl);
+            const filename = path.basename(parsedUrl.pathname);
+            if (filename) {
+                return filename;
+            }
+        } catch (error) {
+            console.warn('Failed to parse thumbnail URL:', error.message);
+        }
+
+        // Fallback: assume original JPG naming convention
+        return `thumb_${videoId}.jpg`;
     }
 }
 
