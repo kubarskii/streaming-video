@@ -126,9 +126,15 @@ class Video {
 
     // Factory method to create from database record
     static fromDatabase(dbRecord) {
+        const dbTitle = typeof dbRecord.title === 'string' ? dbRecord.title.trim() : '';
+        const fallbackTitle = typeof dbRecord.fileName === 'string' && dbRecord.fileName.trim().length > 0
+            ? dbRecord.fileName.trim()
+            : 'Untitled Video';
+        const safeTitle = dbTitle.length > 0 ? dbTitle : fallbackTitle;
+
         return new Video({
             id: dbRecord.id,
-            title: dbRecord.title,
+            title: safeTitle,
             description: dbRecord.description,
             fileName: dbRecord.fileName,
             storageKey: dbRecord.storageKey,
