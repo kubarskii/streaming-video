@@ -118,7 +118,7 @@ async function startServer() {
                 }
 
                 // SPA fallback: For any non-API route, serve index.html (for React Router/TanStack Router)
-                if (!pathname.startsWith('/api') && !pathname.startsWith('/video')) {
+                if (!pathname.startsWith('/api') && pathname !== '/video') {
                     const indexPath = path.join(PUBLIC_DIR, 'index.html');
                     if (fs.existsSync(indexPath)) {
                         return serveFile(res, indexPath, 'text/html');
