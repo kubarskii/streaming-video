@@ -25,7 +25,7 @@ class UploadController {
             const form = formidable({
                 uploadDir,
                 keepExtensions: true,
-                maxFileSize: 2 * 1024 * 1024 * 1024, // 2 GB
+                maxFileSize: 5 * 1024 * 1024 * 1024, // 5 GB
                 filter: ({ mimetype }) => {
                     // Accept both video and image files
                     return mimetype && (mimetype.startsWith('video/') || mimetype.startsWith('image/'));
