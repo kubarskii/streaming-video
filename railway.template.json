@@ -1,0 +1,39 @@
+{
+  "name": "Video Streaming Platform",
+  "description": "Full-stack video streaming platform with authentication and Backblaze B2 storage",
+  "services": {
+    "web": {
+      "source": {
+        "type": "github"
+      },
+      "build": {
+        "builder": "nixpacks"
+      },
+      "deploy": {
+        "startCommand": "npx prisma db push --skip-generate && npm start"
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "STORAGE_MODE": "b2",
+        "B2_ENDPOINT": "https://s3.eu-central-003.backblazeb2.com",
+        "B2_REGION": "eu-central-003"
+      },
+      "secrets": [
+        "B2_KEY_ID",
+        "B2_KEY_SECRET", 
+        "B2_BUCKET",
+        "CDN_BASE_URL",
+        "JWT_SECRET",
+        "ARGON2_SECRET"
+      ]
+    },
+    "database": {
+      "type": "postgresql",
+      "plan": "hobby"
+    }
+  },
+  "connections": {
+    "web": ["database"]
+  }
+}
+

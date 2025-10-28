@@ -53,10 +53,11 @@ git push origin main
 **Done!** 🎉
 
 Railway will:
-1. Build frontend → `public/`
-2. Install dependencies
-3. Run migrations
-4. Start server
+1. Install dependencies (`npm install`)
+2. Generate Prisma client (auto)
+3. Build frontend (`npm run build` - auto)
+4. Sync database (`prisma db push`)
+5. Start server (`npm start`)
 
 **View logs:**
 ```bash

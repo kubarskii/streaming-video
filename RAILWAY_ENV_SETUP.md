@@ -120,13 +120,16 @@ datasource db {
 
 Your `Procfile` syncs the schema automatically:
 ```
-web: npm run build && npx prisma db push --skip-generate && npm start
+web: npx prisma db push --skip-generate && npm start
 ```
 
-This uses `prisma db push` which:
-- ✅ Creates tables on first deploy
-- ✅ Updates schema on subsequent deploys
-- ✅ Works without migration files
+**Railway Build Process:**
+- `npm install` → Installs dependencies (auto)
+- `postinstall` → Generates Prisma client (auto)
+- `npm run build` → Builds frontend (auto-detected by Railway)
+- Procfile → Syncs database & starts server
+
+`prisma db push` creates/updates tables without migration files.
 
 Just commit and push:
 

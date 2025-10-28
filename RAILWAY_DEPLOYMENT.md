@@ -57,10 +57,16 @@ This creates a **private network connection** with zero egress fees!
 
 Your `Procfile` should contain:
 ```
-web: npm run build && npx prisma db push --skip-generate && npm start
+web: npx prisma db push --skip-generate && npm start
 ```
 
-This automatically syncs your database schema on each deploy.
+**How Railway Build Works:**
+1. Railway automatically runs `npm install`
+2. Railway automatically runs `postinstall` → `prisma generate`
+3. Railway automatically runs `npm run build` → builds frontend
+4. Railway then runs Procfile command → syncs database & starts server
+
+✅ No need to run `npm run build` in Procfile - Railway does it automatically!
 
 Your `package.json` already has the correct scripts:
 ```json
@@ -76,12 +82,12 @@ Your `package.json` already has the correct scripts:
 
 ### Step 6: Deploy!
 
-Railway will automatically:
-1. ✅ Install dependencies
-2. ✅ Build frontend
-3. ✅ Generate Prisma client
-4. ✅ Run database migrations
-5. ✅ Start the server
+Railway deployment process:
+1. ✅ Install dependencies (`npm install`)
+2. ✅ Generate Prisma client (`postinstall` hook)
+3. ✅ Build frontend (`npm run build` - auto-detected)
+4. ✅ Sync database schema (`prisma db push`)
+5. ✅ Start the server (`npm start`)
 
 ## 🔒 Local Development Setup
 

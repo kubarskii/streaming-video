@@ -1,0 +1,20 @@
+# Railway Configuration
+# This file configures automatic PostgreSQL provisioning and deployment
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npx prisma db push --skip-generate && npm start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# Health check configuration
+healthcheckPath = "/api/videos"
+healthcheckTimeout = 100
+
+# Volume configuration for uploads (optional - only if using local storage)
+# [[volumes]]
+# mountPath = "/app/videos"
+# name = "video-storage"
+
