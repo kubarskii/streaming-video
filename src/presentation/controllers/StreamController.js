@@ -3,6 +3,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 
 class StreamController {
     constructor(videoService, storageRepository) {
@@ -33,10 +35,8 @@ class StreamController {
                 return this.streamLocalFile(req, res, filePath, video);
             }
 
-            // For cloud storage (B2), redirect to CDN/storage URL
-            const url = await this.storageRepository.getUrl(video.storageKey);
-            res.writeHead(302, { 'Location': url });
-            res.end();
+            // For cloud storage (B2), use authenticated streaming
+            return this.streamFromB2(req, res, video.storageKey, video);
 
         } catch (error) {
             console.error('Error streaming video:', error);
@@ -82,10 +82,8 @@ class StreamController {
                 return fs.createReadStream(filePath).pipe(res);
             }
 
-            // For cloud storage (B2), redirect to storage URL
-            const url = await this.storageRepository.getUrl(fileKey);
-            res.writeHead(302, { 'Location': url });
-            res.end();
+            // For cloud storage (B2), use authenticated streaming
+            return this.streamFromB2(req, res, fileKey, null);
 
         } catch (error) {
             console.error('Error streaming static file:', error);
@@ -148,6 +146,138 @@ class StreamController {
 
         const stream = fs.createReadStream(filePath, { start, end });
         stream.pipe(res);
+    }
+
+    /**
+     * Stream file from B2 with authentication and Range support
+     */
+    async streamFromB2(req, res, storageKey, video) {
+        try {
+            const range = req.headers.range;
+
+            // Check if storage repository supports authenticated streaming
+            if (!this.storageRepository.getObjectStream) {
+                // Fallback to URL-based streaming for repositories that don't support it
+                const url = await this.storageRepository.getUrl(storageKey);
+                return this.streamFromUrl(req, res, url, video);
+            }
+
+            // Get authenticated stream from B2
+            const result = await this.storageRepository.getObjectStream(storageKey, range);
+
+            // Build response headers
+            const responseHeaders = {
+                'Content-Type': result.contentType || (video?.mimeType || 'video/mp4'),
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=31536000',
+            };
+
+            if (result.contentLength) {
+                responseHeaders['Content-Length'] = result.contentLength;
+            }
+
+            if (result.contentRange) {
+                responseHeaders['Content-Range'] = result.contentRange;
+            }
+
+            // Write response headers
+            res.writeHead(result.statusCode, responseHeaders);
+
+            // Pipe stream to client
+            // AWS SDK v3 returns a readable stream that we can pipe directly
+            if (result.stream && result.stream.pipe) {
+                result.stream.pipe(res);
+            } else {
+                throw new Error('Unsupported stream type');
+            }
+
+            // Handle errors
+            res.on('error', (error) => {
+                console.error('Error streaming to client:', error);
+            });
+
+            req.on('close', () => {
+                if (result.stream.destroy) {
+                    result.stream.destroy();
+                }
+            });
+
+        } catch (error) {
+            console.error('Error streaming from B2:', error);
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.end('Internal server error');
+            }
+        }
+    }
+
+    /**
+     * Stream file from URL (fallback for non-authenticated access)
+     */
+    async streamFromUrl(req, res, url, video) {
+        try {
+            const protocol = url.startsWith('https:') ? https : http;
+            const range = req.headers.range;
+
+            const upstreamHeaders = {};
+            if (range) {
+                upstreamHeaders['Range'] = range;
+            }
+
+            const upstreamReq = protocol.get(url, { headers: upstreamHeaders }, (upstreamRes) => {
+                const statusCode = upstreamRes.statusCode;
+
+                if (statusCode !== 200 && statusCode !== 206) {
+                    console.error(`Storage returned status ${statusCode} for ${url}`);
+                    res.writeHead(statusCode, { 'Content-Type': 'text/plain' });
+                    return res.end(`Storage error: ${statusCode}`);
+                }
+
+                const responseHeaders = {
+                    'Content-Type': upstreamRes.headers['content-type'] || (video?.mimeType || 'video/mp4'),
+                    'Accept-Ranges': 'bytes',
+                    'Cache-Control': 'public, max-age=31536000',
+                };
+
+                if (upstreamRes.headers['content-length']) {
+                    responseHeaders['Content-Length'] = upstreamRes.headers['content-length'];
+                }
+
+                if (upstreamRes.headers['content-range']) {
+                    responseHeaders['Content-Range'] = upstreamRes.headers['content-range'];
+                }
+
+                res.writeHead(statusCode, responseHeaders);
+                upstreamRes.pipe(res);
+
+                upstreamRes.on('error', (error) => {
+                    console.error('Error streaming:', error);
+                    if (!res.headersSent) {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Stream error');
+                    }
+                });
+            });
+
+            upstreamReq.on('error', (error) => {
+                console.error('Error connecting to storage:', error);
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Connection error');
+                }
+            });
+
+            req.on('close', () => {
+                upstreamReq.destroy();
+            });
+
+        } catch (error) {
+            console.error('Error in streamFromUrl:', error);
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.end('Internal server error');
+            }
+        }
     }
 }
 

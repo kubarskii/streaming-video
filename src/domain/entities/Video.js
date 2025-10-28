@@ -96,7 +96,9 @@ class Video {
     }
 
     getPlaybackUrl() {
-        return this.cdnUrl || this.storageUrl;
+        // Always return server streaming endpoint for security and control
+        const baseUrl = process.env.SERVER_BASE_URL || 'http://localhost:3000';
+        return `${baseUrl}/video?file=${this.storageKey}`;
     }
 
     // Convert to plain object for persistence

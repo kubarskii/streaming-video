@@ -6,6 +6,7 @@ import { VideoPage } from '../pages/video/VideoPage';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { RegisterPage } from '../pages/auth/RegisterPage';
 import { UploadPageProtected } from '../pages/upload/UploadPageProtected';
+import { ProfilePage } from '../pages/profile/ProfilePage';
 
 // Root route
 const rootRoute = createRootRoute({
@@ -17,6 +18,11 @@ const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
     component: HomePage,
+    validateSearch: (search) => {
+        return {
+            q: search?.q || undefined,
+        };
+    },
 });
 
 // Video route
@@ -47,6 +53,13 @@ const uploadRoute = createRoute({
     component: UploadPageProtected,
 });
 
+// Profile route (protected)
+const profileRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/profile',
+    component: ProfilePage,
+});
+
 // Route tree
 const routeTree = rootRoute.addChildren([
     indexRoute,
@@ -54,6 +67,7 @@ const routeTree = rootRoute.addChildren([
     loginRoute,
     registerRoute,
     uploadRoute,
+    profileRoute,
 ]);
 
 // Create router

@@ -1,0 +1,93 @@
+/* Shared UI: Card Component */
+
+.ui-card {
+  background: white;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+/* Variants */
+.ui-card--default {
+  border: 1px solid #e5e7eb;
+}
+
+.ui-card--outlined {
+  border: 2px solid #e5e7eb;
+}
+
+.ui-card--elevated {
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Padding */
+.ui-card--padding-none {
+  padding: 0;
+}
+
+.ui-card--padding-small {
+  padding: 0.75rem;
+}
+
+.ui-card--padding-medium {
+  padding: 1.25rem;
+}
+
+.ui-card--padding-large {
+  padding: 1.75rem;
+}
+
+/* Hoverable */
+.ui-card--hoverable {
+  cursor: pointer;
+}
+
+.ui-card--hoverable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Card Header */
+.ui-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ui-card-header__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.ui-card-header__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.25rem;
+}
+
+.ui-card-header__subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.ui-card-header__action {
+  flex-shrink: 0;
+}
+
+/* Card Body */
+.ui-card-body {
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+/* Card Footer */
+.ui-card-footer {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+

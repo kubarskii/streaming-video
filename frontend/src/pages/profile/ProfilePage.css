@@ -1,0 +1,98 @@
+/* Profile Page Styles */
+
+.profile-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3rem;
+    padding: 2rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 1rem;
+    color: white;
+}
+
+.profile-info {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+/* Avatar now uses shared Avatar component */
+
+.profile-info h1 {
+    margin: 0;
+    font-size: 2rem;
+}
+
+.profile-email {
+    margin: 0.5rem 0 0 0;
+    opacity: 0.9;
+}
+
+.profile-stats {
+    display: flex;
+    gap: 2rem;
+}
+
+.stat {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    min-width: 100px;
+}
+
+.stat-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.stat-label {
+    display: block;
+    margin-top: 0.25rem;
+    opacity: 0.9;
+}
+
+.videos-section h2 {
+    font-size: 1.75rem;
+    margin-bottom: 1.5rem;
+    color: #1a1a1a;
+}
+
+.loading {
+    text-align: center;
+    padding: 3rem;
+    color: #666;
+}
+
+.error-message {
+    padding: 1rem;
+    background: #fee;
+    border: 1px solid #fcc;
+    border-radius: 0.5rem;
+    color: #c33;
+    margin-bottom: 1rem;
+}
+
+/* Video cards now use ProfileVideoCard component from shared/ui */
+
+/* Responsive */
+@media (max-width: 768px) {
+    .profile-header {
+        flex-direction: column;
+        text-align: center;
+        gap: 1.5rem;
+    }
+
+    .profile-info {
+        flex-direction: column;
+    }
+}
+

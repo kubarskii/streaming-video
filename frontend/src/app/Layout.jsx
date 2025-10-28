@@ -1,6 +1,7 @@
 // App: Layout Component
 import { Outlet } from '@tanstack/react-router';
-import { Header } from '../widgets/Header';
+import { Header } from '../widgets/header';
+import '../widgets/header/styles.css';
 import './styles/global.css';
 
 export const Layout = () => {

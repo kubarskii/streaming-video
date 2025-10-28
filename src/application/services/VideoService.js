@@ -5,6 +5,8 @@ const UploadVideoUseCase = require('../use-cases/UploadVideoUseCase');
 const GetVideoUseCase = require('../use-cases/GetVideoUseCase');
 const ListVideosUseCase = require('../use-cases/ListVideosUseCase');
 const DeleteVideoUseCase = require('../use-cases/DeleteVideoUseCase');
+const UpdateVideoMetadataUseCase = require('../use-cases/UpdateVideoMetadataUseCase');
+const UpdateVideoThumbnailUseCase = require('../use-cases/UpdateVideoThumbnailUseCase');
 
 class VideoService {
     constructor(videoRepository, storageRepository, thumbnailGenerator) {
@@ -12,6 +14,8 @@ class VideoService {
         this.getVideoUseCase = new GetVideoUseCase(videoRepository);
         this.listVideosUseCase = new ListVideosUseCase(videoRepository);
         this.deleteVideoUseCase = new DeleteVideoUseCase(videoRepository, storageRepository);
+        this.updateVideoMetadataUseCase = new UpdateVideoMetadataUseCase(videoRepository);
+        this.updateVideoThumbnailUseCase = new UpdateVideoThumbnailUseCase(videoRepository, storageRepository);
     }
 
     async uploadVideo(input) {
@@ -36,6 +40,14 @@ class VideoService {
 
     async deleteVideo(videoId) {
         return await this.deleteVideoUseCase.execute(videoId);
+    }
+
+    async updateVideoMetadata(videoId, userId, metadata) {
+        return await this.updateVideoMetadataUseCase.execute(videoId, userId, metadata);
+    }
+
+    async updateVideoThumbnail(videoId, userId, thumbnailPath, thumbnailMimeType) {
+        return await this.updateVideoThumbnailUseCase.execute(videoId, userId, thumbnailPath, thumbnailMimeType);
     }
 }
 

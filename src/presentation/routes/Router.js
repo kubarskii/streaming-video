@@ -56,6 +56,18 @@ class Router {
             return await this.videoController.deleteVideo(req, res, videoId);
         }
 
+        // Update video metadata (PATCH)
+        if (pathname.match(/^\/api\/videos\/[^/]+$/) && req.method === 'PATCH') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoController.updateVideoMetadata(req, res, videoId);
+        }
+
+        // Update video thumbnail (PUT)
+        if (pathname.match(/^\/api\/videos\/[^/]+\/thumbnail$/) && req.method === 'PUT') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoController.updateVideoThumbnail(req, res, videoId);
+        }
+
         // Video streaming route
         if (pathname === '/video') {
             const fileName = queryParams.file;

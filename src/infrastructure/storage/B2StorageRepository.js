@@ -1,7 +1,7 @@
 // Infrastructure: B2StorageRepository
 // Implementation of IStorageRepository for Backblaze B2
 
-const { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
 const IStorageRepository = require('../../domain/repositories/IStorageRepository');
@@ -11,6 +11,7 @@ class B2StorageRepository extends IStorageRepository {
         super();
         this.bucket = config.bucket;
         this.cdnBaseUrl = config.cdnBaseUrl;
+        this.endpoint = config.endpoint; // Store endpoint URL for direct URL construction
 
         this.client = new S3Client({
             endpoint: config.endpoint,
@@ -50,7 +51,7 @@ class B2StorageRepository extends IStorageRepository {
 
         await this.client.send(command);
 
-        const storageUrl = `${this.client.config.endpoint}/${this.bucket}/${storageKey}`;
+        const storageUrl = `${this.endpoint}/${this.bucket}/${storageKey}`;
         const cdnUrl = this.cdnBaseUrl ? `${this.cdnBaseUrl}/${storageKey}` : null;
 
         return { storageUrl, cdnUrl };
@@ -73,7 +74,7 @@ class B2StorageRepository extends IStorageRepository {
 
         await this.client.send(command);
 
-        const storageUrl = `${this.client.config.endpoint}/${this.bucket}/${storageKey}`;
+        const storageUrl = `${this.endpoint}/${this.bucket}/${storageKey}`;
         const cdnUrl = this.cdnBaseUrl ? `${this.cdnBaseUrl}/${storageKey}` : null;
 
         return { storageUrl, cdnUrl };
@@ -86,7 +87,7 @@ class B2StorageRepository extends IStorageRepository {
         }
 
         // Otherwise use direct B2 URL
-        return `${this.client.config.endpoint}/${this.bucket}/${storageKey}`;
+        return `${this.endpoint}/${this.bucket}/${storageKey}`;
     }
 
     async delete(storageKey) {
@@ -97,10 +98,17 @@ class B2StorageRepository extends IStorageRepository {
             });
 
             await this.client.send(command);
+            console.log(`Successfully deleted from B2: ${storageKey}`);
             return true;
         } catch (error) {
-            console.error('Error deleting from B2:', error);
-            return false;
+            // If file doesn't exist (NoSuchKey), consider it already deleted (success)
+            if (error.name === 'NoSuchKey' || error.Code === 'NoSuchKey') {
+                console.log(`File not found in B2 (already deleted): ${storageKey}`);
+                return true;
+            }
+            // For any other error, throw it so the use case can handle it
+            console.error(`Error deleting from B2 (${storageKey}):`, error);
+            throw new Error(`Failed to delete file from storage: ${error.message}`);
         }
     }
 
@@ -131,6 +139,34 @@ class B2StorageRepository extends IStorageRepository {
             contentLength: response.ContentLength,
             lastModified: response.LastModified,
             metadata: response.Metadata,
+        };
+    }
+
+    /**
+     * Get object stream with authentication (for private buckets)
+     * Supports range requests for video streaming
+     */
+    async getObjectStream(storageKey, range = null) {
+        const commandParams = {
+            Bucket: this.bucket,
+            Key: storageKey,
+        };
+
+        // Add range header if provided
+        if (range) {
+            commandParams.Range = range;
+        }
+
+        const command = new GetObjectCommand(commandParams);
+        const response = await this.client.send(command);
+
+        return {
+            stream: response.Body,
+            contentType: response.ContentType,
+            contentLength: response.ContentLength,
+            contentRange: response.ContentRange,
+            acceptRanges: response.AcceptRanges,
+            statusCode: range ? 206 : 200,
         };
     }
 }

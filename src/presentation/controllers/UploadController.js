@@ -67,6 +67,9 @@ class UploadController {
                 console.error('Failed to delete temp file:', err);
             }
 
+            // Convert thumbnail URL to server proxy URL
+            const thumbnailUrl = video.thumbnailUrl ? this.convertToServerUrl(video.thumbnailUrl) : null;
+
             res.writeHead(201, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
                 message: 'Video uploaded successfully',
@@ -75,7 +78,7 @@ class UploadController {
                     title: video.title,
                     description: video.description,
                     playbackUrl: video.getPlaybackUrl(),
-                    thumbnailUrl: video.thumbnailUrl,
+                    thumbnailUrl: thumbnailUrl,
                 },
             }));
         } catch (error) {
@@ -83,6 +86,28 @@ class UploadController {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: error.message || 'Upload failed' }));
         }
+    }
+
+    /**
+     * Convert B2/CDN URLs to server proxy URLs for private buckets
+     */
+    convertToServerUrl(url) {
+        if (!url) return null;
+
+        // If it's already a server URL, return as-is
+        if (url.includes('/video?file=')) {
+            return url;
+        }
+
+        // Extract filename from B2/CDN URL
+        const match = url.match(/\/([^/]+\.(svg|jpg|jpeg|png|gif|webp))$/i);
+        if (match) {
+            const filename = match[1];
+            const baseUrl = process.env.SERVER_BASE_URL || 'http://localhost:3000';
+            return `${baseUrl}/video?file=${filename}`;
+        }
+
+        return url;
     }
 }
 

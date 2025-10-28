@@ -60,12 +60,16 @@ class LocalStorageRepository extends IStorageRepository {
             const filePath = path.join(this.storagePath, storageKey);
             if (fs.existsSync(filePath)) {
                 await fs.promises.unlink(filePath);
+                console.log(`Successfully deleted local file: ${storageKey}`);
                 return true;
             }
-            return false;
+            // File doesn't exist - consider it already deleted
+            console.log(`File not found (already deleted): ${storageKey}`);
+            return true;
         } catch (error) {
-            console.error('Error deleting local file:', error);
-            return false;
+            // Throw error so use case can handle it properly
+            console.error(`Error deleting local file (${storageKey}):`, error);
+            throw new Error(`Failed to delete file from local storage: ${error.message}`);
         }
     }
 

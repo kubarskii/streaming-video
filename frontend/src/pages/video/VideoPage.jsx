@@ -81,7 +81,8 @@ export const VideoPage = () => {
         );
     }
 
-    const videoUrl = videosAPI.getVideoUrl(video.storageKey);
+    // Use playbackUrl from API response, fallback to constructing URL
+    const videoUrl = video.playbackUrl || videosAPI.getVideoUrl(video.storageKey);
     const canDelete = user && user.id === video.userId;
 
     return (
@@ -93,6 +94,7 @@ export const VideoPage = () => {
                         src={videoUrl}
                         controls
                         autoPlay
+                        poster={video.thumbnailUrl}
                         controlsList="nodownload"
                     />
                 </div>

@@ -1,0 +1,67 @@
+/* Shared UI: Error State Component */
+
+.ui-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem 1.5rem;
+  min-height: 400px;
+}
+
+.ui-error-state__icon {
+  margin-bottom: 1.5rem;
+}
+
+.ui-error-state--error .ui-error-state__icon {
+  color: #ef4444;
+}
+
+.ui-error-state--warning .ui-error-state__icon {
+  color: #f59e0b;
+}
+
+.ui-error-state--info .ui-error-state__icon {
+  color: #3b82f6;
+}
+
+.ui-error-state__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem;
+}
+
+.ui-error-state__message {
+  font-size: 1rem;
+  color: #6b7280;
+  margin: 0 0 1.5rem;
+  max-width: 28rem;
+}
+
+.ui-error-state__action {
+  margin-top: 0.5rem;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .ui-error-state {
+    padding: 2rem 1rem;
+    min-height: 300px;
+  }
+
+  .ui-error-state__icon svg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .ui-error-state__title {
+    font-size: 1.25rem;
+  }
+
+  .ui-error-state__message {
+    font-size: 0.875rem;
+  }
+}
+

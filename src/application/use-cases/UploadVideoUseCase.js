@@ -59,15 +59,16 @@ class UploadVideoUseCase {
             }
         );
 
-        // Handle thumbnail upload (only if user provides one)
+        // Handle thumbnail - either user-provided or auto-generated
         let thumbnailUrl = null;
+        const fs = require('fs');
 
         if (input.thumbnailPath) {
+            // User provided custom thumbnail - process it
             const thumbnailKey = `thumb_${videoId}.jpg`;
             const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
 
             try {
-                // User provided custom thumbnail - process it
                 console.log('Processing user-provided thumbnail...');
                 const thumbnailPath = await this.thumbnailGenerator.processUploadedThumbnail(
                     input.thumbnailPath,
@@ -79,7 +80,7 @@ class UploadVideoUseCase {
                     thumbnailPath,
                     thumbnailKey,
                     {
-                        contentType: 'image/jpeg',
+                        contentType: input.thumbnailMimeType || 'image/jpeg',
                         originalName: `${videoId}_thumbnail.jpg`,
                     }
                 );
@@ -87,18 +88,65 @@ class UploadVideoUseCase {
                 thumbnailUrl = thumbnailUpload.cdnUrl || thumbnailUpload.storageUrl;
 
                 // Clean up temp thumbnail
-                const fs = require('fs');
                 if (fs.existsSync(thumbnailPath)) {
                     fs.unlinkSync(thumbnailPath);
                 }
 
-                console.log('✅ Thumbnail uploaded successfully');
+                console.log('✅ User thumbnail uploaded successfully');
             } catch (error) {
-                console.error('Failed to upload thumbnail:', error.message);
-                // Continue without thumbnail - not a critical error
+                console.error('Failed to upload user thumbnail:', error.message);
+                // Continue to auto-generate instead
+                console.log('Falling back to auto-generated thumbnail...');
             }
-        } else {
-            console.log('No custom thumbnail provided - video will have no thumbnail');
+        }
+
+        // Auto-generate thumbnail if no user thumbnail was provided or if upload failed
+        if (!thumbnailUrl) {
+            try {
+                console.log('🎬 Auto-generating thumbnail from video...');
+                const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
+
+                // Generate thumbnail from video (extracts actual frame using ffmpeg)
+                const generatedThumbnailPath = await this.thumbnailGenerator.generateFromVideo(
+                    input.filePath,
+                    thumbnailTempPath,
+                    {
+                        timestamp: '00:00:02',  // Extract frame at 2 seconds
+                        size: '640x360'         // Standard thumbnail size
+                    }
+                );
+
+                // Determine content type and storage key based on file extension
+                const fileExt = path.extname(generatedThumbnailPath).toLowerCase();
+                const contentType = fileExt === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+                const thumbnailKey = `thumb_${videoId}${fileExt}`;
+
+                console.log(`📤 Uploading ${fileExt.toUpperCase()} thumbnail to storage...`);
+
+                // Upload generated thumbnail to storage (B2/S3 or local)
+                const thumbnailUpload = await this.storageRepository.upload(
+                    generatedThumbnailPath,
+                    thumbnailKey,
+                    {
+                        contentType: contentType,
+                        originalName: `${videoId}_thumbnail${fileExt}`,
+                    }
+                );
+
+                thumbnailUrl = thumbnailUpload.cdnUrl || thumbnailUpload.storageUrl;
+
+                // Clean up temp thumbnail file
+                if (fs.existsSync(generatedThumbnailPath)) {
+                    fs.unlinkSync(generatedThumbnailPath);
+                }
+
+                console.log(`✅ Thumbnail saved to storage: ${thumbnailUrl}`);
+            } catch (error) {
+                console.error('❌ Failed to auto-generate thumbnail:', error.message);
+                console.error('Stack:', error.stack);
+                // Continue without thumbnail - video upload should not fail
+                console.log('⚠️  Video will be saved without thumbnail');
+            }
         }
 
         // Create video entity

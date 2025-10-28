@@ -1,12 +1,15 @@
 // Pages: Home Page with Infinite Scrolling
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useSearch } from '@tanstack/react-router';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import { videosAPI } from '../../shared/api/videos';
-import { VideoCard } from '../../entities/video/ui/VideoCard';
+import { VideoCard, VideoCardGrid, Spinner, EmptyState, VideoEmptyIcon, SearchEmptyIcon, Button } from '../../shared/ui';
 import './HomePage.css';
 
 export const HomePage = () => {
+    const searchParams = useSearch({ from: '/' });
+    const searchQuery = searchParams?.q || '';
+
     const [videos, setVideos] = useState([]);
     const [hasMore, setHasMore] = useState(true);
     const [offset, setOffset] = useState(0);
@@ -15,40 +18,50 @@ export const HomePage = () => {
 
     const LIMIT = 20;
 
-    const fetchVideos = useCallback(async () => {
+    const fetchVideos = useCallback(async (currentOffset = 0, currentSearch = '') => {
         try {
-            const data = await videosAPI.getVideos({ limit: LIMIT, offset });
+            const data = await videosAPI.getVideos({
+                limit: LIMIT,
+                offset: currentOffset,
+                search: currentSearch || undefined
+            });
 
-            if (offset === 0) {
+            if (currentOffset === 0) {
                 setVideos(data.videos);
             } else {
                 setVideos(prev => [...prev, ...data.videos]);
             }
 
             setHasMore(data.hasMore);
-            setOffset(prev => prev + LIMIT);
             setLoading(false);
         } catch (err) {
             console.error('Error fetching videos:', err);
             setError('Failed to load videos');
             setLoading(false);
         }
-    }, [offset]);
+    }, []);
 
     useEffect(() => {
-        fetchVideos();
-    }, []);
+        setVideos([]);
+        setOffset(0);
+        setLoading(true);
+        setError(null);
+        setHasMore(true);
+        fetchVideos(0, searchQuery);
+    }, [searchQuery, fetchVideos]);
 
     const fetchMoreVideos = () => {
         if (!loading) {
-            fetchVideos();
+            const newOffset = offset + LIMIT;
+            setOffset(newOffset);
+            fetchVideos(newOffset, searchQuery);
         }
     };
 
     if (loading && videos.length === 0) {
         return (
             <div className="loading-container">
-                <div className="spinner"></div>
+                <Spinner size="large" center />
             </div>
         );
     }
@@ -56,10 +69,16 @@ export const HomePage = () => {
     if (error && videos.length === 0) {
         return (
             <div className="error-container">
-                <p>{error}</p>
-                <button onClick={() => window.location.reload()} className="btn btn-primary">
-                    Retry
-                </button>
+                <EmptyState
+                    icon={<VideoEmptyIcon />}
+                    title="Failed to load videos"
+                    description={error}
+                    action={
+                        <Button variant="primary" onClick={() => window.location.reload()}>
+                            Retry
+                        </Button>
+                    }
+                />
             </div>
         );
     }
@@ -67,41 +86,56 @@ export const HomePage = () => {
     if (videos.length === 0) {
         return (
             <div className="empty-container">
-                <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-                    <circle cx="60" cy="60" r="50" stroke="#e5e5e5" strokeWidth="4" />
-                    <path d="M45 40l30 20-30 20V40z" fill="#e5e5e5" />
-                </svg>
-                <h2>No videos yet</h2>
-                <p>Be the first to upload a video!</p>
-                <Link to="/upload" className="btn btn-primary">
-                    Upload Video
-                </Link>
+                {searchQuery ? (
+                    <EmptyState
+                        icon={<SearchEmptyIcon />}
+                        title="No videos found"
+                        description={`No videos match "${searchQuery}"`}
+                    />
+                ) : (
+                    <EmptyState
+                        icon={<VideoEmptyIcon />}
+                        title="No videos yet"
+                        description="Be the first to upload a video!"
+                        action={
+                            <Link to="/upload">
+                                <Button variant="primary">Upload Video</Button>
+                            </Link>
+                        }
+                    />
+                )}
             </div>
         );
     }
 
     return (
         <div className="home-page">
+            {searchQuery && (
+                <div className="search-header">
+                    <h2>Search results for "{searchQuery}"</h2>
+                    <p className="results-count">{videos.length} video{videos.length !== 1 ? 's' : ''} found</p>
+                </div>
+            )}
             <InfiniteScroll
                 dataLength={videos.length}
                 next={fetchMoreVideos}
                 hasMore={hasMore}
                 loader={
                     <div className="loading-more">
-                        <div className="spinner-small"></div>
+                        <Spinner size="medium" center />
                     </div>
                 }
                 endMessage={
                     <div className="end-message">
-                        <p>You've seen all videos! 🎉</p>
+                        <p>{searchQuery ? `That's all we found for "${searchQuery}"` : "You've seen all videos! 🎉"}</p>
                     </div>
                 }
             >
-                <div className="video-grid">
+                <VideoCardGrid columns="auto">
                     {videos.map((video) => (
-                        <VideoCard key={video.id} video={video} />
+                        <VideoCard key={video.id} video={video} showUser />
                     ))}
-                </div>
+                </VideoCardGrid>
             </InfiniteScroll>
         </div>
     );
