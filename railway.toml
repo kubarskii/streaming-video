@@ -13,8 +13,7 @@ restartPolicyMaxRetries = 10
 healthcheckPath = "/api/videos"
 healthcheckTimeout = 100
 
-# Volume configuration for uploads (optional - only if using local storage)
-# [[volumes]]
-# mountPath = "/app/videos"
-# name = "video-storage"
+# Volume configuration for SQLite database
+[[volumes]]
+mountPath = "/app/data"
 
