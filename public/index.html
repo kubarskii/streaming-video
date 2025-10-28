@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Video Streaming Demo</title>
+    <style>
+        body {
+            font-family: system-ui;
+            margin: 2rem;
+        }
+
+        video {
+            width: 100%;
+            max-width: 800px;
+            background: black;
+        }
+
+        input,
+        button {
+            font-size: 1rem;
+            padding: 0.4rem;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Node.js Video Streaming Demo</h1>
+    <p>Enter a file name from the <code>videos/</code> folder:</p>
+    <input id="fileInput" type="text" value="sample.mp4">
+    <button id="loadBtn">Load</button>
+    <br><br>
+    <video id="player" controls preload="metadata"></video>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const loadBtn = document.getElementById('loadBtn');
+        const player = document.getElementById('player');
+
+        loadBtn.addEventListener('click', () => {
+            const file = fileInput.value.trim();
+            if (!file) return alert('Enter file name');
+            player.src = `/video?file=${encodeURIComponent(file)}`;
+            player.load();
+            player.play().catch(() => { });
+        });
+
+        // Auto-load default file
+        window.addEventListener('DOMContentLoaded', () => loadBtn.click());
+    </script>
+</body>
+
+</html>
