@@ -70,6 +70,7 @@ class StreamController {
                     '.png': 'image/png',
                     '.gif': 'image/gif',
                     '.webp': 'image/webp',
+                    '.svg': 'image/svg+xml',
                 };
                 const contentType = contentTypes[ext] || 'application/octet-stream';
 
