@@ -7,7 +7,11 @@
 node scripts/generate-secrets.js
 ```
 
-### 2. Copy All Variables to Railway Dashboard:
+### 2. Add PostgreSQL Database First:
+Click **"+ New" → "Database" → "PostgreSQL"**
+(Railway automatically sets DATABASE_URL)
+
+### 3. Copy All Variables to Railway Dashboard:
 
 Go to: **Railway Project → Your Service → Variables Tab**
 
@@ -16,33 +20,28 @@ NODE_ENV=production
 STORAGE_MODE=b2
 B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 B2_REGION=eu-central-003
-B2_KEY_ID=003e7247e8a0a2d0000000001
-B2_KEY_SECRET=K003Q90g0K6UfM54D0AzUDh2L2DKO2Q
-B2_BUCKET=video-platform-key
-CDN_BASE_URL=
+B2_KEY_ID=your_backblaze_key_id
+B2_KEY_SECRET=your_backblaze_key_secret
+B2_BUCKET=your-bucket-name
+CDN_BASE_URL=https://f003.backblazeb2.com/file/your-bucket-name
 JWT_SECRET=<PASTE_FROM_GENERATE_SECRETS>
 JWT_EXPIRES_IN=7d
 ARGON2_SECRET=<PASTE_FROM_GENERATE_SECRETS>
 ```
 
-### 3. Add PostgreSQL:
-Click **"+ New" → "Database" → "PostgreSQL"**
-(DATABASE_URL is auto-set)
+⚠️ **Don't set DATABASE_URL manually** - Railway auto-connects it!
 
-### 4. Update Code for PostgreSQL:
+### 4. Verify Prisma Schema:
 
-**Edit `prisma/schema.prisma`:**
+Your `prisma/schema.prisma` should already have:
 ```prisma
 datasource db {
-  provider = "postgresql"  // Change from "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 ```
 
-**Run migration:**
-```bash
-npx prisma migrate dev --name postgresql
-```
+✅ Already configured!
 
 ### 5. Deploy:
 ```bash

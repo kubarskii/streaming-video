@@ -38,10 +38,10 @@ PORT=3000
 STORAGE_MODE=b2
 B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 B2_REGION=eu-central-003
-B2_KEY_ID=003e7247e8a0a2d0000000001
-B2_KEY_SECRET=K003Q90g0K6UfM54D0AzUDh2L2DKO2Q
-B2_BUCKET=video-platform-key
-CDN_BASE_URL=
+B2_KEY_ID=your_backblaze_key_id
+B2_KEY_SECRET=your_backblaze_key_secret
+B2_BUCKET=your-bucket-name
+CDN_BASE_URL=https://f003.backblazeb2.com/file/your-bucket-name
 
 # Authentication (use values from generate-secrets.js)
 JWT_SECRET=<paste-from-generate-secrets>
@@ -69,10 +69,10 @@ railway variables --set NODE_ENV=production
 railway variables --set STORAGE_MODE=b2
 railway variables --set B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 railway variables --set B2_REGION=eu-central-003
-railway variables --set B2_KEY_ID=003e7247e8a0a2d0000000001
-railway variables --set B2_KEY_SECRET=K003Q90g0K6UfM54D0AzUDh2L2DKO2Q
-railway variables --set B2_BUCKET=video-platform-key
-railway variables --set CDN_BASE_URL=""
+railway variables --set B2_KEY_ID=your_backblaze_key_id
+railway variables --set B2_KEY_SECRET=your_backblaze_key_secret
+railway variables --set B2_BUCKET=your-bucket-name
+railway variables --set CDN_BASE_URL="https://f003.backblazeb2.com/file/your-bucket-name"
 railway variables --set JWT_SECRET="<paste-your-generated-secret>"
 railway variables --set JWT_EXPIRES_IN=7d
 railway variables --set ARGON2_SECRET="<paste-your-generated-secret>"
@@ -104,29 +104,35 @@ railway add --database postgres
 
 ---
 
-## Step 4: Update Prisma Schema for PostgreSQL
+## Step 4: Verify Prisma Schema
 
-Before deploying, update your database provider:
+Your Prisma schema is already configured for PostgreSQL:
 
 ```prisma
 // prisma/schema.prisma
 datasource db {
-  provider = "postgresql"  // Changed from "sqlite"
+  provider = "postgresql"  // ✅ Already set
   url      = env("DATABASE_URL")
 }
 ```
 
-Then generate new migration locally:
+✅ **No migration needed locally!** Railway will handle database setup on first deploy.
 
-```bash
-npx prisma migrate dev --name postgresql
+Your `Procfile` syncs the schema automatically:
+```
+web: npm run build && npx prisma db push --skip-generate && npm start
 ```
 
-Commit and push:
+This uses `prisma db push` which:
+- ✅ Creates tables on first deploy
+- ✅ Updates schema on subsequent deploys
+- ✅ Works without migration files
+
+Just commit and push:
 
 ```bash
 git add .
-git commit -m "Switch to PostgreSQL for production"
+git commit -m "Ready for Railway deployment"
 git push
 ```
 
@@ -169,10 +175,10 @@ NODE_ENV=production
 STORAGE_MODE=b2
 B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 B2_REGION=eu-central-003
-B2_KEY_ID=003e7247e8a0a2d0000000001
-B2_KEY_SECRET=K003Q90g0K6UfM54D0AzUDh2L2DKO2Q
-B2_BUCKET=video-platform-key
-CDN_BASE_URL=
+B2_KEY_ID=your_backblaze_key_id
+B2_KEY_SECRET=your_backblaze_key_secret
+B2_BUCKET=your-bucket-name
+CDN_BASE_URL=https://f003.backblazeb2.com/file/your-bucket-name
 JWT_SECRET=<generate new for production>
 JWT_EXPIRES_IN=7d
 ARGON2_SECRET=<generate new for production>

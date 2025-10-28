@@ -1,2 +1,2 @@
-web: npm run build && npm run migrate && npm start
+web: npm run build && npx prisma db push --skip-generate && npm start
 

@@ -27,10 +27,10 @@ STORAGE_MODE=b2
 # Backblaze B2 Configuration
 B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
 B2_REGION=eu-central-003
-B2_KEY_ID=003e7247e8a0a2d0000000001
-B2_KEY_SECRET=K003Q90g0K6UfM54D0AzUDh2L2DKO2Q
-B2_BUCKET=videos-pub-keks
-CDN_BASE_URL=https://f003.backblazeb2.com/file/videos-pub-keks
+B2_KEY_ID=your_backblaze_key_id
+B2_KEY_SECRET=your_backblaze_key_secret
+B2_BUCKET=your-bucket-name
+CDN_BASE_URL=https://f003.backblazeb2.com/file/your-bucket-name
 
 # Authentication (Generate secure secrets!)
 JWT_SECRET=<RUN: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
@@ -57,8 +57,10 @@ This creates a **private network connection** with zero egress fees!
 
 Your `Procfile` should contain:
 ```
-web: npm run build && npm run migrate && npm start
+web: npm run build && npx prisma db push --skip-generate && npm start
 ```
+
+This automatically syncs your database schema on each deploy.
 
 Your `package.json` already has the correct scripts:
 ```json
