@@ -1,0 +1,12 @@
+# This file shows what was excluded from git
+# public/ directory is now built during deployment and not committed
+
+# Before (old setup):
+# - public/ was committed with built files
+# - Faster deployment but larger repo
+
+# After (current setup):
+# - public/ is excluded from git
+# - Built during deployment
+# - Cleaner repository
+

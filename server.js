@@ -1,31 +1,68 @@
 // server.js
-// Node.js video streaming demo (no external deps)
-// Supports Range requests and seeking from exact positions
+// Video streaming service with DDD architecture
+// Supports Backblaze B2 + Cloudflare CDN or local storage
 
+require('dotenv').config();
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { URL } = require('url');
 
-const HOST = '127.0.0.1';
-const PORT = 3000;
+// Infrastructure
+const DatabaseConfig = require('./src/infrastructure/config/DatabaseConfig');
+const StorageConfig = require('./src/infrastructure/config/StorageConfig');
+const PrismaVideoRepository = require('./src/infrastructure/persistence/PrismaVideoRepository');
+const PrismaUserRepository = require('./src/infrastructure/persistence/PrismaUserRepository');
+const PasswordHasher = require('./src/infrastructure/auth/PasswordHasher');
+const JWTService = require('./src/infrastructure/auth/JWTService');
+const ThumbnailGenerator = require('./src/infrastructure/media/ThumbnailGenerator');
 
+// Application
+const VideoService = require('./src/application/services/VideoService');
+const AuthService = require('./src/application/services/AuthService');
+
+// Presentation
+const VideoController = require('./src/presentation/controllers/VideoController');
+const StreamController = require('./src/presentation/controllers/StreamController');
+const AuthController = require('./src/presentation/controllers/AuthController');
+const UploadController = require('./src/presentation/controllers/UploadController');
+const Router = require('./src/presentation/routes/Router');
+const corsMiddleware = require('./src/presentation/middleware/corsMiddleware');
+const { authMiddleware } = require('./src/presentation/middleware/authMiddleware');
+
+// Configuration
+const HOST = process.env.HOST || '127.0.0.1';
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const VIDEO_DIR = path.join(__dirname, 'videos');
 
-const MIME = {
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-    '.mov': 'video/quicktime',
-    '.m4v': 'video/x-m4v'
-};
+// Dependency Injection Container
+class Container {
+    static async initialize() {
+        // Infrastructure layer
+        const prismaClient = DatabaseConfig.getPrismaClient();
+        const videoRepository = new PrismaVideoRepository(prismaClient);
+        const userRepository = new PrismaUserRepository(prismaClient);
+        const storageRepository = StorageConfig.createStorageRepository();
+        const passwordHasher = new PasswordHasher();
+        const jwtService = new JWTService();
+        const thumbnailGenerator = new ThumbnailGenerator();
 
-// Helper to prevent path traversal
-function safeJoin(base, target) {
-    const resolved = path.resolve(path.join(base, target));
-    return resolved.startsWith(base + path.sep) ? resolved : null;
+        // Application layer
+        const videoService = new VideoService(videoRepository, storageRepository, thumbnailGenerator);
+        const authService = new AuthService(userRepository, passwordHasher, jwtService);
+
+        // Presentation layer
+        const videoController = new VideoController(videoService);
+        const streamController = new StreamController(videoService, storageRepository);
+        const authController = new AuthController(authService);
+        const uploadController = new UploadController(videoService);
+        const router = new Router(videoController, streamController, authController, uploadController);
+
+        return { router, prismaClient, storageRepository, authService };
+    }
 }
 
+// Helper to serve static files
 function serveFile(res, filePath, contentType = 'text/plain') {
     fs.readFile(filePath, (err, data) => {
         if (err) {
@@ -37,98 +74,145 @@ function serveFile(res, filePath, contentType = 'text/plain') {
     });
 }
 
-// Serve video stream with Range support
-function serveVideo(req, res, urlObj) {
-    const fileName = urlObj.searchParams.get('file');
-    if (!fileName) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        return res.end('Missing ?file parameter');
-    }
+// Start server
+async function startServer() {
+    try {
+        console.log('🚀 Initializing application...');
 
-    const filePath = safeJoin(VIDEO_DIR, fileName);
-    if (!filePath) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        return res.end('Invalid file path');
-    }
+        // Initialize dependency injection container
+        const { router, prismaClient, storageRepository, authService } = await Container.initialize();
 
-    fs.stat(filePath, (err, stat) => {
-        if (err || !stat.isFile()) {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            return res.end('File not found');
-        }
+        console.log('✅ Dependencies initialized');
+        console.log(`📦 Storage mode: ${process.env.STORAGE_MODE || 'local'}`);
 
-        const fileSize = stat.size;
-        const range = req.headers.range;
-        const ext = path.extname(filePath).toLowerCase();
-        const contentType = MIME[ext] || 'application/octet-stream';
+        // Create HTTP server
+        const server = http.createServer(async (req, res) => {
+            try {
+                // Apply CORS middleware
+                await runMiddleware(req, res, corsMiddleware);
+                if (res.writableEnded) return;
 
-        if (!range) {
-            // Serve entire file
-            res.writeHead(200, {
-                'Content-Type': contentType,
-                'Content-Length': fileSize,
-                'Accept-Ranges': 'bytes',
-                'Cache-Control': 'no-store'
-            });
-            return fs.createReadStream(filePath).pipe(res);
-        }
+                // Apply auth middleware
+                await runMiddleware(req, res, authMiddleware(authService));
+                if (res.writableEnded) return;
 
-        // Parse Range header, e.g. "bytes=1000-"
-        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-        if (!match) {
-            res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
-            return res.end();
-        }
+                // Try routing through DDD router
+                const handled = await router.route(req, res);
 
-        let start = match[1] ? parseInt(match[1], 10) : 0;
-        let end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+                if (handled !== null) {
+                    return; // Request was handled by router
+                }
 
-        if (isNaN(start) || isNaN(end) || start >= fileSize) {
-            res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
-            return res.end();
-        }
+                // Fallback to static file serving
+                const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
 
-        if (end >= fileSize) end = fileSize - 1;
+                if (pathname === '/') {
+                    return serveFile(res, path.join(PUBLIC_DIR, 'index.html'), 'text/html');
+                }
 
-        const chunkSize = end - start + 1;
+                // Serve static files from public/ or frontend/dist/
+                const safePath = path.join(PUBLIC_DIR, pathname.replace(/^\/+/, ''));
+                if (fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
+                    const contentType = getContentType(safePath);
+                    return serveFile(res, safePath, contentType);
+                }
 
-        res.writeHead(206, {
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunkSize,
-            'Content-Type': contentType,
-            'Cache-Control': 'no-store'
+                // SPA fallback: For any non-API route, serve index.html (for React Router/TanStack Router)
+                if (!pathname.startsWith('/api') && !pathname.startsWith('/video')) {
+                    const indexPath = path.join(PUBLIC_DIR, 'index.html');
+                    if (fs.existsSync(indexPath)) {
+                        return serveFile(res, indexPath, 'text/html');
+                    }
+                }
+
+                // 404 Not Found
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('404 Not Found');
+            } catch (error) {
+                console.error('Server error:', error);
+                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.end('Internal Server Error');
+            }
         });
 
-        const stream = fs.createReadStream(filePath, { start, end });
-        stream.pipe(res);
+        // Graceful shutdown
+        process.on('SIGTERM', async () => {
+            console.log('🛑 SIGTERM received, shutting down gracefully...');
+            server.close(() => {
+                console.log('✅ HTTP server closed');
+            });
+            await DatabaseConfig.disconnect();
+            console.log('✅ Database disconnected');
+            process.exit(0);
+        });
+
+        process.on('SIGINT', async () => {
+            console.log('\n🛑 SIGINT received, shutting down gracefully...');
+            server.close(() => {
+                console.log('✅ HTTP server closed');
+            });
+            await DatabaseConfig.disconnect();
+            console.log('✅ Database disconnected');
+            process.exit(0);
+        });
+
+        // Start listening
+        server.listen(PORT, HOST, () => {
+            console.log('');
+            console.log('🎥 Video Streaming Service');
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log(`📡 Server:     http://${HOST}:${PORT}`);
+            console.log(`🗄️  Database:   SQLite (Prisma)`);
+            console.log(`💾 Storage:    ${process.env.STORAGE_MODE || 'local'}`);
+            console.log(`🎨 Frontend:   ${IS_PRODUCTION ? 'Built (public/)' : 'Dev mode'}`);
+            console.log('');
+            console.log('API Endpoints:');
+            console.log(`  GET    /api/videos          - List all videos`);
+            console.log(`  GET    /api/videos/:id      - Get video by ID`);
+            console.log(`  DELETE /api/videos/:id      - Delete video`);
+            console.log(`  GET    /video?file=:name    - Stream video`);
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('');
+        });
+
+    } catch (error) {
+        console.error('❌ Failed to start server:', error);
+        process.exit(1);
+    }
+}
+
+// Helper to get content type
+function getContentType(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    const types = {
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mov': 'video/quicktime',
+        '.ico': 'image/x-icon',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+    };
+    return types[ext] || 'application/octet-stream';
+}
+
+// Helper to run middleware
+function runMiddleware(req, res, middleware) {
+    return new Promise((resolve, reject) => {
+        middleware(req, res, (err) => {
+            if (err) return reject(err);
+            resolve();
+        });
     });
 }
 
-const server = http.createServer((req, res) => {
-    const urlObj = new URL(req.url, `http://${req.headers.host}`);
-
-    if (urlObj.pathname === '/') {
-        return serveFile(res, path.join(PUBLIC_DIR, 'index.html'), 'text/html');
-    }
-
-    if (urlObj.pathname === '/video') {
-        return serveVideo(req, res, urlObj);
-    }
-
-    // Serve static files from public/
-    const safePath = safeJoin(PUBLIC_DIR, urlObj.pathname.replace(/^\/+/, ''));
-    if (safePath && fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
-        const ext = path.extname(safePath).toLowerCase();
-        const contentType = MIME[ext] || 'text/plain';
-        return serveFile(res, safePath, contentType);
-    }
-
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('404 Not Found');
-});
-
-server.listen(PORT, HOST, () => {
-    console.log(`Server running at http://${HOST}:${PORT}`);
-    console.log(`Videos directory: ${VIDEO_DIR}`);
-});
+// Start the server
+startServer();
