@@ -107,12 +107,12 @@ class UploadVideoUseCase {
                 const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
 
                 // Generate thumbnail from video (extracts actual frame using ffmpeg)
+                // Timestamp will be auto-calculated from middle of video
                 const generatedThumbnailPath = await this.thumbnailGenerator.generateFromVideo(
                     input.filePath,
                     thumbnailTempPath,
                     {
-                        timestamp: '00:00:02',  // Extract frame at 2 seconds
-                        size: '640x360'         // Standard thumbnail size
+                        size: '640x360'  // Standard thumbnail size
                     }
                 );
 

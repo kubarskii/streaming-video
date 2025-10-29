@@ -5,35 +5,107 @@ const fs = require('fs');
 const { execFile, exec } = require('child_process');
 const { promisify } = require('util');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 const ffmpegPath = ffmpegInstaller.path;
+const ffprobePath = ffprobeInstaller.path;
 
 class ThumbnailGenerator {
+    /**
+     * Format seconds to timestamp string (HH:MM:SS.mmm)
+     * @param {number} seconds - Time in seconds
+     * @returns {string} Formatted timestamp
+     */
+    formatTimestamp(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        const ms = Math.floor((seconds % 1) * 1000);
+
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+    }
+
+    /**
+     * Get video duration in seconds using ffprobe
+     * @param {string} videoPath - Path to video file
+     * @returns {Promise<number>} Duration in seconds
+     */
+    async getVideoDuration(videoPath) {
+        try {
+            const { stdout } = await execFileAsync(ffprobePath, [
+                '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                videoPath
+            ]);
+
+            const duration = parseFloat(stdout.trim());
+            console.log(`   Video duration: ${duration.toFixed(2)} seconds`);
+            return duration;
+        } catch (error) {
+            console.warn('⚠️  Could not detect video duration:', error.message);
+            return null;
+        }
+    }
+
     /**
      * Generate thumbnail from video file
      * @param {string} videoPath - Path to video file
      * @param {string} outputPath - Path where thumbnail should be saved
      * @param {object} options - Options for thumbnail generation
-     * @param {string} options.timestamp - Time in video to capture (e.g., '00:00:03')
+     * @param {string} options.timestamp - Time in video to capture (optional, will auto-detect middle if not provided)
      * @param {string} options.size - Thumbnail size (e.g., '640x360')
      * @returns {Promise<string>} Path to generated thumbnail
      */
     async generateFromVideo(videoPath, outputPath, options = {}) {
         const {
-            timestamp = '00:00:02',  // Capture at 2 seconds (more stable than 1 sec)
+            timestamp = null,  // Will be auto-calculated from video duration
             size = '640x360',
         } = options;
+
+        console.log('🎬 generateFromVideo called with:');
+        console.log('   videoPath:', videoPath);
+        console.log('   outputPath:', outputPath);
+        console.log('   size:', size);
+        console.log('   Video file exists:', fs.existsSync(videoPath));
+
+        if (!fs.existsSync(videoPath)) {
+            throw new Error(`Video file not found: ${videoPath}`);
+        }
+
+        const stats = fs.statSync(videoPath);
+        console.log('   Video file size:', (stats.size / 1024 / 1024).toFixed(2), 'MB');
+
+        // Get video duration and calculate middle timestamp if not provided
+        let extractTimestamp = timestamp;
+        if (!extractTimestamp) {
+            const duration = await this.getVideoDuration(videoPath);
+            if (duration && duration > 0) {
+                // Extract from the middle of the video (50% through)
+                const middleTime = duration / 2;
+                extractTimestamp = this.formatTimestamp(middleTime);
+                console.log(`   Using middle timestamp: ${extractTimestamp} (${middleTime.toFixed(2)}s)`);
+            } else {
+                // Fallback to 1 second if duration detection fails
+                extractTimestamp = '00:00:01';
+                console.log('   Using fallback timestamp: 00:00:01');
+            }
+        } else {
+            console.log('   Using provided timestamp:', extractTimestamp);
+        }
 
         // Ensure output directory exists
         const outputDir = path.dirname(outputPath);
         if (!fs.existsSync(outputDir)) {
+            console.log('   Creating output directory:', outputDir);
             fs.mkdirSync(outputDir, { recursive: true });
         }
 
         // Force JPG extension for output
         const jpgOutputPath = outputPath.replace(/\.[^.]+$/, '.jpg');
+        console.log('   JPG output path:', jpgOutputPath);
 
         try {
             // Check if ffmpeg is available
@@ -52,35 +124,63 @@ class ThumbnailGenerator {
             // -q:v 2: high quality JPEG (scale 2-31, lower is better)
             // -y: overwrite output file
             console.log('🎬 Extracting thumbnail from video using ffmpeg...');
+            console.log('   FFmpeg path:', ffmpegPath);
+
+            // Parse size for simpler scale filter
+            const [width, height] = size.split('x').map(Number);
+
+            // Use simple scale filter without padding to avoid shell escaping issues
+            // The scale filter with -1 maintains aspect ratio automatically
             const ffmpegArgs = [
-                '-ss', timestamp,
+                '-ss', extractTimestamp,
                 '-i', videoPath,
-                '-frames:v', '1',
-                '-vf', `scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2`,
+                '-vframes', '1',
+                '-vf', `scale=${width}:-1`,  // -1 maintains aspect ratio, much simpler!
                 '-q:v', '2',
-                '-y', jpgOutputPath,
+                '-y',
+                jpgOutputPath,
             ];
 
+            console.log('   FFmpeg args:', JSON.stringify(ffmpegArgs, null, 2));
+
             try {
-                await execFileAsync(ffmpegPath, ffmpegArgs, {
+                const { stdout, stderr } = await execFileAsync(ffmpegPath, ffmpegArgs, {
                     timeout: 30000,  // 30 second timeout
                     maxBuffer: 10 * 1024 * 1024  // 10MB buffer
                 });
+                if (stderr) {
+                    console.log('FFmpeg stderr:', stderr);
+                }
             } catch (execFileError) {
-                // Some environments (like certain serverless platforms) restrict execFile. Fall back to exec.
-                console.warn('execFile failed, falling back to exec with command string:', execFileError.message);
-                const commandParts = [ffmpegPath, ...ffmpegArgs].map((arg) => {
-                    if (/[\s"'$`\\]/.test(arg)) {
-                        return JSON.stringify(arg);
-                    }
-                    return arg;
-                });
-                const command = commandParts.join(' ');
+                // Log detailed error information
+                console.error('❌ execFile failed with error:', execFileError.message);
+                console.error('   Error code:', execFileError.code);
 
-                await execAsync(command, {
-                    timeout: 30000,
-                    maxBuffer: 10 * 1024 * 1024,
-                });
+                // Check if it's a "video too short" or "timestamp beyond duration" error
+                const errorOutput = (execFileError.stderr || execFileError.stdout || '').toString();
+                if (errorOutput.includes('Invalid argument') || errorOutput.includes('start time') ||
+                    errorOutput.includes('past duration')) {
+                    console.warn('⚠️  Timestamp issue detected, trying with first frame (0.1s)...');
+                    // Retry with first frame
+                    ffmpegArgs[1] = '00:00:00.1';
+
+                    try {
+                        const { stdout, stderr } = await execFileAsync(ffmpegPath, ffmpegArgs, {
+                            timeout: 30000,
+                            maxBuffer: 10 * 1024 * 1024
+                        });
+                        if (stderr) {
+                            console.log('FFmpeg stderr (retry):', stderr);
+                        }
+                        // Success with earlier timestamp, continue to verification
+                    } catch (retryError) {
+                        console.error('❌ Retry also failed:', retryError.message);
+                        throw retryError;
+                    }
+                } else {
+                    // Not a timing issue, re-throw the error
+                    throw execFileError;
+                }
             }
 
             // Verify the file was created and has content
