@@ -1,5 +1,10 @@
+// @ts-check
 // Application: GetVideoUseCase
 // Use case for getting a video by ID
+
+/**
+ * @typedef {import('../../domain/entities/Video')} Video
+ */
 
 class GetVideoUseCase {
     constructor(videoRepository) {

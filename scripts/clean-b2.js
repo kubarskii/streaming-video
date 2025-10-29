@@ -1,3 +1,4 @@
+// @ts-check
 const { S3Client, ListObjectsV2Command, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 require('dotenv').config();
 

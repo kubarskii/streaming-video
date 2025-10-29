@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: PrismaUserRepository
 
 const IUserRepository = require('../../domain/repositories/IUserRepository');

@@ -1,3 +1,4 @@
+// @ts-check
 // scripts/import-videos.js
 // Utility script to import existing videos from the videos/ directory into the database
 

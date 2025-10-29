@@ -1,5 +1,10 @@
+// @ts-check
 // Repository Interface: IVideoRepository
 // Defines the contract for video data access
+
+/**
+ * @typedef {import('../entities/Video')} Video
+ */
 
 class IVideoRepository {
     /**

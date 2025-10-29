@@ -1,3 +1,4 @@
+// @ts-check
 // Presentation: Auth Middleware
 
 function authMiddleware(authService) {

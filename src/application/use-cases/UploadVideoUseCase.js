@@ -1,3 +1,4 @@
+// @ts-check
 // Application: UploadVideoUseCase
 // Use case for uploading a video
 
@@ -19,11 +20,15 @@ class UploadVideoUseCase {
      * @param {string} input.filePath - Local path to video file
      * @param {string} input.fileName - Original file name
      * @param {string} input.title - Video title
-     * @param {string} input.description - Video description
+     * @param {string} [input.description] - Video description
      * @param {string} input.mimeType - MIME type
      * @param {number} input.sizeBytes - File size in bytes
-     * @param {string} input.userId - User ID (optional)
-     * @param {string} input.thumbnailPath - Local path to custom thumbnail (optional)
+     * @param {string} [input.userId] - User ID (optional)
+     * @param {string} [input.thumbnailPath] - Local path to custom thumbnail (optional)
+     * @param {string} [input.thumbnailMimeType] - MIME type of custom thumbnail (optional)
+     * @param {number} [input.durationMs] - Video duration in milliseconds (optional)
+     * @param {number} [input.width] - Video width (optional)
+     * @param {number} [input.height] - Video height (optional)
      * @returns {Promise<Video>}
      */
     async execute(input) {

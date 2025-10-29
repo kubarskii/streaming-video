@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: LocalStorageRepository
 // Implementation of IStorageRepository for local filesystem
 

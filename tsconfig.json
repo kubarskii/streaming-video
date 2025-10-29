@@ -1,0 +1,50 @@
+{
+    "compilerOptions": {
+        // Type checking for JavaScript files
+        "allowJs": true,
+        "checkJs": true,
+        "noEmit": true,
+        // Module resolution
+        "module": "commonjs",
+        "target": "ES2022",
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "esModuleInterop": true,
+        // Strictness
+        "strict": false,
+        "noImplicitAny": false,
+        "strictNullChecks": false,
+        "strictFunctionTypes": false,
+        "strictBindCallApply": false,
+        "strictPropertyInitialization": false,
+        "noImplicitThis": false,
+        "alwaysStrict": false,
+        // Additional checks
+        "noUnusedLocals": false,
+        "noUnusedParameters": false,
+        "noImplicitReturns": false,
+        "noFallthroughCasesInSwitch": true,
+        // Interop
+        "allowSyntheticDefaultImports": true,
+        "forceConsistentCasingInFileNames": true,
+        // Type acquisition
+        "types": [
+            "node"
+        ],
+        // Skip type checking of declaration files
+        "skipLibCheck": true
+    },
+    "include": [
+        "server.js",
+        "src/**/*.js",
+        "scripts/**/*.js"
+    ],
+    "exclude": [
+        "node_modules",
+        "frontend",
+        "public",
+        "prisma",
+        "videos",
+        "dist"
+    ]
+}

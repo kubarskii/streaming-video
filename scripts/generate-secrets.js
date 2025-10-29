@@ -1,3 +1,4 @@
+// @ts-check
 // Generate secure secrets for production deployment
 const crypto = require('crypto');
 

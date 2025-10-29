@@ -1,3 +1,4 @@
+// @ts-check
 // Application: UpdateVideoMetadataUseCase
 // Updates video title and description
 

@@ -1,3 +1,4 @@
+// @ts-check
 // Presentation: StreamController
 // Handles video streaming with Range request support
 
@@ -220,6 +221,7 @@ class StreamController {
             const protocol = url.startsWith('https:') ? https : http;
             const range = req.headers.range;
 
+            /** @type {Record<string, string>} */
             const upstreamHeaders = {};
             if (range) {
                 upstreamHeaders['Range'] = range;

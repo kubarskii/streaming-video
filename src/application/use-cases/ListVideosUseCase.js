@@ -1,5 +1,10 @@
+// @ts-check
 // Application: ListVideosUseCase
 // Use case for listing videos
+
+/**
+ * @typedef {import('../../domain/entities/Video')} Video
+ */
 
 class ListVideosUseCase {
     constructor(videoRepository) {
@@ -8,14 +13,14 @@ class ListVideosUseCase {
 
     /**
      * Execute the list videos use case
-     * @param {Object} options - Query options
-     * @param {number} options.limit - Max number of results (default: 50)
-     * @param {number} options.offset - Offset for pagination (default: 0)
-     * @param {string} options.status - Filter by status
-     * @param {string} options.userId - Filter by user ID
-     * @param {string} options.orderBy - Order by field (default: 'uploadedAt')
-     * @param {string} options.order - Order direction: 'asc' or 'desc' (default: 'desc')
-     * @returns {Promise<{videos: Video[], total: number, limit: number, offset: number}>}
+     * @param {Object} [options] - Query options
+     * @param {number} [options.limit] - Max number of results (default: 50)
+     * @param {number} [options.offset] - Offset for pagination (default: 0)
+     * @param {string} [options.status] - Filter by status
+     * @param {string} [options.userId] - Filter by user ID
+     * @param {string} [options.orderBy] - Order by field (default: 'uploadedAt')
+     * @param {string} [options.order] - Order direction: 'asc' or 'desc' (default: 'desc')
+     * @returns {Promise<{videos: Video[], total: number, limit: number, offset: number, hasMore: boolean}>}
      */
     async execute(options = {}) {
         const {

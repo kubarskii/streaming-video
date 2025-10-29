@@ -1,3 +1,4 @@
+// @ts-check
 // Domain Entity: User
 // Represents a user in our domain with business rules
 

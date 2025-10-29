@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: B2StorageRepository
 // Implementation of IStorageRepository for Backblaze B2
 

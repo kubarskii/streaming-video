@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: PasswordHasher using Argon2
 
 const argon2 = require('argon2');

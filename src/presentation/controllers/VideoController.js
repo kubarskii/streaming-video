@@ -1,3 +1,4 @@
+// @ts-check
 // Presentation: VideoController
 // HTTP request handlers for video operations
 

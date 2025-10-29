@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: PrismaVideoRepository
 // Implementation of IVideoRepository using Prisma ORM
 

@@ -1,3 +1,4 @@
+// @ts-check
 // Repository Interface: IStorageRepository
 // Defines the contract for video file storage (B2, local, etc.)
 

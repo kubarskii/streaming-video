@@ -1,3 +1,4 @@
+// @ts-check
 const { S3Client, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 require('dotenv').config();
 
@@ -27,7 +28,7 @@ async function testB2() {
         });
         const listResult = await client.send(listCommand);
         console.log('✅ List successful! Files:', (listResult.Contents || []).length);
-        
+
         // Test 2: Upload a test file
         console.log('\n📤 Test 2: Uploading test file...');
         const testContent = 'Hello from B2 test!';
@@ -39,7 +40,7 @@ async function testB2() {
         });
         await client.send(uploadCommand);
         console.log('✅ Upload successful!');
-        
+
         console.log('\n🎉 B2 is working correctly!');
     } catch (error) {
         console.error('\n❌ B2 Error:', error.message);

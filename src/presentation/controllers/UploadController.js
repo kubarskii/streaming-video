@@ -1,3 +1,4 @@
+// @ts-check
 // Presentation: UploadController
 
 const { formidable } = require('formidable');

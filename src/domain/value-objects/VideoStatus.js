@@ -1,3 +1,4 @@
+// @ts-check
 // Value Object: VideoStatus
 // Represents the status of a video
 

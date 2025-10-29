@@ -1,3 +1,4 @@
+// @ts-check
 // Application: UpdateVideoThumbnailUseCase
 // Updates video thumbnail
 

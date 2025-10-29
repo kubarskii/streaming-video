@@ -1,3 +1,4 @@
+// @ts-check
 // Application: VideoService
 // Service that coordinates video-related use cases
 

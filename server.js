@@ -1,3 +1,4 @@
+// @ts-check
 // server.js
 // Video streaming service with DDD architecture
 // Supports Backblaze B2 + Cloudflare CDN or local storage

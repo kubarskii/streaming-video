@@ -1,3 +1,4 @@
+// @ts-check
 // Application: AuthService
 
 const RegisterUserUseCase = require('../use-cases/RegisterUserUseCase');

@@ -1,3 +1,4 @@
+// @ts-check
 // Application: DeleteVideoUseCase
 // Use case for deleting a video
 
@@ -78,7 +79,7 @@ class DeleteVideoUseCase {
             console.error(`Failed to delete video from database:`, error.message);
             throw new Error(`Database deletion failed: ${error.message}`);
         }
-}
+    }
 
     extractThumbnailKey(thumbnailUrl, videoId) {
         if (!thumbnailUrl) {

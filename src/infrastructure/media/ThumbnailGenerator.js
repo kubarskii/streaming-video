@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: Thumbnail Generator
 
 const path = require('path');
@@ -54,9 +55,9 @@ class ThumbnailGenerator {
      * Generate thumbnail from video file
      * @param {string} videoPath - Path to video file
      * @param {string} outputPath - Path where thumbnail should be saved
-     * @param {object} options - Options for thumbnail generation
-     * @param {string} options.timestamp - Time in video to capture (optional, will auto-detect middle if not provided)
-     * @param {string} options.size - Thumbnail size (e.g., '640x360')
+     * @param {Object} [options] - Options for thumbnail generation
+     * @param {string} [options.timestamp] - Time in video to capture (optional, will auto-detect middle if not provided)
+     * @param {string} [options.size] - Thumbnail size (e.g., '640x360')
      * @returns {Promise<string>} Path to generated thumbnail
      */
     async generateFromVideo(videoPath, outputPath, options = {}) {
@@ -261,22 +262,54 @@ class ThumbnailGenerator {
             try {
                 const [width, height] = size.split('x').map(Number);
 
-                // Create a simple SVG placeholder (SVG works in all browsers)
+                // Create a modern, professional SVG placeholder
                 const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e293b;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accent-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
     </linearGradient>
   </defs>
-  <rect width="${width}" height="${height}" fill="url(#grad)"/>
-  <text x="50%" y="45%" font-family="Arial, sans-serif" font-size="24" fill="white" 
-        text-anchor="middle" dominant-baseline="middle">Video</text>
-  <text x="50%" y="55%" font-family="Arial, sans-serif" font-size="20" fill="white" 
-        text-anchor="middle" dominant-baseline="middle">Thumbnail</text>
-  <path d="M ${width / 2 - 30} ${height / 2 + 20} L ${width / 2 + 30} ${height / 2 + 40} L ${width / 2 - 30} ${height / 2 + 60} Z" 
-        fill="white" opacity="0.8"/>
+  
+  <!-- Background -->
+  <rect width="${width}" height="${height}" fill="url(#bg-gradient)"/>
+  
+  <!-- Grid pattern for depth -->
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+  </pattern>
+  <rect width="${width}" height="${height}" fill="url(#grid)"/>
+  
+  <!-- Center circle background -->
+  <circle cx="${width / 2}" cy="${height / 2}" r="80" fill="rgba(59, 130, 246, 0.2)" />
+  <circle cx="${width / 2}" cy="${height / 2}" r="70" fill="rgba(59, 130, 246, 0.15)" />
+  
+  <!-- Play button icon -->
+  <circle cx="${width / 2}" cy="${height / 2}" r="60" fill="url(#accent-gradient)" opacity="0.9"/>
+  <polygon points="${width / 2 - 20},${height / 2 - 25} ${width / 2 - 20},${height / 2 + 25} ${width / 2 + 25},${height / 2}" 
+           fill="white" opacity="0.95"/>
+  
+  <!-- Video camera icon in corner -->
+  <g transform="translate(${width - 60}, 20)">
+    <rect x="0" y="8" width="30" height="20" rx="3" fill="rgba(255,255,255,0.3)"/>
+    <polygon points="30,12 40,8 40,24 30,20" fill="rgba(255,255,255,0.3)"/>
+    <circle cx="8" cy="14" r="3" fill="rgba(255,255,255,0.5)"/>
+  </g>
+  
+  <!-- Text at bottom -->
+  <text x="${width / 2}" y="${height - 40}" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif" 
+        font-size="16" 
+        font-weight="500"
+        fill="rgba(255,255,255,0.7)" 
+        text-anchor="middle">
+    No Preview Available
+  </text>
 </svg>`;
 
                 // Ensure output directory exists

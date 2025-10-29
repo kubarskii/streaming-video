@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: DatabaseConfig
 // Prisma client singleton
 

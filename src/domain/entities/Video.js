@@ -1,3 +1,4 @@
+// @ts-check
 // Domain Entity: Video
 // Represents a video in our domain with business rules
 

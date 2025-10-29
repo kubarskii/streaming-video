@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: JWT Service
 
 const jwt = require('jsonwebtoken');

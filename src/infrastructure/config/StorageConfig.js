@@ -1,3 +1,4 @@
+// @ts-check
 // Infrastructure: StorageConfig
 // Factory for creating storage repository based on configuration
 

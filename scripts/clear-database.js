@@ -1,3 +1,4 @@
+// @ts-check
 // Clear all videos from database
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');

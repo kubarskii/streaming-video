@@ -1,8 +1,9 @@
+// @ts-check
 // Presentation: CORS Middleware
 
 function corsMiddleware(req, res, next) {
     const origin = req.headers.origin;
-    
+
     // Get allowed origins from environment variable or use defaults for development
     const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
     const allowedOrigins = allowedOriginsEnv

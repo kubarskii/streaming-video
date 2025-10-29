@@ -1,3 +1,4 @@
+// @ts-check
 // Presentation: Router
 // Routes HTTP requests to appropriate controllers
 
