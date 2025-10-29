@@ -108,7 +108,7 @@ class Channel {
             }
             console.warn(`Channel ${dbRecord.id} missing name, using fallback: ${name}`);
         }
-        
+
         return new Channel({
             id: dbRecord.id,
             userId: dbRecord.userId,

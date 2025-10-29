@@ -30,6 +30,9 @@ export { Modal, ConfirmDialog } from './Modal';
 // Comments
 export { CommentsSection, CommentForm, CommentItem } from './Comments';
 
+// Video Player
+export { VideoPlayer } from './VideoPlayer';
+
 // Icons - Export all icons
 export * from './Icons';
 

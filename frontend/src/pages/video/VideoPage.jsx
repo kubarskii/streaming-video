@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from '@tanstack/react-router';
 import { videosAPI } from '../../shared/api/videos';
 import { useAuth } from '../../shared/context/AuthContext';
-import { CommentsSection } from '../../shared/ui';
+import { CommentsSection, VideoPlayer } from '../../shared/ui';
 import './VideoPage.css';
 
 export const VideoPage = () => {
@@ -90,13 +90,22 @@ export const VideoPage = () => {
         <div className="video-page">
             <div className="video-container">
                 <div className="video-player-wrapper">
-                    <video
-                        className="video-player"
+                    <VideoPlayer
                         src={videoUrl}
-                        controls
-                        autoPlay
                         poster={video.thumbnailUrl}
-                        controlsList="nodownload"
+                        title={video.title}
+                        autoPlay={true}
+                        primaryColor="#ff0000"
+                        onTimeUpdate={(time) => {
+                            // Update view count after 30 seconds
+                            if (Math.floor(time) === 30) {
+                                videosAPI.incrementViews(id).catch(console.error);
+                            }
+                        }}
+                        onError={() => {
+                            console.error('Error loading video');
+                            setError('Failed to load video');
+                        }}
                     />
                 </div>
 
