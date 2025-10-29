@@ -61,6 +61,15 @@ class IStorageRepository {
     async getMetadata(storageKey) {
         throw new Error('Method not implemented');
     }
+
+    /**
+     * Get local file path (optional - only for local storage implementations)
+     * @param {string} storageKey - Key/path in storage
+     * @returns {string|undefined} Local file path, or undefined if not applicable
+     */
+    getFilePath(storageKey) {
+        return undefined;
+    }
 }
 
 module.exports = IStorageRepository;

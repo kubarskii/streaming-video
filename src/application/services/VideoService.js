@@ -8,15 +8,25 @@ const ListVideosUseCase = require('../use-cases/ListVideosUseCase');
 const DeleteVideoUseCase = require('../use-cases/DeleteVideoUseCase');
 const UpdateVideoMetadataUseCase = require('../use-cases/UpdateVideoMetadataUseCase');
 const UpdateVideoThumbnailUseCase = require('../use-cases/UpdateVideoThumbnailUseCase');
+const GetVideoQualitiesUseCase = require('../use-cases/GetVideoQualitiesUseCase');
+const TranscodeVideoUseCase = require('../use-cases/TranscodeVideoUseCase');
 
 class VideoService {
-    constructor(videoRepository, storageRepository, thumbnailGenerator, channelRepository) {
+    constructor(videoRepository, storageRepository, thumbnailGenerator, channelRepository, videoQualityRepository = null, videoTranscoder = null) {
         this.uploadVideoUseCase = new UploadVideoUseCase(videoRepository, storageRepository, thumbnailGenerator, channelRepository);
         this.getVideoUseCase = new GetVideoUseCase(videoRepository);
         this.listVideosUseCase = new ListVideosUseCase(videoRepository);
         this.deleteVideoUseCase = new DeleteVideoUseCase(videoRepository, storageRepository, channelRepository);
         this.updateVideoMetadataUseCase = new UpdateVideoMetadataUseCase(videoRepository);
         this.updateVideoThumbnailUseCase = new UpdateVideoThumbnailUseCase(videoRepository, storageRepository);
+
+        // Quality-related use cases (optional)
+        if (videoQualityRepository) {
+            this.getVideoQualitiesUseCase = new GetVideoQualitiesUseCase(videoQualityRepository);
+        }
+        if (videoQualityRepository && videoTranscoder) {
+            this.transcodeVideoUseCase = new TranscodeVideoUseCase(videoRepository, videoQualityRepository, storageRepository, videoTranscoder);
+        }
     }
 
     async uploadVideo(input) {
@@ -49,6 +59,20 @@ class VideoService {
 
     async updateVideoThumbnail(videoId, userId, thumbnailPath, thumbnailMimeType) {
         return await this.updateVideoThumbnailUseCase.execute(videoId, userId, thumbnailPath, thumbnailMimeType);
+    }
+
+    async getVideoQualities(videoId) {
+        if (!this.getVideoQualitiesUseCase) {
+            return [];
+        }
+        return await this.getVideoQualitiesUseCase.execute(videoId);
+    }
+
+    async transcodeVideo(videoId) {
+        if (!this.transcodeVideoUseCase) {
+            throw new Error('Transcoding is not configured');
+        }
+        return await this.transcodeVideoUseCase.execute(videoId);
     }
 }
 

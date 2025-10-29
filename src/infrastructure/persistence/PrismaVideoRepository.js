@@ -74,6 +74,15 @@ class PrismaVideoRepository extends IVideoRepository {
             take: limit,
             skip: offset,
             orderBy: { [orderBy]: order },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        username: true,
+                        email: true,
+                    }
+                }
+            }
         });
 
         return records.map(record => Video.fromDatabase(record));

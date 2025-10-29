@@ -70,5 +70,24 @@ export const videosAPI = {
     getVideoUrl: (storageKey) => {
         return `${VIDEO_BASE}?file=${storageKey}`;
     },
+
+    getVideoQualities: async (id) => {
+        const response = await api.get(`/videos/${id}/qualities`);
+        return response.data;
+    },
+
+    transcodeVideo: async (id) => {
+        const response = await api.post(`/videos/${id}/transcode`);
+        return response.data;
+    },
+
+    incrementViews: async (id) => {
+        // This endpoint might not exist yet - fire and forget
+        try {
+            await api.post(`/videos/${id}/views`);
+        } catch (err) {
+            // Ignore errors for now
+        }
+    },
 };
 

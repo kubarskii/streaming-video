@@ -57,11 +57,11 @@ model Subscription {
 }
 
 model Video {
-  id            String    @id
+  id            String         @id
   title         String
   description   String?
-  fileName      String    @unique
-  storageKey    String    @unique
+  fileName      String
+  storageKey    String         @unique
   storageUrl    String
   cdnUrl        String?
   mimeType      String
@@ -69,18 +69,40 @@ model Video {
   durationMs    Int?
   width         Int?
   height        Int?
-  status        String    @default("ready") // pending, processing, ready, failed
-  uploadedAt    DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  status        String         @default("ready") // pending, processing, ready, failed
+  uploadedAt    DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   userId        String?
-  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   thumbnailUrl  String?
-  views         Int       @default(0)
+  views         Int            @default(0)
   comments      Comment[]
+  qualities     VideoQuality[]
   
   @@index([status])
   @@index([uploadedAt])
   @@index([userId])
+}
+
+model VideoQuality {
+  id          String   @id
+  videoId     String
+  video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  quality     String   // "360p", "480p", "720p", "1080p", "original"
+  storageKey  String   @unique
+  storageUrl  String
+  cdnUrl      String?
+  width       Int
+  height      Int
+  sizeBytes   BigInt
+  bitrate     Int?     // in kbps
+  status      String   @default("pending") // pending, processing, ready, failed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([videoId, quality])
+  @@index([videoId])
+  @@index([status])
 }
 
 model Comment {

@@ -50,26 +50,40 @@ class Router {
             return await this.videoController.listVideos(req, res, queryParams);
         }
 
+        // Get video qualities (GET) - MUST come before generic getVideo route
+        if (pathname.match(/^\/api\/videos\/[^/]+\/qualities$/) && req.method === 'GET') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoController.getVideoQualities(req, res, videoId);
+        }
+
+        // Trigger video transcoding (POST) - MUST come before generic video routes
+        if (pathname.match(/^\/api\/videos\/[^/]+\/transcode$/) && req.method === 'POST') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoController.transcodeVideo(req, res, videoId);
+        }
+
+        // Update video thumbnail (PUT) - MUST come before generic video routes
+        if (pathname.match(/^\/api\/videos\/[^/]+\/thumbnail$/) && req.method === 'PUT') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoController.updateVideoThumbnail(req, res, videoId);
+        }
+
+        // Get single video by ID (GET /api/videos/:id)
         if (pathname.startsWith('/api/videos/') && req.method === 'GET') {
             const videoId = pathname.split('/')[3];
             return await this.videoController.getVideo(req, res, videoId);
         }
 
+        // Delete video (DELETE /api/videos/:id)
         if (pathname.startsWith('/api/videos/') && req.method === 'DELETE') {
             const videoId = pathname.split('/')[3];
             return await this.videoController.deleteVideo(req, res, videoId);
         }
 
-        // Update video metadata (PATCH)
+        // Update video metadata (PATCH /api/videos/:id)
         if (pathname.match(/^\/api\/videos\/[^/]+$/) && req.method === 'PATCH') {
             const videoId = pathname.split('/')[3];
             return await this.videoController.updateVideoMetadata(req, res, videoId);
-        }
-
-        // Update video thumbnail (PUT)
-        if (pathname.match(/^\/api\/videos\/[^/]+\/thumbnail$/) && req.method === 'PUT') {
-            const videoId = pathname.split('/')[3];
-            return await this.videoController.updateVideoThumbnail(req, res, videoId);
         }
 
         // Video streaming route

@@ -140,7 +140,7 @@ class Video {
             : 'Untitled Video';
         const safeTitle = dbTitle.length > 0 ? dbTitle : fallbackTitle;
 
-        return new Video({
+        const video = new Video({
             id: dbRecord.id,
             title: safeTitle,
             description: dbRecord.description,
@@ -160,6 +160,13 @@ class Video {
             thumbnailUrl: dbRecord.thumbnailUrl,
             views: dbRecord.views || 0
         });
+
+        // Attach user data if included in the database record
+        if (dbRecord.user) {
+            video.user = dbRecord.user;
+        }
+
+        return video;
     }
 }
 

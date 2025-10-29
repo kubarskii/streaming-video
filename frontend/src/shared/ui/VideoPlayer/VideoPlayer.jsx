@@ -25,6 +25,7 @@ export const VideoPlayer = ({
     qualities = [],
     onQualityChange,
     className = '',
+    mimeType,
 }) => {
     const videoRef = useRef(null);
     const containerRef = useRef(null);
@@ -57,6 +58,15 @@ export const VideoPlayer = ({
             });
         }
     }, [autoPlay]);
+
+    // Handle src changes (for quality switching)
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        // When src changes, reload the video
+        video.load();
+    }, [src]);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -279,10 +289,39 @@ export const VideoPlayer = ({
     };
 
     const handleQualityChange = (quality) => {
+        if (!videoRef.current) return;
+
+        // Store current playback state
+        const currentTimeBeforeSwitch = videoRef.current.currentTime;
+        const wasPlaying = !videoRef.current.paused;
+
         setSelectedQuality(quality);
         setShowQualities(false);
         setShowSettings(false);
+
         if (onQualityChange) {
+            // Set up one-time event listener for when new quality loads
+            const handleLoadedData = () => {
+                if (videoRef.current) {
+                    // Seek to the same position
+                    videoRef.current.currentTime = currentTimeBeforeSwitch;
+
+                    // Resume playback if it was playing
+                    if (wasPlaying) {
+                        videoRef.current.play().catch(err => {
+                            console.log('Failed to resume playback:', err);
+                            setIsPlaying(false);
+                        });
+                    } else {
+                        setIsPlaying(false);
+                    }
+                }
+                videoRef.current?.removeEventListener('loadeddata', handleLoadedData);
+            };
+
+            videoRef.current.addEventListener('loadeddata', handleLoadedData);
+
+            // Trigger the quality change (which will update src and reload video)
             onQualityChange(quality);
         }
     };
@@ -323,6 +362,23 @@ export const VideoPlayer = ({
 
     const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+    // Detect MIME type from file extension if not provided
+    const detectMimeType = (url) => {
+        if (!url) return 'video/mp4';
+        const ext = url.split('.').pop()?.toLowerCase();
+        const mimeTypes = {
+            'mp4': 'video/mp4',
+            'webm': 'video/webm',
+            'ogg': 'video/ogg',
+            'mov': 'video/quicktime',
+            'avi': 'video/x-msvideo',
+            'mkv': 'video/x-matroska',
+        };
+        return mimeTypes[ext] || 'video/mp4';
+    };
+
+    const videoMimeType = mimeType || detectMimeType(src);
+
     return (
         <>
             <div
@@ -334,11 +390,17 @@ export const VideoPlayer = ({
                 <video
                     ref={videoRef}
                     className="video-element"
-                    src={src}
                     poster={poster}
                     onClick={togglePlayPause}
                     onDoubleClick={toggleFullscreen}
-                />
+                    preload="metadata"
+                >
+                    {src && <source src={src} type={videoMimeType} />}
+                    <p>
+                        Your browser doesn't support HTML5 video.
+                        You can <a href={src} download>download the video</a> instead.
+                    </p>
+                </video>
 
                 {isBuffering && (
                     <div className="buffering-indicator">

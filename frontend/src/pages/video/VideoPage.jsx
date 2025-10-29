@@ -10,14 +10,42 @@ export const VideoPage = () => {
     const { id } = useParams({ from: '/video/$id' });
     const { user } = useAuth();
     const [video, setVideo] = useState(null);
+    const [qualities, setQualities] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [currentVideoUrl, setCurrentVideoUrl] = useState(null);
 
     useEffect(() => {
         const fetchVideo = async () => {
             try {
                 const data = await videosAPI.getVideo(id);
                 setVideo(data);
+
+                // Set default video URL
+                const defaultUrl = data.playbackUrl || videosAPI.getVideoUrl(data.storageKey);
+                setCurrentVideoUrl(defaultUrl);
+
+                // Fetch available quality variants
+                try {
+                    const qualitiesData = await videosAPI.getVideoQualities(id);
+                    console.log('Qualities data received:', qualitiesData);
+
+                    if (qualitiesData.qualities && qualitiesData.qualities.length > 0) {
+                        setQualities(qualitiesData.qualities);
+
+                        // Set highest quality as default if available
+                        const highestQuality = qualitiesData.qualities[qualitiesData.qualities.length - 1];
+                        if (highestQuality && highestQuality.playbackUrl) {
+                            setCurrentVideoUrl(highestQuality.playbackUrl);
+                        }
+                    } else {
+                        setQualities([]);
+                    }
+                } catch (qualErr) {
+                    console.log('No quality variants available:', qualErr);
+                    setQualities([]);
+                }
+
                 setLoading(false);
             } catch (err) {
                 console.error('Error fetching video:', err);
@@ -28,6 +56,13 @@ export const VideoPage = () => {
 
         fetchVideo();
     }, [id]);
+
+    const handleQualityChange = (quality) => {
+        console.log('Quality changed to:', quality);
+        if (quality && quality.playbackUrl) {
+            setCurrentVideoUrl(quality.playbackUrl);
+        }
+    };
 
     const handleDelete = async () => {
         if (!window.confirm('Are you sure you want to delete this video?')) {
@@ -82,8 +117,6 @@ export const VideoPage = () => {
         );
     }
 
-    // Use playbackUrl from API response, fallback to constructing URL
-    const videoUrl = video.playbackUrl || videosAPI.getVideoUrl(video.storageKey);
     const canDelete = user && user.id === video.userId;
 
     return (
@@ -91,11 +124,14 @@ export const VideoPage = () => {
             <div className="video-container">
                 <div className="video-player-wrapper">
                     <VideoPlayer
-                        src={videoUrl}
+                        src={currentVideoUrl}
                         poster={video.thumbnailUrl}
                         title={video.title}
                         autoPlay={true}
                         primaryColor="#ff0000"
+                        qualities={qualities}
+                        onQualityChange={handleQualityChange}
+                        mimeType={video.mimeType}
                         onTimeUpdate={(time) => {
                             // Update view count after 30 seconds
                             if (Math.floor(time) === 30) {
@@ -116,14 +152,16 @@ export const VideoPage = () => {
                         <div className="video-views">
                             {formatViews(video.views)} views • {formatDate(video.uploadedAt)}
                         </div>
-                        {canDelete && (
-                            <button onClick={handleDelete} className="btn-delete">
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                                    <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5zM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.5a.5.5 0 0 0 0 1h.75l.5 10.5A1.5 1.5 0 0 0 5.25 15h5.5a1.5 1.5 0 0 0 1.5-1.5L12.75 3.5h.75a.5.5 0 0 0 0-1H11z" />
-                                </svg>
-                                Delete
-                            </button>
-                        )}
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            {canDelete && (
+                                <button onClick={handleDelete} className="btn-delete">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5zM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.5a.5.5 0 0 0 0 1h.75l.5 10.5A1.5 1.5 0 0 0 5.25 15h5.5a1.5 1.5 0 0 0 1.5-1.5L12.75 3.5h.75a.5.5 0 0 0 0-1H11z" />
+                                    </svg>
+                                    Delete
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {video.userId && (

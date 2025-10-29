@@ -16,9 +16,11 @@ const PrismaUserRepository = require('./src/infrastructure/persistence/PrismaUse
 const PrismaChannelRepository = require('./src/infrastructure/persistence/PrismaChannelRepository');
 const PrismaSubscriptionRepository = require('./src/infrastructure/persistence/PrismaSubscriptionRepository');
 const PrismaCommentRepository = require('./src/infrastructure/persistence/PrismaCommentRepository');
+const PrismaVideoQualityRepository = require('./src/infrastructure/persistence/PrismaVideoQualityRepository');
 const PasswordHasher = require('./src/infrastructure/auth/PasswordHasher');
 const JWTService = require('./src/infrastructure/auth/JWTService');
 const ThumbnailGenerator = require('./src/infrastructure/media/ThumbnailGenerator');
+const VideoTranscoder = require('./src/infrastructure/media/VideoTranscoder');
 
 // Application - Services
 const VideoService = require('./src/application/services/VideoService');
@@ -69,13 +71,22 @@ class Container {
         const channelRepository = new PrismaChannelRepository(prismaClient);
         const subscriptionRepository = new PrismaSubscriptionRepository(prismaClient);
         const commentRepository = new PrismaCommentRepository(prismaClient);
+        const videoQualityRepository = new PrismaVideoQualityRepository(prismaClient);
         const storageRepository = StorageConfig.createStorageRepository();
         const passwordHasher = new PasswordHasher();
         const jwtService = new JWTService();
         const thumbnailGenerator = new ThumbnailGenerator();
+        const videoTranscoder = new VideoTranscoder();
 
         // Application layer - Services
-        const videoService = new VideoService(videoRepository, storageRepository, thumbnailGenerator, channelRepository);
+        const videoService = new VideoService(
+            videoRepository,
+            storageRepository,
+            thumbnailGenerator,
+            channelRepository,
+            videoQualityRepository,
+            videoTranscoder
+        );
         const authService = new AuthService(userRepository, passwordHasher, jwtService);
 
         // Application layer - Use Cases
@@ -95,7 +106,7 @@ class Container {
 
         // Presentation layer
         const videoController = new VideoController(videoService);
-        const streamController = new StreamController(videoService, storageRepository, incrementVideoViewsUseCase);
+        const streamController = new StreamController(videoService, storageRepository, incrementVideoViewsUseCase, videoQualityRepository);
         const authController = new AuthController(authService);
         const uploadController = new UploadController(videoService);
         const channelController = new ChannelController(

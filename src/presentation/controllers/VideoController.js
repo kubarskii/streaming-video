@@ -2,6 +2,19 @@
 // Presentation: VideoController
 // HTTP request handlers for video operations
 
+const { z } = require('zod');
+const {
+    updateVideoMetadataSchema,
+    listVideosQuerySchema,
+    uuidSchema
+} = require('../../infrastructure/validation/schemas');
+const {
+    validateQuery,
+    validateParams,
+    parseAndValidateBody,
+    sendValidationError
+} = require('../../infrastructure/validation/validator');
+
 class VideoController {
     constructor(videoService) {
         this.videoService = videoService;
@@ -12,6 +25,12 @@ class VideoController {
      */
     async getVideo(req, res, videoId) {
         try {
+            // Validate video ID
+            const validation = validateParams(z.object({ id: uuidSchema }), { id: videoId });
+            if (validation.success === false) {
+                return sendValidationError(res, validation.error, 400);
+            }
+
             const video = await this.videoService.getVideo(videoId);
 
             if (!video) {
@@ -53,16 +72,20 @@ class VideoController {
      */
     async listVideos(req, res, queryParams) {
         try {
-            const limit = parseInt(queryParams.limit || '50', 10);
-            const offset = parseInt(queryParams.offset || '0', 10);
-            const status = queryParams.status;
-            const userId = queryParams.userId;
+            // Validate query parameters
+            const validation = validateQuery(listVideosQuerySchema, queryParams);
+            if (validation.success === false) {
+                return sendValidationError(res, validation.error, 400);
+            }
+
+            const { limit, offset, status, userId, search } = validation.data;
 
             const result = await this.videoService.listVideos({
                 limit,
                 offset,
                 status,
                 userId,
+                search
             });
 
             const videos = result.videos.map(video => ({
@@ -81,6 +104,12 @@ class VideoController {
                 playbackUrl: video.getPlaybackUrl(),
                 thumbnailUrl: this.convertToServerUrl(video.thumbnailUrl),
                 views: video.views || 0,
+                userId: video.userId,
+                user: video.user ? {
+                    id: video.user.id,
+                    username: video.user.username,
+                    email: video.user.email,
+                } : null,
             }));
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -130,23 +159,19 @@ class VideoController {
                 return res.end(JSON.stringify({ error: 'Authentication required' }));
             }
 
-            // Parse body
-            let body = '';
-            for await (const chunk of req) {
-                body += chunk;
+            // Validate video ID
+            const idValidation = validateParams(z.object({ id: uuidSchema }), { id: videoId });
+            if (idValidation.success === false) {
+                return sendValidationError(res, idValidation.error, 400);
             }
 
-            const { title, description } = JSON.parse(body);
-
-            if (!title && description === undefined) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                return res.end(JSON.stringify({ error: 'At least one field (title or description) must be provided' }));
-            }
+            // Validate and parse request body
+            const validatedData = await parseAndValidateBody(req, updateVideoMetadataSchema);
 
             const video = await this.videoService.updateVideoMetadata(
                 videoId,
                 req.user.id,
-                { title, description }
+                validatedData
             );
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -243,6 +268,86 @@ class VideoController {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
             }
             res.end(JSON.stringify({ error: error.message || 'Internal server error' }));
+        }
+    }
+
+    /**
+     * Get available quality variants for a video
+     */
+    async getVideoQualities(req, res, videoId) {
+        try {
+            console.log(`[VideoController] getVideoQualities called for video: ${videoId}`);
+
+            // Validate video ID
+            const validation = validateParams(z.object({ id: uuidSchema }), { id: videoId });
+            if (validation.success === false) {
+                return sendValidationError(res, validation.error, 400);
+            }
+
+            const qualities = await this.videoService.getVideoQualities(videoId);
+            console.log(`[VideoController] Found ${qualities.length} qualities:`, qualities);
+
+            const response = {
+                videoId,
+                count: qualities.length,
+                qualities: qualities.map(q => ({
+                    id: q.id,
+                    quality: q.quality,
+                    label: q.label,
+                    width: q.width,
+                    height: q.height,
+                    sizeBytes: q.sizeBytes,
+                    bitrate: q.bitrate,
+                    status: q.status,
+                    playbackUrl: `/video?file=${q.storageKey}`
+                }))
+            };
+
+            console.log(`[VideoController] Sending response:`, JSON.stringify(response, null, 2));
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(response));
+        } catch (error) {
+            console.error('Error getting video qualities:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+    }
+
+    /**
+     * Trigger transcoding for a video
+     */
+    async transcodeVideo(req, res, videoId) {
+        try {
+            // Check authentication
+            // @ts-ignore - user property added by auth middleware
+            if (!req.user) {
+                res.writeHead(401, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Authentication required' }));
+                return;
+            }
+
+            // Validate video ID
+            const validation = validateParams(z.object({ id: uuidSchema }), { id: videoId });
+            if (validation.success === false) {
+                return sendValidationError(res, validation.error, 400);
+            }
+
+            // Start transcoding (async - don't wait)
+            this.videoService.transcodeVideo(videoId)
+                .then(() => console.log(`✅ Transcoding complete for video ${videoId}`))
+                .catch(err => console.error(`❌ Transcoding failed for video ${videoId}:`, err));
+
+            res.writeHead(202, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                message: 'Transcoding started. This may take several minutes.',
+                videoId,
+                checkStatusAt: `/api/videos/${videoId}/qualities`
+            }));
+        } catch (error) {
+            console.error('Error starting transcoding:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
         }
     }
 

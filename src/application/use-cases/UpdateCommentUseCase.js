@@ -20,7 +20,7 @@ class UpdateCommentUseCase {
      * @param {string} input.commentId - Comment ID
      * @param {string} input.userId - User ID (for authorization)
      * @param {string} input.content - New comment content
-     * @returns {Promise<Comment>}
+     * @returns {Promise<import('../../domain/entities/Comment')>}
      */
     async execute(input) {
         const { commentId, userId, content } = input;

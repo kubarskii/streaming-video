@@ -68,6 +68,16 @@ class UploadController {
                 console.error('Failed to delete temp file:', err);
             }
 
+            // Trigger transcoding asynchronously (don't wait for it)
+            this.videoService.transcodeVideo(video.id)
+                .then(() => {
+                    console.log(`✅ Transcoding complete for video ${video.id}`);
+                })
+                .catch(err => {
+                    console.error(`❌ Transcoding failed for video ${video.id}:`, err.message);
+                    // Don't fail the upload if transcoding fails
+                });
+
             // Convert thumbnail URL to server proxy URL
             const thumbnailUrl = video.thumbnailUrl ? this.convertToServerUrl(video.thumbnailUrl) : null;
 
