@@ -72,15 +72,43 @@ class UploadVideoUseCase {
         const ext = path.extname(input.fileName);
         const storageKey = `${videoId}${ext}`;
 
-        // Upload file to storage
-        const { storageUrl, cdnUrl } = await this.storageRepository.upload(
-            input.filePath,
-            storageKey,
-            {
-                contentType: input.mimeType,
-                originalName: input.fileName,
+        // Upload file to storage (use Large File API for files > 100MB)
+        const fileSizeThreshold = 100 * 1024 * 1024; // 100MB
+        const useLargeFileAPI = input.sizeBytes > fileSizeThreshold &&
+            typeof this.storageRepository.uploadLargeFile === 'function';
+
+        let storageUrl, cdnUrl;
+
+        if (useLargeFileAPI) {
+            console.log(`📦 File size ${(input.sizeBytes / 1024 / 1024).toFixed(2)} MB > 100MB, using multipart upload`);
+            const result = await this.storageRepository.uploadLargeFile(
+                input.filePath,
+                storageKey,
+                {
+                    contentType: input.mimeType,
+                    originalName: input.fileName,
+                },
+                {
+                    partSize: 100 * 1024 * 1024 // 100MB parts
+                }
+            );
+            storageUrl = result.storageUrl;
+            cdnUrl = result.cdnUrl;
+        } else {
+            if (input.sizeBytes > fileSizeThreshold) {
+                console.log(`⚠️  File > 100MB but multipart upload not available, using standard upload`);
             }
-        );
+            const result = await this.storageRepository.upload(
+                input.filePath,
+                storageKey,
+                {
+                    contentType: input.mimeType,
+                    originalName: input.fileName,
+                }
+            );
+            storageUrl = result.storageUrl;
+            cdnUrl = result.cdnUrl;
+        }
 
         // Handle thumbnail - either user-provided or auto-generated
         let thumbnailUrl = null;

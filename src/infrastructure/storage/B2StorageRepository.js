@@ -2,7 +2,17 @@
 // Infrastructure: B2StorageRepository
 // Implementation of IStorageRepository for Backblaze B2
 
-const { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const {
+    S3Client,
+    PutObjectCommand,
+    DeleteObjectCommand,
+    HeadObjectCommand,
+    GetObjectCommand,
+    CreateMultipartUploadCommand,
+    UploadPartCommand,
+    CompleteMultipartUploadCommand,
+    AbortMultipartUploadCommand
+} = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
 const IStorageRepository = require('../../domain/repositories/IStorageRepository');
@@ -56,6 +66,241 @@ class B2StorageRepository extends IStorageRepository {
         const cdnUrl = this.cdnBaseUrl ? `${this.cdnBaseUrl}/${storageKey}` : null;
 
         return { storageUrl, cdnUrl };
+    }
+
+    /**
+     * Start a multipart upload session
+     * @param {string} storageKey - Storage key for the file
+     * @param {object} metadata - File metadata
+     * @returns {Promise<{uploadId: string, storageKey: string}>}
+     */
+    async startMultipartUpload(storageKey, metadata = {}) {
+        const originalName = metadata.originalName || storageKey;
+
+        const createCommand = new CreateMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: storageKey,
+            ContentType: metadata.contentType || 'application/octet-stream',
+            Metadata: {
+                originalName: this.sanitizeMetadata(originalName),
+                uploadedAt: new Date().toISOString(),
+            },
+        });
+
+        const { UploadId } = await this.client.send(createCommand);
+
+        return {
+            uploadId: UploadId,
+            storageKey: storageKey,
+        };
+    }
+
+    /**
+     * Upload a single part in a multipart upload
+     * @param {string} storageKey - Storage key
+     * @param {string} uploadId - B2 upload ID
+     * @param {number} partNumber - Part number (1-indexed)
+     * @param {Buffer} data - Part data
+     * @returns {Promise<{etag: string, partNumber: number}>}
+     */
+    async uploadPart(storageKey, uploadId, partNumber, data) {
+        const uploadPartCommand = new UploadPartCommand({
+            Bucket: this.bucket,
+            Key: storageKey,
+            PartNumber: partNumber,
+            UploadId: uploadId,
+            Body: data,
+        });
+
+        const { ETag } = await this.client.send(uploadPartCommand);
+
+        return {
+            etag: ETag,
+            partNumber: partNumber,
+        };
+    }
+
+    /**
+     * Complete a multipart upload
+     * @param {string} storageKey - Storage key
+     * @param {string} uploadId - B2 upload ID
+     * @param {Array<{etag: string, partNumber: number}>} parts - Uploaded parts
+     * @returns {Promise<{storageUrl: string, cdnUrl: string|null}>}
+     */
+    async completeMultipartUpload(storageKey, uploadId, parts) {
+        const completeCommand = new CompleteMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: storageKey,
+            UploadId: uploadId,
+            MultipartUpload: {
+                Parts: parts.map(part => ({
+                    ETag: part.etag,
+                    PartNumber: part.partNumber,
+                })),
+            },
+        });
+
+        await this.client.send(completeCommand);
+
+        const storageUrl = `${this.endpoint}/${this.bucket}/${storageKey}`;
+        const cdnUrl = this.cdnBaseUrl ? `${this.cdnBaseUrl}/${storageKey}` : null;
+
+        return { storageUrl, cdnUrl };
+    }
+
+    /**
+     * Abort a multipart upload
+     * @param {string} storageKey - Storage key
+     * @param {string} uploadId - B2 upload ID
+     */
+    async abortMultipartUpload(storageKey, uploadId) {
+        const abortCommand = new AbortMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: storageKey,
+            UploadId: uploadId,
+        });
+
+        await this.client.send(abortCommand);
+    }
+
+    /**
+     * Upload large file using multipart upload (B2 Large File API)
+     * Recommended for files > 100MB
+     * @param {string} filePath - Path to file
+     * @param {string} storageKey - Storage key
+     * @param {object} metadata - File metadata
+     * @param {object} options - Upload options
+     * @returns {Promise<{storageUrl: string, cdnUrl: string|null}>}
+     */
+    async uploadLargeFile(filePath, storageKey, metadata = {}, options = {}) {
+        const stats = fs.statSync(filePath);
+        const fileSize = stats.size;
+
+        // Part size: minimum 5MB (B2 requirement), recommended 100MB for large files
+        const partSize = options.partSize || Math.max(
+            5 * 1024 * 1024, // 5MB minimum
+            Math.min(100 * 1024 * 1024, Math.ceil(fileSize / 10000)) // Max 10000 parts
+        );
+
+        console.log(`📤 Starting multipart upload for ${storageKey} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`   Part size: ${(partSize / 1024 / 1024).toFixed(2)} MB`);
+
+        const originalName = metadata.originalName || path.basename(filePath);
+
+        // Step 1: Initialize multipart upload
+        const createCommand = new CreateMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: storageKey,
+            ContentType: metadata.contentType || 'application/octet-stream',
+            Metadata: {
+                originalName: this.sanitizeMetadata(originalName),
+                uploadedAt: new Date().toISOString(),
+            },
+        });
+
+        const { UploadId } = await this.client.send(createCommand);
+        console.log(`✅ Multipart upload initiated: ${UploadId}`);
+
+        const uploadedParts = [];
+        let partNumber = 1;
+        let uploadedBytes = 0;
+
+        try {
+            // Step 2: Upload parts
+            const fileHandle = fs.openSync(filePath, 'r');
+
+            while (uploadedBytes < fileSize) {
+                const remainingBytes = fileSize - uploadedBytes;
+                const currentPartSize = Math.min(partSize, remainingBytes);
+
+                // Read part from file
+                const buffer = Buffer.alloc(currentPartSize);
+                const bytesRead = fs.readSync(fileHandle, buffer, 0, currentPartSize, uploadedBytes);
+
+                if (bytesRead === 0) break;
+
+                // Upload part with retry
+                let partUploaded = false;
+                let retryCount = 0;
+                const maxRetries = 3;
+
+                while (!partUploaded && retryCount < maxRetries) {
+                    try {
+                        const uploadPartCommand = new UploadPartCommand({
+                            Bucket: this.bucket,
+                            Key: storageKey,
+                            PartNumber: partNumber,
+                            UploadId,
+                            Body: buffer.slice(0, bytesRead),
+                        });
+
+                        const { ETag } = await this.client.send(uploadPartCommand);
+
+                        uploadedParts.push({
+                            ETag,
+                            PartNumber: partNumber,
+                        });
+
+                        partUploaded = true;
+                        uploadedBytes += bytesRead;
+
+                        const progress = ((uploadedBytes / fileSize) * 100).toFixed(1);
+                        console.log(`   Part ${partNumber} uploaded: ${progress}% (${(uploadedBytes / 1024 / 1024).toFixed(2)} MB / ${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+
+                    } catch (error) {
+                        retryCount++;
+                        console.error(`   Part ${partNumber} failed (attempt ${retryCount}/${maxRetries}):`, error.message);
+
+                        if (retryCount === maxRetries) {
+                            throw error;
+                        }
+
+                        // Wait before retry
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                    }
+                }
+
+                partNumber++;
+            }
+
+            fs.closeSync(fileHandle);
+
+            // Step 3: Complete multipart upload
+            const completeCommand = new CompleteMultipartUploadCommand({
+                Bucket: this.bucket,
+                Key: storageKey,
+                UploadId,
+                MultipartUpload: {
+                    Parts: uploadedParts,
+                },
+            });
+
+            await this.client.send(completeCommand);
+            console.log(`✅ Multipart upload completed: ${storageKey}`);
+
+            const storageUrl = `${this.endpoint}/${this.bucket}/${storageKey}`;
+            const cdnUrl = this.cdnBaseUrl ? `${this.cdnBaseUrl}/${storageKey}` : null;
+
+            return { storageUrl, cdnUrl };
+
+        } catch (error) {
+            // Abort multipart upload on error
+            console.error(`❌ Multipart upload failed, aborting:`, error.message);
+
+            try {
+                const abortCommand = new AbortMultipartUploadCommand({
+                    Bucket: this.bucket,
+                    Key: storageKey,
+                    UploadId,
+                });
+                await this.client.send(abortCommand);
+                console.log(`🗑️  Aborted multipart upload: ${UploadId}`);
+            } catch (abortError) {
+                console.error(`Failed to abort multipart upload:`, abortError.message);
+            }
+
+            throw error;
+        }
     }
 
     async uploadBuffer(buffer, storageKey, metadata = {}) {

@@ -65,9 +65,9 @@ class ChunkUploadService {
     }
 
     /**
-     * Mark chunk as uploaded
+     * Mark chunk as uploaded (with B2 part metadata)
      */
-    async markChunkUploaded(uploadId, chunkIndex) {
+    async markChunkUploaded(uploadId, chunkIndex, partMetadata = null) {
         const session = await this.getSession(uploadId);
         if (!session) {
             throw new Error('Upload session not found');
@@ -76,8 +76,21 @@ class ChunkUploadService {
         if (!session.uploadedChunks.includes(chunkIndex)) {
             session.uploadedChunks.push(chunkIndex);
             session.uploadedChunks.sort((a, b) => a - b);
+
+            // Store B2 part metadata if provided
+            if (partMetadata) {
+                if (!session.metadata.b2Parts) {
+                    session.metadata.b2Parts = [];
+                }
+                session.metadata.b2Parts.push({
+                    chunkIndex,
+                    ...partMetadata
+                });
+            }
+
             await this.uploadSessionRepository.update(uploadId, {
                 uploadedChunks: session.uploadedChunks,
+                metadata: session.metadata,
             });
         }
 

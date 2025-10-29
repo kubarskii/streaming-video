@@ -5,7 +5,7 @@
 const { URL } = require('url');
 
 class Router {
-    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController) {
+    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController, chunkUploadController) {
         this.videoController = videoController;
         this.streamController = streamController;
         this.authController = authController;
@@ -13,6 +13,7 @@ class Router {
         this.channelController = channelController;
         this.subscriptionController = subscriptionController;
         this.commentController = commentController;
+        this.chunkUploadController = chunkUploadController;
     }
 
     /**
@@ -40,9 +41,32 @@ class Router {
             return await this.authController.me(req, res);
         }
 
-        // Upload Route
+        // Upload Route (Simple)
         if (pathname === '/api/upload' && req.method === 'POST') {
             return await this.uploadController.uploadVideo(req, res);
+        }
+
+        // Chunked Upload Routes
+        if (pathname === '/api/upload/init' && req.method === 'POST') {
+            return await this.chunkUploadController.initializeUpload(req, res);
+        }
+
+        if (pathname === '/api/upload/chunk' && req.method === 'POST') {
+            return await this.chunkUploadController.uploadChunk(req, res);
+        }
+
+        if (pathname === '/api/upload/finalize' && req.method === 'POST') {
+            return await this.chunkUploadController.finalizeUpload(req, res);
+        }
+
+        if (pathname.match(/^\/api\/upload\/status\/[^/]+$/) && req.method === 'GET') {
+            const uploadId = pathname.split('/')[4];
+            return await this.chunkUploadController.getUploadStatus(req, res, uploadId);
+        }
+
+        if (pathname.match(/^\/api\/upload\/[^/]+$/) && req.method === 'DELETE') {
+            const uploadId = pathname.split('/')[3];
+            return await this.chunkUploadController.cancelUpload(req, res, uploadId);
         }
 
         // Video API Routes

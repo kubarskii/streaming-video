@@ -9,8 +9,18 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
 class ChunkUploadController {
-    constructor(chunkUploadService) {
+    constructor(chunkUploadService, videoService, storageRepository) {
         this.chunkUploadService = chunkUploadService;
+        this.videoService = videoService;
+        this.storageRepository = storageRepository;
+    }
+
+    /**
+     * Helper to send JSON response (native Node.js HTTP)
+     */
+    sendJson(res, statusCode, data) {
+        res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
     }
 
     /**
@@ -20,14 +30,19 @@ class ChunkUploadController {
     async initializeUpload(req, res) {
         try {
             if (!req.user) {
-                return res.status(401).json({ error: 'Authentication required' });
+                return this.sendJson(res, 401, { error: 'Authentication required' });
             }
 
-            const { fileName, fileSize, mimeType, totalChunks, title, description } = req.body;
+            // Parse JSON body
+            let body = '';
+            for await (const chunk of req) {
+                body += chunk.toString();
+            }
+            const { fileName, fileSize, mimeType, totalChunks, title, description } = JSON.parse(body);
 
             // Validation
             if (!fileName || !fileSize || !mimeType || !totalChunks) {
-                return res.status(400).json({ error: 'Missing required fields' });
+                return this.sendJson(res, 400, { error: 'Missing required fields' });
             }
 
             // Validate file type
@@ -40,13 +55,13 @@ class ChunkUploadController {
                 'video/ogg',
             ];
             if (!allowedMimeTypes.includes(mimeType)) {
-                return res.status(400).json({ error: 'Invalid file type' });
+                return this.sendJson(res, 400, { error: 'Invalid file type' });
             }
 
             // Validate file size (10GB max)
             const maxSize = 10 * 1024 * 1024 * 1024;
             if (fileSize > maxSize) {
-                return res.status(400).json({ error: 'File size exceeds 10GB limit' });
+                return this.sendJson(res, 400, { error: 'File size exceeds 10GB limit' });
             }
 
             // Check for existing incomplete upload
@@ -60,21 +75,41 @@ class ChunkUploadController {
             if (existingSession) {
                 // Resume existing session
                 session = existingSession;
-                console.log(`Resuming upload session ${session.id}`);
+                console.log(`♻️  Resuming upload session ${session.id}`);
             } else {
-                // Create new session
+                // Generate storage key for the final file
+                const ext = path.extname(fileName);
+                const videoId = uuidv4();
+                const storageKey = `${videoId}${ext}`;
+
+                // Start B2 multipart upload
+                console.log(`🚀 Starting B2 multipart upload for ${storageKey}`);
+                const b2Upload = await this.storageRepository.startMultipartUpload(storageKey, {
+                    contentType: mimeType,
+                    originalName: fileName,
+                });
+
+                console.log(`✅ B2 multipart upload initiated: ${b2Upload.uploadId}`);
+
+                // Create new session with B2 metadata
                 session = await this.chunkUploadService.createSession({
                     userId: req.user.id,
                     fileName,
                     fileSize,
                     mimeType,
                     totalChunks,
-                    metadata: { title, description },
+                    metadata: {
+                        title,
+                        description,
+                        b2UploadId: b2Upload.uploadId,
+                        storageKey: storageKey,
+                        videoId: videoId,
+                    },
                 });
-                console.log(`Created new upload session ${session.id}`);
+                console.log(`📝 Created upload session ${session.id}`);
             }
 
-            res.status(200).json({
+            return this.sendJson(res, 200, {
                 uploadId: session.id,
                 resumableChunks: session.uploadedChunks || [],
                 chunkSize: 5 * 1024 * 1024, // 5MB
@@ -82,7 +117,7 @@ class ChunkUploadController {
             });
         } catch (error) {
             console.error('Initialize upload error:', error);
-            res.status(500).json({ error: error.message || 'Failed to initialize upload' });
+            return this.sendJson(res, 500, { error: error.message || 'Failed to initialize upload' });
         }
     }
 
@@ -93,7 +128,7 @@ class ChunkUploadController {
     async uploadChunk(req, res) {
         try {
             if (!req.user) {
-                return res.status(401).json({ error: 'Authentication required' });
+                return this.sendJson(res, 401, { error: 'Authentication required' });
             }
 
             const uploadDir = path.join(process.cwd(), 'videos', 'temp', 'chunks');
@@ -105,9 +140,16 @@ class ChunkUploadController {
                 uploadDir,
                 keepExtensions: false,
                 maxFileSize: 10 * 1024 * 1024, // 10MB per chunk
+                multiples: false,
             });
 
-            const [fields, files] = await form.parse(req);
+            let fields, files;
+            try {
+                [fields, files] = await form.parse(req);
+            } catch (parseError) {
+                console.error('Formidable parse error:', parseError);
+                return this.sendJson(res, 400, { error: 'Failed to parse chunk data: ' + parseError.message });
+            }
 
             const chunkFile = files.chunk?.[0];
             const chunkIndex = parseInt(fields.chunkIndex?.[0]);
@@ -115,39 +157,93 @@ class ChunkUploadController {
             const uploadId = fields.uploadId?.[0];
             const totalChunks = parseInt(fields.totalChunks?.[0]);
 
+            console.log(`📦 Chunk ${chunkIndex}/${totalChunks - 1} received for upload ${uploadId}`);
+
             if (!chunkFile || isNaN(chunkIndex) || !chunkHash || !uploadId) {
-                return res.status(400).json({ error: 'Missing required fields' });
+                console.error('Missing required fields:', { chunkFile: !!chunkFile, chunkIndex, chunkHash, uploadId });
+                // Clean up temp file if it exists
+                if (chunkFile?.filepath && fs.existsSync(chunkFile.filepath)) {
+                    try {
+                        fs.unlinkSync(chunkFile.filepath);
+                    } catch (e) { }
+                }
+                return this.sendJson(res, 400, { error: 'Missing required fields' });
             }
 
             // Verify session exists and belongs to user
             const session = await this.chunkUploadService.getSession(uploadId);
             if (!session || session.userId !== req.user.id) {
-                return res.status(404).json({ error: 'Upload session not found' });
+                return this.sendJson(res, 404, { error: 'Upload session not found' });
             }
 
             // Verify chunk hash
             const calculatedHash = await this.calculateFileHash(chunkFile.filepath);
             if (calculatedHash !== chunkHash) {
                 fs.unlinkSync(chunkFile.filepath);
-                return res.status(400).json({ error: 'Chunk hash mismatch - corrupted data' });
+                return this.sendJson(res, 400, { error: 'Chunk hash mismatch - corrupted data' });
             }
 
-            // Store chunk with proper naming
-            const chunkDir = path.join(process.cwd(), 'videos', 'temp', 'chunks', uploadId);
-            if (!fs.existsSync(chunkDir)) {
-                fs.mkdirSync(chunkDir, { recursive: true });
+            // Read chunk data
+            const chunkData = fs.readFileSync(chunkFile.filepath);
+
+            // Get B2 metadata from session
+            const b2UploadId = session.metadata?.b2UploadId;
+            const storageKey = session.metadata?.storageKey;
+
+            if (!b2UploadId || !storageKey) {
+                fs.unlinkSync(chunkFile.filepath);
+                return this.sendJson(res, 500, { error: 'Missing B2 upload metadata' });
             }
 
-            const chunkPath = path.join(chunkDir, `chunk_${chunkIndex.toString().padStart(6, '0')}`);
-            fs.renameSync(chunkFile.filepath, chunkPath);
+            // Upload chunk directly to B2 as a part (with retry)
+            let b2Part;
+            let retryCount = 0;
+            const maxRetries = 3;
 
-            // Update session
-            await this.chunkUploadService.markChunkUploaded(uploadId, chunkIndex);
+            while (retryCount < maxRetries) {
+                try {
+                    b2Part = await this.storageRepository.uploadPart(
+                        storageKey,
+                        b2UploadId,
+                        chunkIndex + 1, // B2 part numbers are 1-indexed
+                        chunkData
+                    );
+                    break; // Success
+                } catch (uploadError) {
+                    retryCount++;
+                    console.error(`   B2 part ${chunkIndex + 1} upload attempt ${retryCount} failed:`, uploadError.message);
+
+                    if (retryCount === maxRetries) {
+                        fs.unlinkSync(chunkFile.filepath);
+                        return this.sendJson(res, 500, {
+                            error: `Failed to upload chunk to B2 after ${maxRetries} attempts: ${uploadError.message}`
+                        });
+                    }
+
+                    // Wait before retry (exponential backoff)
+                    await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                }
+            }
+
+            // Clean up temp chunk file
+            try {
+                fs.unlinkSync(chunkFile.filepath);
+            } catch (e) {
+                console.error('Failed to delete temp chunk file:', e);
+            }
+
+            // Update session with B2 part info
+            await this.chunkUploadService.markChunkUploaded(uploadId, chunkIndex, {
+                etag: b2Part.etag,
+                partNumber: b2Part.partNumber,
+            });
 
             const updatedSession = await this.chunkUploadService.getSession(uploadId);
             const progress = (updatedSession.uploadedChunks.length / totalChunks) * 100;
 
-            res.status(200).json({
+            console.log(`✅ Chunk ${chunkIndex} saved. Progress: ${Math.round(progress)}% (${updatedSession.uploadedChunks.length}/${totalChunks})`);
+
+            return this.sendJson(res, 200, {
                 chunkIndex,
                 received: true,
                 hashMatch: true,
@@ -157,7 +253,8 @@ class ChunkUploadController {
             });
         } catch (error) {
             console.error('Upload chunk error:', error);
-            res.status(500).json({ error: error.message || 'Failed to upload chunk' });
+            console.error('Error stack:', error.stack);
+            return this.sendJson(res, 500, { error: error.message || 'Failed to upload chunk' });
         }
     }
 
@@ -168,63 +265,146 @@ class ChunkUploadController {
     async finalizeUpload(req, res) {
         try {
             if (!req.user) {
-                return res.status(401).json({ error: 'Authentication required' });
+                return this.sendJson(res, 401, { error: 'Authentication required' });
             }
 
-            const { uploadId, fileName, title, description } = req.body;
+            // Parse JSON body
+            let body = '';
+            for await (const chunk of req) {
+                body += chunk.toString();
+            }
+            const { uploadId, fileName, title, description } = JSON.parse(body);
 
             if (!uploadId || !fileName) {
-                return res.status(400).json({ error: 'Missing required fields' });
+                return this.sendJson(res, 400, { error: 'Missing required fields' });
             }
 
             // Verify session
             const session = await this.chunkUploadService.getSession(uploadId);
             if (!session || session.userId !== req.user.id) {
-                return res.status(404).json({ error: 'Upload session not found' });
+                return this.sendJson(res, 404, { error: 'Upload session not found' });
             }
 
             // Verify all chunks uploaded
             if (session.uploadedChunks.length !== session.totalChunks) {
-                return res.status(400).json({
+                return this.sendJson(res, 400, {
                     error: 'Not all chunks uploaded',
                     uploaded: session.uploadedChunks.length,
                     total: session.totalChunks,
                 });
             }
 
-            // Merge chunks into final file
-            const mergedFilePath = await this.chunkUploadService.mergeChunks(uploadId, fileName);
+            // Get B2 metadata
+            const b2UploadId = session.metadata?.b2UploadId;
+            const storageKey = session.metadata?.storageKey;
+            const videoId = session.metadata?.videoId;
+            const b2Parts = session.metadata?.b2Parts || [];
 
-            // Upload to storage and create video record (use existing VideoService)
-            const videoData = {
-                filePath: mergedFilePath,
-                fileName: session.fileName,
+            if (!b2UploadId || !storageKey || !videoId) {
+                return this.sendJson(res, 500, { error: 'Missing B2 upload metadata' });
+            }
+
+            console.log(`🔗 Completing B2 multipart upload: ${storageKey}`);
+            console.log(`   Total parts: ${b2Parts.length}`);
+
+            // Sort parts by part number (required by B2)
+            const sortedParts = b2Parts.sort((a, b) => a.partNumber - b.partNumber);
+
+            // Complete B2 multipart upload
+            const { storageUrl, cdnUrl } = await this.storageRepository.completeMultipartUpload(
+                storageKey,
+                b2UploadId,
+                sortedParts
+            );
+
+            console.log(`✅ B2 multipart upload completed: ${storageKey}`);
+
+            // Generate thumbnail from a temporary downloaded chunk or skip
+            // For now, we'll handle thumbnail generation during transcoding
+            let thumbnailUrl = null;
+
+            // Create video entity directly in database
+            const Video = require('../../domain/entities/Video');
+            const VideoStatus = require('../../domain/value-objects/VideoStatus');
+
+            const video = new Video({
+                id: videoId,
                 title: title || session.metadata?.title || session.fileName,
                 description: description || session.metadata?.description || '',
+                fileName: session.fileName,
+                storageKey: storageKey,
+                storageUrl: storageUrl,
+                cdnUrl: cdnUrl,
                 mimeType: session.mimeType,
                 sizeBytes: session.fileSize,
+                durationMs: null,
+                width: null,
+                height: null,
+                status: VideoStatus.READY,
+                uploadedAt: new Date(),
+                updatedAt: new Date(),
                 userId: req.user.id,
-            };
-
-            // This would integrate with your existing VideoService
-            // For now, return success with file info
-            res.status(200).json({
-                message: 'Upload completed successfully',
-                file: {
-                    path: mergedFilePath,
-                    size: session.fileSize,
-                    mimeType: session.mimeType,
-                },
-                nextStep: 'Process with VideoService',
+                thumbnailUrl: thumbnailUrl,
             });
 
-            // Clean up session and chunks asynchronously
-            this.chunkUploadService.cleanupSession(uploadId).catch(err => {
-                console.error('Cleanup error:', err);
+            // Save to database (bypassing VideoService since file is already in B2)
+            const PrismaVideoRepository = require('../../infrastructure/persistence/PrismaVideoRepository');
+            const PrismaChannelRepository = require('../../infrastructure/persistence/PrismaChannelRepository');
+            const { PrismaClient } = require('@prisma/client');
+            const prisma = new PrismaClient();
+
+            const videoRepo = new PrismaVideoRepository(prisma);
+            const savedVideo = await videoRepo.save(video);
+
+            console.log(`✅ Video record created: ${savedVideo.id}`);
+
+            // Update channel video count
+            try {
+                const channelRepo = new PrismaChannelRepository(prisma);
+                const channel = await channelRepo.findByUserId(req.user.id);
+                if (channel) {
+                    await channelRepo.update(channel.id, {
+                        videoCount: channel.videoCount + 1
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to update channel video count:', error);
+            }
+
+            await prisma.$disconnect();
+
+            // Trigger transcoding asynchronously (don't wait for it)
+            this.videoService.transcodeVideo(savedVideo.id)
+                .then(() => {
+                    console.log(`✅ Transcoding complete for video ${savedVideo.id}`);
+                })
+                .catch(err => {
+                    console.error(`❌ Transcoding failed for video ${savedVideo.id}:`, err.message);
+                });
+
+            // Clean up session asynchronously
+            setImmediate(() => {
+                this.chunkUploadService.cleanupSession(uploadId).catch(err => {
+                    console.error('Cleanup error:', err);
+                });
+            });
+
+            // Convert thumbnail URL to server proxy URL
+            thumbnailUrl = savedVideo.thumbnailUrl ? this.convertToServerUrl(savedVideo.thumbnailUrl) : null;
+
+            return this.sendJson(res, 201, {
+                message: 'Video uploaded successfully',
+                video: {
+                    id: savedVideo.id,
+                    title: savedVideo.title,
+                    description: savedVideo.description,
+                    playbackUrl: savedVideo.getPlaybackUrl(),
+                    thumbnailUrl: thumbnailUrl,
+                },
             });
         } catch (error) {
             console.error('Finalize upload error:', error);
-            res.status(500).json({ error: error.message || 'Failed to finalize upload' });
+            return this.sendJson(res, 500, { error: error.message || 'Failed to finalize upload' });
         }
     }
 
@@ -232,22 +412,20 @@ class ChunkUploadController {
      * Get upload session status
      * GET /api/upload/status/:uploadId
      */
-    async getUploadStatus(req, res) {
+    async getUploadStatus(req, res, uploadId) {
         try {
             if (!req.user) {
-                return res.status(401).json({ error: 'Authentication required' });
+                return this.sendJson(res, 401, { error: 'Authentication required' });
             }
-
-            const { uploadId } = req.params;
 
             const session = await this.chunkUploadService.getSession(uploadId);
             if (!session || session.userId !== req.user.id) {
-                return res.status(404).json({ error: 'Upload session not found' });
+                return this.sendJson(res, 404, { error: 'Upload session not found' });
             }
 
             const progress = (session.uploadedChunks.length / session.totalChunks) * 100;
 
-            res.status(200).json({
+            return this.sendJson(res, 200, {
                 uploadId: session.id,
                 fileName: session.fileName,
                 fileSize: session.fileSize,
@@ -260,7 +438,7 @@ class ChunkUploadController {
             });
         } catch (error) {
             console.error('Get status error:', error);
-            res.status(500).json({ error: error.message || 'Failed to get upload status' });
+            return this.sendJson(res, 500, { error: error.message || 'Failed to get upload status' });
         }
     }
 
@@ -268,26 +446,24 @@ class ChunkUploadController {
      * Cancel upload session
      * DELETE /api/upload/:uploadId
      */
-    async cancelUpload(req, res) {
+    async cancelUpload(req, res, uploadId) {
         try {
             if (!req.user) {
-                return res.status(401).json({ error: 'Authentication required' });
+                return this.sendJson(res, 401, { error: 'Authentication required' });
             }
-
-            const { uploadId } = req.params;
 
             const session = await this.chunkUploadService.getSession(uploadId);
             if (!session || session.userId !== req.user.id) {
-                return res.status(404).json({ error: 'Upload session not found' });
+                return this.sendJson(res, 404, { error: 'Upload session not found' });
             }
 
             await this.chunkUploadService.cancelSession(uploadId);
             await this.chunkUploadService.cleanupSession(uploadId);
 
-            res.status(200).json({ message: 'Upload cancelled successfully' });
+            return this.sendJson(res, 200, { message: 'Upload cancelled successfully' });
         } catch (error) {
             console.error('Cancel upload error:', error);
-            res.status(500).json({ error: error.message || 'Failed to cancel upload' });
+            return this.sendJson(res, 500, { error: error.message || 'Failed to cancel upload' });
         }
     }
 
@@ -303,6 +479,28 @@ class ChunkUploadController {
             stream.on('end', () => resolve(hash.digest('hex')));
             stream.on('error', reject);
         });
+    }
+
+    /**
+     * Convert B2/CDN URLs to server proxy URLs for private buckets
+     */
+    convertToServerUrl(url) {
+        if (!url) return null;
+
+        // If it's already a server URL, return as-is
+        if (url.includes('/video?file=')) {
+            return url;
+        }
+
+        // Extract filename from B2/CDN URL
+        const match = url.match(/\/([^/]+\.(svg|jpg|jpeg|png|gif|webp))$/i);
+        if (match) {
+            const filename = match[1];
+            // Use relative path - works in any environment
+            return `/video?file=${filename}`;
+        }
+
+        return url;
     }
 }
 

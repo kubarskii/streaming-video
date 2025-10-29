@@ -46,9 +46,12 @@ const VideoController = require('./src/presentation/controllers/VideoController'
 const StreamController = require('./src/presentation/controllers/StreamController');
 const AuthController = require('./src/presentation/controllers/AuthController');
 const UploadController = require('./src/presentation/controllers/UploadController');
+const ChunkUploadController = require('./src/presentation/controllers/ChunkUploadController');
 const ChannelController = require('./src/presentation/controllers/ChannelController');
 const SubscriptionController = require('./src/presentation/controllers/SubscriptionController');
 const CommentController = require('./src/presentation/controllers/CommentController');
+const ChunkUploadService = require('./src/application/services/ChunkUploadService');
+const InMemoryUploadSessionRepository = require('./src/infrastructure/persistence/InMemoryUploadSessionRepository');
 const Router = require('./src/presentation/routes/Router');
 const corsMiddleware = require('./src/presentation/middleware/corsMiddleware');
 const { authMiddleware } = require('./src/presentation/middleware/authMiddleware');
@@ -127,6 +130,12 @@ class Container {
             updateCommentUseCase,
             deleteCommentUseCase
         );
+
+        // Chunked Upload
+        const uploadSessionRepository = new InMemoryUploadSessionRepository();
+        const chunkUploadService = new ChunkUploadService(uploadSessionRepository);
+        const chunkUploadController = new ChunkUploadController(chunkUploadService, videoService, storageRepository);
+
         const router = new Router(
             videoController,
             streamController,
@@ -134,7 +143,8 @@ class Container {
             uploadController,
             channelController,
             subscriptionController,
-            commentController
+            commentController,
+            chunkUploadController
         );
 
         return { router, prismaClient, storageRepository, authService };
