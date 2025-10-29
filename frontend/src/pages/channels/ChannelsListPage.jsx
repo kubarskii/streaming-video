@@ -2,26 +2,32 @@
 // Browse all available channels
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useAbortController } from '../../shared/lib';
 import { channelsAPI } from '../../shared/api/channels';
 import { Avatar, Button, EmptyState, VideoEmptyIcon } from '../../shared/ui';
 import './ChannelsListPage.css';
 
 export const ChannelsListPage = () => {
     const navigate = useNavigate();
+    const signal = useAbortController();
     const [channels, setChannels] = useState([]);
     const [loading, setLoading] = useState(true);
     const [sortBy, setSortBy] = useState('subscriberCount');
 
     useEffect(() => {
         loadChannels();
-    }, [sortBy]);
+    }, [sortBy, signal]);
 
     const loadChannels = async () => {
         try {
             setLoading(true);
-            const data = await channelsAPI.listChannels({ sortBy, limit: 100 });
+            const data = await channelsAPI.listChannels({ sortBy, limit: 100, signal });
             setChannels(data.channels);
         } catch (err) {
+            // Ignore abort errors
+            if (err.name === 'AbortError' || err.name === 'CanceledError') {
+                return;
+            }
             console.error('Error loading channels:', err);
         } finally {
             setLoading(false);

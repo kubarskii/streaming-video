@@ -2,6 +2,7 @@
 // User profile with video management features
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../shared/context/AuthContext';
+import { useAbortController } from '../../shared/lib';
 import { videosAPI } from '../../shared/api/videos';
 import { channelsAPI } from '../../shared/api/channels';
 import { useNavigate } from '@tanstack/react-router';
@@ -11,6 +12,7 @@ import './ProfilePage.css';
 export const ProfilePage = () => {
     const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
+    const signal = useAbortController();
     const [videos, setVideos] = useState([]);
     const [channel, setChannel] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -27,24 +29,28 @@ export const ProfilePage = () => {
             return;
         }
         loadUserVideos();
-    }, [isAuthenticated, user]);
+    }, [isAuthenticated, user, signal]);
 
     const loadUserVideos = async () => {
         try {
             setLoading(true);
             setError(null);
-            const data = await videosAPI.getVideos({ userId: user.id, limit: 100 });
+            const data = await videosAPI.getVideos({ userId: user.id, limit: 100, signal });
             setVideos(data.videos);
 
             // Load channel info
             try {
-                const channelData = await channelsAPI.getChannel({ userId: user.id });
+                const channelData = await channelsAPI.getChannel({ userId: user.id, signal });
                 setChannel(channelData);
                 setChannelForm({
                     name: channelData.name,
                     description: channelData.description || '',
                 });
             } catch (err) {
+                // Ignore abort errors
+                if (err.name === 'AbortError' || err.name === 'CanceledError') {
+                    return;
+                }
                 // Channel doesn't exist yet
                 setChannel(null);
                 setChannelForm({
@@ -53,6 +59,10 @@ export const ProfilePage = () => {
                 });
             }
         } catch (err) {
+            // Ignore abort errors
+            if (err.name === 'AbortError' || err.name === 'CanceledError') {
+                return;
+            }
             console.error('Error loading videos:', err);
             setError('Failed to load videos');
         } finally {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useAbortController } from '../../lib';
 import { commentsAPI } from '../../api/comments';
 import { CommentForm } from './CommentForm';
 import { CommentItem } from './CommentItem';
@@ -15,6 +16,7 @@ import './Comments.css';
  */
 export const CommentsSection = ({ videoId }) => {
     const { user, isAuthenticated } = useAuth();
+    const signal = useAbortController();
     const [comments, setComments] = useState([]);
     const [total, setTotal] = useState(0);
     const [hasMore, setHasMore] = useState(false);
@@ -27,7 +29,7 @@ export const CommentsSection = ({ videoId }) => {
 
     useEffect(() => {
         loadComments();
-    }, [videoId]);
+    }, [videoId, signal]);
 
     const loadComments = async () => {
         try {
@@ -35,13 +37,18 @@ export const CommentsSection = ({ videoId }) => {
             const data = await commentsAPI.getComments({
                 videoId,
                 limit: LIMIT,
-                offset: 0
+                offset: 0,
+                signal
             });
             setComments(data.comments);
             setTotal(data.total);
             setHasMore(data.hasMore);
             setOffset(data.comments.length);
         } catch (error) {
+            // Ignore abort errors
+            if (error.name === 'AbortError' || error.name === 'CanceledError') {
+                return;
+            }
             console.error('Failed to load comments:', error);
         } finally {
             setLoading(false);
@@ -54,13 +61,18 @@ export const CommentsSection = ({ videoId }) => {
             const data = await commentsAPI.getComments({
                 videoId,
                 limit: LIMIT,
-                offset
+                offset,
+                signal
             });
             setComments(prev => [...prev, ...data.comments]);
             setTotal(data.total);
             setHasMore(data.hasMore);
             setOffset(prev => prev + data.comments.length);
         } catch (error) {
+            // Ignore abort errors
+            if (error.name === 'AbortError' || error.name === 'CanceledError') {
+                return;
+            }
             console.error('Failed to load more comments:', error);
         } finally {
             setLoadingMore(false);
@@ -72,11 +84,16 @@ export const CommentsSection = ({ videoId }) => {
             setIsSubmitting(true);
             const newComment = await commentsAPI.createComment({
                 videoId,
-                content
+                content,
+                signal
             });
             setComments(prev => [newComment, ...prev]);
             setTotal(prev => prev + 1);
         } catch (error) {
+            // Ignore abort errors
+            if (error.name === 'AbortError' || error.name === 'CanceledError') {
+                return;
+            }
             console.error('Failed to create comment:', error);
             alert('Failed to post comment. Please try again.');
         } finally {
@@ -86,11 +103,15 @@ export const CommentsSection = ({ videoId }) => {
 
     const handleUpdateComment = async (commentId, content) => {
         try {
-            const updatedComment = await commentsAPI.updateComment(commentId, { content });
+            const updatedComment = await commentsAPI.updateComment(commentId, { content, signal });
             setComments(prev =>
                 prev.map(c => c.id === commentId ? updatedComment : c)
             );
         } catch (error) {
+            // Ignore abort errors
+            if (error.name === 'AbortError' || error.name === 'CanceledError') {
+                return;
+            }
             console.error('Failed to update comment:', error);
             alert('Failed to update comment. Please try again.');
             throw error;
@@ -99,10 +120,14 @@ export const CommentsSection = ({ videoId }) => {
 
     const handleDeleteComment = async (commentId) => {
         try {
-            await commentsAPI.deleteComment(commentId);
+            await commentsAPI.deleteComment(commentId, signal);
             setComments(prev => prev.filter(c => c.id !== commentId));
             setTotal(prev => prev - 1);
         } catch (error) {
+            // Ignore abort errors
+            if (error.name === 'AbortError' || error.name === 'CanceledError') {
+                return;
+            }
             console.error('Failed to delete comment:', error);
             alert('Failed to delete comment. Please try again.');
         }

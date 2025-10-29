@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from '@tanstack/react-router';
 import { videosAPI } from '../../shared/api/videos';
+import { useAbortController } from '../../shared/lib';
 import { useAuth } from '../../shared/context/AuthContext';
 import { CommentsSection, VideoPlayer } from '../../shared/ui';
 import './VideoPage.css';
@@ -9,6 +10,7 @@ import './VideoPage.css';
 export const VideoPage = () => {
     const { id } = useParams({ from: '/video/$id' });
     const { user } = useAuth();
+    const signal = useAbortController();
     const [video, setVideo] = useState(null);
     const [qualities, setQualities] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -18,7 +20,7 @@ export const VideoPage = () => {
     useEffect(() => {
         const fetchVideo = async () => {
             try {
-                const data = await videosAPI.getVideo(id);
+                const data = await videosAPI.getVideo(id, signal);
                 setVideo(data);
 
                 // Set default video URL
@@ -27,7 +29,7 @@ export const VideoPage = () => {
 
                 // Fetch available quality variants
                 try {
-                    const qualitiesData = await videosAPI.getVideoQualities(id);
+                    const qualitiesData = await videosAPI.getVideoQualities(id, signal);
                     console.log('Qualities data received:', qualitiesData);
 
                     if (qualitiesData.qualities && qualitiesData.qualities.length > 0) {
@@ -42,12 +44,19 @@ export const VideoPage = () => {
                         setQualities([]);
                     }
                 } catch (qualErr) {
-                    console.log('No quality variants available:', qualErr);
+                    // Ignore abort errors
+                    if (qualErr.name !== 'AbortError' && qualErr.name !== 'CanceledError') {
+                        console.log('No quality variants available:', qualErr);
+                    }
                     setQualities([]);
                 }
 
                 setLoading(false);
             } catch (err) {
+                // Ignore abort errors
+                if (err.name === 'AbortError' || err.name === 'CanceledError') {
+                    return;
+                }
                 console.error('Error fetching video:', err);
                 setError('Video not found');
                 setLoading(false);
@@ -55,7 +64,7 @@ export const VideoPage = () => {
         };
 
         fetchVideo();
-    }, [id]);
+    }, [id, signal]);
 
     const handleQualityChange = (quality) => {
         console.log('Quality changed to:', quality);
@@ -135,7 +144,7 @@ export const VideoPage = () => {
                         onTimeUpdate={(time) => {
                             // Update view count after 30 seconds
                             if (Math.floor(time) === 30) {
-                                videosAPI.incrementViews(id).catch(console.error);
+                                videosAPI.incrementViews(id, signal).catch(console.error);
                             }
                         }}
                         onError={() => {

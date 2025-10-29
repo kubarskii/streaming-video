@@ -7,7 +7,7 @@ import api from './client';
 const VIDEO_BASE = import.meta.env.VITE_VIDEO_BASE_URL || '/video';
 
 export const videosAPI = {
-    getVideos: async ({ limit = 20, offset = 0, status, userId, search } = {}) => {
+    getVideos: async ({ limit = 20, offset = 0, status, userId, search, signal } = {}) => {
         const params = new URLSearchParams();
         params.append('limit', limit);
         params.append('offset', offset);
@@ -15,12 +15,12 @@ export const videosAPI = {
         if (userId) params.append('userId', userId);
         if (search) params.append('search', search);
 
-        const response = await api.get(`/videos?${params.toString()}`);
+        const response = await api.get(`/videos?${params.toString()}`, { signal });
         return response.data;
     },
 
-    getVideo: async (id) => {
-        const response = await api.get(`/videos/${id}`);
+    getVideo: async (id, signal) => {
+        const response = await api.get(`/videos/${id}`, { signal });
         return response.data;
     },
 
@@ -71,22 +71,25 @@ export const videosAPI = {
         return `${VIDEO_BASE}?file=${storageKey}`;
     },
 
-    getVideoQualities: async (id) => {
-        const response = await api.get(`/videos/${id}/qualities`);
+    getVideoQualities: async (id, signal) => {
+        const response = await api.get(`/videos/${id}/qualities`, { signal });
         return response.data;
     },
 
-    transcodeVideo: async (id) => {
-        const response = await api.post(`/videos/${id}/transcode`);
+    transcodeVideo: async (id, signal) => {
+        const response = await api.post(`/videos/${id}/transcode`, {}, { signal });
         return response.data;
     },
 
-    incrementViews: async (id) => {
+    incrementViews: async (id, signal) => {
         // This endpoint might not exist yet - fire and forget
         try {
-            await api.post(`/videos/${id}/views`);
+            await api.post(`/videos/${id}/views`, {}, { signal });
         } catch (err) {
-            // Ignore errors for now
+            // Ignore errors for now (including AbortError)
+            if (err.name !== 'AbortError' && err.name !== 'CanceledError') {
+                console.error('Error incrementing views:', err);
+            }
         }
     },
 };

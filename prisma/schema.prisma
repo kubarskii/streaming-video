@@ -120,3 +120,21 @@ model Comment {
   @@index([createdAt])
 }
 
+model UploadSession {
+  id             String   @id
+  userId         String
+  fileName       String
+  fileSize       BigInt
+  mimeType       String
+  totalChunks    Int
+  uploadedChunks String   // JSON array of uploaded chunk indices
+  metadata       String?  // JSON for additional data (title, description, etc.)
+  status         String   @default("in_progress") // in_progress, completed, failed, cancelled
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+}
+

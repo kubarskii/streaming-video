@@ -3,12 +3,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useSearch } from '@tanstack/react-router';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import { videosAPI } from '../../shared/api/videos';
+import { useAbortController } from '../../shared/lib';
 import { VideoCard, VideoCardGrid, Spinner, EmptyState, VideoEmptyIcon, SearchEmptyIcon, Button } from '../../shared/ui';
 import './HomePage.css';
 
 export const HomePage = () => {
     const searchParams = useSearch({ from: '/' });
     const searchQuery = searchParams?.q || '';
+    const signal = useAbortController();
 
     const [videos, setVideos] = useState([]);
     const [hasMore, setHasMore] = useState(true);
@@ -18,12 +20,13 @@ export const HomePage = () => {
 
     const LIMIT = 20;
 
-    const fetchVideos = useCallback(async (currentOffset = 0, currentSearch = '') => {
+    const fetchVideos = useCallback(async (currentOffset = 0, currentSearch = '', abortSignal) => {
         try {
             const data = await videosAPI.getVideos({
                 limit: LIMIT,
                 offset: currentOffset,
-                search: currentSearch || undefined
+                search: currentSearch || undefined,
+                signal: abortSignal
             });
 
             if (currentOffset === 0) {
@@ -35,6 +38,10 @@ export const HomePage = () => {
             setHasMore(data.hasMore);
             setLoading(false);
         } catch (err) {
+            // Ignore abort errors
+            if (err.name === 'AbortError' || err.name === 'CanceledError') {
+                return;
+            }
             console.error('Error fetching videos:', err);
             setError('Failed to load videos');
             setLoading(false);
@@ -47,14 +54,14 @@ export const HomePage = () => {
         setLoading(true);
         setError(null);
         setHasMore(true);
-        fetchVideos(0, searchQuery);
-    }, [searchQuery, fetchVideos]);
+        fetchVideos(0, searchQuery, signal);
+    }, [searchQuery, signal, fetchVideos]);
 
     const fetchMoreVideos = () => {
         if (!loading) {
             const newOffset = offset + LIMIT;
             setOffset(newOffset);
-            fetchVideos(newOffset, searchQuery);
+            fetchVideos(newOffset, searchQuery, signal);
         }
     };
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from '@tanstack/react-router';
 import { useAuth } from '../../shared/context/AuthContext';
+import { useAbortController } from '../../shared/lib';
 import { channelsAPI } from '../../shared/api/channels';
 import { subscriptionsAPI } from '../../shared/api/subscriptions';
 import { videosAPI } from '../../shared/api/videos';
@@ -13,6 +14,7 @@ export const ChannelPage = () => {
     const { userId } = useParams({ from: '/channel/$userId' });
     const navigate = useNavigate();
     const { user, isAuthenticated } = useAuth();
+    const signal = useAbortController();
     const [channel, setChannel] = useState(null);
     const [videos, setVideos] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -24,7 +26,7 @@ export const ChannelPage = () => {
 
     useEffect(() => {
         loadChannelData();
-    }, [userId]);
+    }, [userId, signal]);
 
     const loadChannelData = async () => {
         try {
@@ -32,23 +34,30 @@ export const ChannelPage = () => {
             setError(null);
 
             // Load channel info
-            const channelData = await channelsAPI.getChannel({ userId });
+            const channelData = await channelsAPI.getChannel({ userId, signal });
             setChannel(channelData);
 
             // Load videos
-            const videosData = await videosAPI.getVideos({ userId, limit: 100 });
+            const videosData = await videosAPI.getVideos({ userId, limit: 100, signal });
             setVideos(videosData.videos);
 
             // Check subscription status if authenticated
             if (isAuthenticated && !isOwnChannel) {
                 try {
-                    const statusData = await subscriptionsAPI.checkStatus(channelData.id);
+                    const statusData = await subscriptionsAPI.checkStatus(channelData.id, signal);
                     setIsSubscribed(statusData.isSubscribed);
                 } catch (err) {
-                    console.error('Error checking subscription:', err);
+                    // Ignore abort errors
+                    if (err.name !== 'AbortError' && err.name !== 'CanceledError') {
+                        console.error('Error checking subscription:', err);
+                    }
                 }
             }
         } catch (err) {
+            // Ignore abort errors
+            if (err.name === 'AbortError' || err.name === 'CanceledError') {
+                return;
+            }
             console.error('Error loading channel:', err);
             setError('Channel not found or failed to load');
         } finally {

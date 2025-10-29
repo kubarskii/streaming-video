@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuth } from '../../shared/context/AuthContext';
+import { useAbortController } from '../../shared/lib';
 import { subscriptionsAPI } from '../../shared/api/subscriptions';
 import { channelsAPI } from '../../shared/api/channels';
 import { Avatar, Button, EmptyState, VideoEmptyIcon } from '../../shared/ui';
@@ -11,6 +12,7 @@ import './SubscriptionsPage.css';
 export const SubscriptionsPage = () => {
     const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
+    const signal = useAbortController();
     const [subscriptions, setSubscriptions] = useState([]);
     const [channels, setChannels] = useState({});
     const [loading, setLoading] = useState(true);
@@ -22,20 +24,23 @@ export const SubscriptionsPage = () => {
             return;
         }
         loadSubscriptions();
-    }, [isAuthenticated]);
+    }, [isAuthenticated, signal]);
 
     const loadSubscriptions = async () => {
         try {
             setLoading(true);
             setError(null);
-            const data = await subscriptionsAPI.getSubscriptions({ limit: 100 });
+            const data = await subscriptionsAPI.getSubscriptions({ limit: 100, signal });
             setSubscriptions(data.subscriptions);
 
             // Load channel details for each subscription
             const channelPromises = data.subscriptions.map(sub =>
-                channelsAPI.getChannel({ channelId: sub.channelId })
+                channelsAPI.getChannel({ channelId: sub.channelId, signal })
                     .catch(err => {
-                        console.error(`Error loading channel ${sub.channelId}:`, err);
+                        // Ignore abort errors
+                        if (err.name !== 'AbortError' && err.name !== 'CanceledError') {
+                            console.error(`Error loading channel ${sub.channelId}:`, err);
+                        }
                         return null;
                     })
             );
@@ -49,6 +54,10 @@ export const SubscriptionsPage = () => {
             });
             setChannels(channelsMap);
         } catch (err) {
+            // Ignore abort errors
+            if (err.name === 'AbortError' || err.name === 'CanceledError') {
+                return;
+            }
             console.error('Error loading subscriptions:', err);
             setError('Failed to load subscriptions');
         } finally {
