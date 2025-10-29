@@ -99,19 +99,24 @@ const registerSchema = z.object({
  * User login schema
  * @type {import('zod').ZodObject}
  * @description Validates user login credentials
- * @property {string} email - Valid email address (lowercase, trimmed)
+ * @property {string} emailOrUsername - Email address or username (lowercase, trimmed)
  * @property {string} password - User password (required)
  * @throws {ZodError} If validation fails
  * @example
  * // Valid payload:
  * {
- *   email: "user@example.com",
+ *   emailOrUsername: "user@example.com",
+ *   password: "SecureP@ss123"
+ * }
+ * // Or with username:
+ * {
+ *   emailOrUsername: "john_doe",
  *   password: "SecureP@ss123"
  * }
  */
 const loginSchema = z.object({
-    email: z.string()
-        .email({ message: 'Invalid email address' })
+    emailOrUsername: z.string()
+        .min(1, 'Email or username is required')
         .toLowerCase()
         .trim(),
 

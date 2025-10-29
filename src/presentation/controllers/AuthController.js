@@ -148,7 +148,7 @@ class AuthController {
 
             // Application layer: Authenticate user
             const result = await this.authService.login({
-                emailOrUsername: validatedData.email, // loginSchema uses 'email' field
+                emailOrUsername: validatedData.emailOrUsername,
                 password: validatedData.password,
             });
 
