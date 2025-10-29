@@ -2,11 +2,12 @@
 
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
+const { execFile, exec } = require('child_process');
 const { promisify } = require('util');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 const ffmpegPath = ffmpegInstaller.path;
 
 class ThumbnailGenerator {
@@ -54,16 +55,33 @@ class ThumbnailGenerator {
             const ffmpegArgs = [
                 '-ss', timestamp,
                 '-i', videoPath,
-                '-vframes', '1',
+                '-frames:v', '1',
                 '-vf', `scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2`,
                 '-q:v', '2',
                 '-y', jpgOutputPath,
             ];
 
-            await execFileAsync(ffmpegPath, ffmpegArgs, {
-                timeout: 30000,  // 30 second timeout
-                maxBuffer: 10 * 1024 * 1024  // 10MB buffer
-            });
+            try {
+                await execFileAsync(ffmpegPath, ffmpegArgs, {
+                    timeout: 30000,  // 30 second timeout
+                    maxBuffer: 10 * 1024 * 1024  // 10MB buffer
+                });
+            } catch (execFileError) {
+                // Some environments (like certain serverless platforms) restrict execFile. Fall back to exec.
+                console.warn('execFile failed, falling back to exec with command string:', execFileError.message);
+                const commandParts = [ffmpegPath, ...ffmpegArgs].map((arg) => {
+                    if (/[\s"'$`\\]/.test(arg)) {
+                        return JSON.stringify(arg);
+                    }
+                    return arg;
+                });
+                const command = commandParts.join(' ');
+
+                await execAsync(command, {
+                    timeout: 30000,
+                    maxBuffer: 10 * 1024 * 1024,
+                });
+            }
 
             // Verify the file was created and has content
             if (!fs.existsSync(jpgOutputPath)) {
