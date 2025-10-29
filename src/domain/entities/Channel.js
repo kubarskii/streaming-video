@@ -97,10 +97,22 @@ class Channel {
     }
 
     static fromDatabase(dbRecord) {
+        // Handle missing or invalid name field from database
+        let name = dbRecord.name;
+        if (!name || name.trim().length === 0) {
+            // Fallback: use username if available, otherwise generate a name
+            if (dbRecord.user && dbRecord.user.username) {
+                name = dbRecord.user.username;
+            } else {
+                name = `Channel_${dbRecord.id.substring(0, 8)}`;
+            }
+            console.warn(`Channel ${dbRecord.id} missing name, using fallback: ${name}`);
+        }
+        
         return new Channel({
             id: dbRecord.id,
             userId: dbRecord.userId,
-            name: dbRecord.name,
+            name: name,
             description: dbRecord.description,
             avatarUrl: dbRecord.avatarUrl,
             bannerUrl: dbRecord.bannerUrl,
