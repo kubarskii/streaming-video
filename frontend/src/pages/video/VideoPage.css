@@ -13,6 +13,7 @@
 .video-player-wrapper {
   position: relative;
   width: 100%;
+  max-height: calc(100vh - 64px); /* 100vh - header height */
   background: #000;
   border-radius: 12px;
   overflow: hidden;
@@ -23,12 +24,7 @@
   border-radius: 0;
 }
 
-.video-player {
-  width: 100%;
-  height: auto;
-  max-height: 720px;
-  display: block;
-}
+/* Video player automatically inherits max-height from wrapper */
 
 .video-details {
   padding: 16px 0;
@@ -149,6 +145,7 @@
 
   .video-player-wrapper {
     border-radius: 8px;
+    max-height: calc(100vh - 64px); /* Maintain max-height on tablet */
   }
 
   .video-title {
@@ -177,6 +174,7 @@
     margin-right: -12px;
     margin-bottom: 12px;
     width: calc(100% + 24px);
+    max-height: calc(100vh - 64px); /* Maintain max-height on mobile */
   }
 
   .video-title {
