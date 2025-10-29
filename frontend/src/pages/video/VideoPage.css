@@ -13,7 +13,7 @@
 .video-player-wrapper {
   position: relative;
   width: 100%;
-  max-height: calc(100vh - 64px); /* 100vh - header height */
+  max-height: calc(100vh - 64px - 24px); /* 100vh - header(64px) - page-padding-top(24px) */
   background: #000;
   border-radius: 12px;
   overflow: hidden;
@@ -145,7 +145,7 @@
 
   .video-player-wrapper {
     border-radius: 8px;
-    max-height: calc(100vh - 64px); /* Maintain max-height on tablet */
+    max-height: calc(100vh - 64px - 16px); /* header(64px) - page-padding-top(16px) */
   }
 
   .video-title {
@@ -174,7 +174,7 @@
     margin-right: -12px;
     margin-bottom: 12px;
     width: calc(100% + 24px);
-    max-height: calc(100vh - 64px); /* Maintain max-height on mobile */
+    max-height: calc(100vh - 64px - 12px); /* header(64px) - page-padding-top(12px) */
   }
 
   .video-title {
