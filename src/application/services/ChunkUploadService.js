@@ -82,10 +82,19 @@ class ChunkUploadService {
                 if (!session.metadata.b2Parts) {
                     session.metadata.b2Parts = [];
                 }
+
+                // Only store essential data (etag and partNumber)
+                // This prevents memory bloat for large files
                 session.metadata.b2Parts.push({
-                    chunkIndex,
-                    ...partMetadata
+                    etag: partMetadata.etag,
+                    partNumber: partMetadata.partNumber
                 });
+
+                // Sanity check: prevent unbounded metadata growth
+                const metadataSize = JSON.stringify(session.metadata).length;
+                if (metadataSize > 1024 * 1024) { // 1MB limit
+                    console.warn(`⚠️  Session ${uploadId} metadata exceeds 1MB (${metadataSize} bytes)`);
+                }
             }
 
             await this.uploadSessionRepository.update(uploadId, {

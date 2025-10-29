@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Avatar } from './Avatar';
 import { ClockIcon, EyeIcon, PlayIcon } from './Icons';
 import { formatViews, formatRelativeTime, formatDuration } from '../lib';
@@ -21,6 +21,7 @@ export const VideoCard = ({
     onClick,
     className = '',
 }) => {
+    const navigate = useNavigate();
     const thumbnailUrl = video.thumbnailUrl;
     const duration = formatDuration(video.durationMs);
     const videoLink = `/video/${video.id}`;
@@ -33,15 +34,21 @@ export const VideoCard = ({
         .filter(Boolean)
         .join(' ');
 
-    const handleClick = (e) => {
+    const handleCardClick = (e) => {
+        // Don't navigate if clicking on a link (channel author link)
+        if (e.target.closest('a')) {
+            return;
+        }
+
         if (onClick) {
-            e.preventDefault();
             onClick(video);
+        } else {
+            navigate({ to: videoLink });
         }
     };
 
     return (
-        <Link to={videoLink} className={cardClasses} onClick={handleClick}>
+        <div className={cardClasses} onClick={handleCardClick} style={{ cursor: 'pointer' }}>
             {/* Thumbnail */}
             <div className="ui-video-card__thumbnail">
                 {thumbnailUrl ? (
@@ -82,7 +89,6 @@ export const VideoCard = ({
                         <Link
                             to={`/channel/${video.userId}`}
                             className="ui-video-card__author"
-                            onClick={(e) => e.stopPropagation()}
                         >
                             {video.user.channel?.name || video.user.username || video.user.name}
                         </Link>
@@ -112,7 +118,7 @@ export const VideoCard = ({
                     )}
                 </div>
             </div>
-        </Link>
+        </div>
     );
 };
 

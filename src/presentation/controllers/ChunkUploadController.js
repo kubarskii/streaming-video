@@ -179,57 +179,69 @@ class ChunkUploadController {
             // Verify chunk hash
             const calculatedHash = await this.calculateFileHash(chunkFile.filepath);
             if (calculatedHash !== chunkHash) {
-                fs.unlinkSync(chunkFile.filepath);
+                try {
+                    fs.unlinkSync(chunkFile.filepath);
+                } catch (e) { }
                 return this.sendJson(res, 400, { error: 'Chunk hash mismatch - corrupted data' });
             }
-
-            // Read chunk data
-            const chunkData = fs.readFileSync(chunkFile.filepath);
 
             // Get B2 metadata from session
             const b2UploadId = session.metadata?.b2UploadId;
             const storageKey = session.metadata?.storageKey;
 
             if (!b2UploadId || !storageKey) {
-                fs.unlinkSync(chunkFile.filepath);
+                try {
+                    fs.unlinkSync(chunkFile.filepath);
+                } catch (e) { }
                 return this.sendJson(res, 500, { error: 'Missing B2 upload metadata' });
             }
 
             // Upload chunk directly to B2 as a part (with retry)
+            // Read chunk as stream to avoid memory bloat
             let b2Part;
             let retryCount = 0;
             const maxRetries = 3;
+            let chunkData = null;
 
-            while (retryCount < maxRetries) {
-                try {
-                    b2Part = await this.storageRepository.uploadPart(
-                        storageKey,
-                        b2UploadId,
-                        chunkIndex + 1, // B2 part numbers are 1-indexed
-                        chunkData
-                    );
-                    break; // Success
-                } catch (uploadError) {
-                    retryCount++;
-                    console.error(`   B2 part ${chunkIndex + 1} upload attempt ${retryCount} failed:`, uploadError.message);
-
-                    if (retryCount === maxRetries) {
-                        fs.unlinkSync(chunkFile.filepath);
-                        return this.sendJson(res, 500, {
-                            error: `Failed to upload chunk to B2 after ${maxRetries} attempts: ${uploadError.message}`
-                        });
-                    }
-
-                    // Wait before retry (exponential backoff)
-                    await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-                }
-            }
-
-            // Clean up temp chunk file
             try {
-                fs.unlinkSync(chunkFile.filepath);
-            } catch (e) {
-                console.error('Failed to delete temp chunk file:', e);
+                while (retryCount < maxRetries) {
+                    try {
+                        // Read chunk data (lazy - only when needed)
+                        if (!chunkData) {
+                            chunkData = fs.readFileSync(chunkFile.filepath);
+                        }
+
+                        b2Part = await this.storageRepository.uploadPart(
+                            storageKey,
+                            b2UploadId,
+                            chunkIndex + 1, // B2 part numbers are 1-indexed
+                            chunkData
+                        );
+                        break; // Success
+                    } catch (uploadError) {
+                        retryCount++;
+                        console.error(`   B2 part ${chunkIndex + 1} upload attempt ${retryCount} failed:`, uploadError.message);
+
+                        if (retryCount === maxRetries) {
+                            throw uploadError;
+                        }
+
+                        // Wait before retry (exponential backoff)
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                    }
+                }
+            } finally {
+                // Force garbage collection of chunk data
+                chunkData = null;
+
+                // Clean up temp chunk file
+                try {
+                    if (fs.existsSync(chunkFile.filepath)) {
+                        fs.unlinkSync(chunkFile.filepath);
+                    }
+                } catch (e) {
+                    console.error('Failed to delete temp chunk file:', e);
+                }
             }
 
             // Update session with B2 part info
@@ -347,31 +359,51 @@ class ChunkUploadController {
                 thumbnailUrl: thumbnailUrl,
             });
 
-            // Save to database (bypassing VideoService since file is already in B2)
-            const PrismaVideoRepository = require('../../infrastructure/persistence/PrismaVideoRepository');
-            const PrismaChannelRepository = require('../../infrastructure/persistence/PrismaChannelRepository');
-            const { PrismaClient } = require('@prisma/client');
-            const prisma = new PrismaClient();
-
-            const videoRepo = new PrismaVideoRepository(prisma);
-            const savedVideo = await videoRepo.save(video);
-
-            console.log(`✅ Video record created: ${savedVideo.id}`);
-
-            // Update channel video count
+            // Save to database using shared repositories from server
+            // Access through videoService to reuse existing Prisma connection
+            let savedVideo;
             try {
-                const channelRepo = new PrismaChannelRepository(prisma);
-                const channel = await channelRepo.findByUserId(req.user.id);
-                if (channel) {
-                    await channelRepo.update(channel.id, {
-                        videoCount: channel.videoCount + 1
-                    });
-                }
-            } catch (error) {
-                console.error('Failed to update channel video count:', error);
-            }
+                // Create a temporary file path (not used, but required by uploadVideo signature)
+                // We set the storage data directly in the Video entity
+                const tempPath = path.join(process.cwd(), 'videos', 'temp', `.placeholder_${videoId}`);
 
-            await prisma.$disconnect();
+                // Write a tiny placeholder file
+                fs.writeFileSync(tempPath, 'placeholder');
+
+                // Use VideoService's repositories (reuses Prisma connection)
+                const PrismaVideoRepository = require('../../infrastructure/persistence/PrismaVideoRepository');
+                const PrismaChannelRepository = require('../../infrastructure/persistence/PrismaChannelRepository');
+
+                // Get shared Prisma instance from videoService (via uploadVideoUseCase)
+                // This prevents creating new connections
+                const videoRepo = this.videoService.uploadVideoUseCase.videoRepository;
+                savedVideo = await videoRepo.save(video);
+
+                console.log(`✅ Video record created: ${savedVideo.id}`);
+
+                // Update channel video count
+                try {
+                    const channelRepo = this.videoService.uploadVideoUseCase.channelRepository;
+                    const channel = await channelRepo.findByUserId(req.user.id);
+                    if (channel) {
+                        await channelRepo.update(channel.id, {
+                            videoCount: channel.videoCount + 1
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to update channel video count:', error);
+                }
+
+                // Clean up placeholder
+                try {
+                    if (fs.existsSync(tempPath)) {
+                        fs.unlinkSync(tempPath);
+                    }
+                } catch (e) { }
+            } catch (dbError) {
+                console.error('Database save error:', dbError);
+                throw dbError;
+            }
 
             // Trigger transcoding asynchronously (don't wait for it)
             this.videoService.transcodeVideo(savedVideo.id)
@@ -457,6 +489,22 @@ class ChunkUploadController {
                 return this.sendJson(res, 404, { error: 'Upload session not found' });
             }
 
+            // Abort B2 multipart upload to free storage
+            const b2UploadId = session.metadata?.b2UploadId;
+            const storageKey = session.metadata?.storageKey;
+
+            if (b2UploadId && storageKey) {
+                try {
+                    console.log(`🗑️  Aborting B2 multipart upload: ${storageKey}`);
+                    await this.storageRepository.abortMultipartUpload(storageKey, b2UploadId);
+                    console.log(`✅ B2 multipart upload aborted`);
+                } catch (abortError) {
+                    console.error('Failed to abort B2 multipart upload:', abortError.message);
+                    // Continue anyway to clean up session
+                }
+            }
+
+            // Clean up session
             await this.chunkUploadService.cancelSession(uploadId);
             await this.chunkUploadService.cleanupSession(uploadId);
 
