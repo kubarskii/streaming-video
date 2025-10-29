@@ -63,11 +63,37 @@ class PrismaVideoRepository extends IVideoRepository {
     }
 
     async findAll(options = {}) {
-        const { limit = 50, offset = 0, status, userId, orderBy = 'uploadedAt', order = 'desc' } = options;
+        const { limit = 50, offset = 0, status, userId, search, orderBy = 'uploadedAt', order = 'desc' } = options;
 
         const where = {};
         if (status) where.status = status;
         if (userId) where.userId = userId;
+
+        // Add full-text search across video title, description, and channel name
+        // Note: SQLite LIKE is case-insensitive by default for ASCII characters
+        if (search && search.trim()) {
+            where.OR = [
+                {
+                    title: {
+                        contains: search
+                    }
+                },
+                {
+                    description: {
+                        contains: search
+                    }
+                },
+                {
+                    user: {
+                        channel: {
+                            name: {
+                                contains: search
+                            }
+                        }
+                    }
+                }
+            ];
+        }
 
         const records = await this.prisma.video.findMany({
             where,
@@ -80,6 +106,12 @@ class PrismaVideoRepository extends IVideoRepository {
                         id: true,
                         username: true,
                         email: true,
+                        channel: {
+                            select: {
+                                id: true,
+                                name: true,
+                            }
+                        }
                     }
                 }
             }
@@ -126,6 +158,32 @@ class PrismaVideoRepository extends IVideoRepository {
         const where = {};
         if (filter.status) where.status = filter.status;
         if (filter.userId) where.userId = filter.userId;
+
+        // Add full-text search across video title, description, and channel name
+        // Note: SQLite LIKE is case-insensitive by default for ASCII characters
+        if (filter.search && filter.search.trim()) {
+            where.OR = [
+                {
+                    title: {
+                        contains: filter.search
+                    }
+                },
+                {
+                    description: {
+                        contains: filter.search
+                    }
+                },
+                {
+                    user: {
+                        channel: {
+                            name: {
+                                contains: filter.search
+                            }
+                        }
+                    }
+                }
+            ];
+        }
 
         return await this.prisma.video.count({ where });
     }

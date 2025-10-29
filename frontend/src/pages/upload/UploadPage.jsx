@@ -75,9 +75,9 @@ export const UploadPage = () => {
         }
 
         // Validate file size (2GB max)
-        const maxSize = 2 * 1024 * 1024 * 1024;
+        const maxSize = 5 * 1024 * 1024 * 1024;
         if (selectedFile.size > maxSize) {
-            setError('File size must be less than 2GB');
+            setError('File size must be less than 5GB');
             return;
         }
 

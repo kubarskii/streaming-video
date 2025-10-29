@@ -1,0 +1,15 @@
+{
+    "lifecycleRules": [
+        {
+            "daysFromHidingToDeleting": 30,
+            "daysFromUploadingToHiding": null,
+            "fileNamePrefix": ""
+        },
+        {
+            "daysFromHidingToDeleting": null,
+            "daysFromUploadingToHiding": null,
+            "fileNamePrefix": "",
+            "daysFromStartingToCancelingUnfinishedLargeFiles": 1
+        }
+    ]
+}

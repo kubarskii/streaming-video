@@ -18,6 +18,7 @@ class ListVideosUseCase {
      * @param {number} [options.offset] - Offset for pagination (default: 0)
      * @param {string} [options.status] - Filter by status
      * @param {string} [options.userId] - Filter by user ID
+     * @param {string} [options.search] - Search query for video title, description, and channel name
      * @param {string} [options.orderBy] - Order by field (default: 'uploadedAt')
      * @param {string} [options.order] - Order direction: 'asc' or 'desc' (default: 'desc')
      * @returns {Promise<{videos: Video[], total: number, limit: number, offset: number, hasMore: boolean}>}
@@ -28,6 +29,7 @@ class ListVideosUseCase {
             offset = 0,
             status,
             userId,
+            search,
             orderBy = 'uploadedAt',
             order = 'desc'
         } = options;
@@ -38,12 +40,13 @@ class ListVideosUseCase {
             offset,
             status,
             userId,
+            search,
             orderBy,
             order,
         });
 
         // Get total count
-        const total = await this.videoRepository.count({ status, userId });
+        const total = await this.videoRepository.count({ status, userId, search });
 
         return {
             videos,

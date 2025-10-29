@@ -20,10 +20,10 @@ export const SearchBar = () => {
         <input
           type="text"
           className="header-search-input"
-          placeholder="Search videos..."
+          placeholder="Search videos, channels..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search videos"
+          aria-label="Search videos and channels"
         />
         <button
           type="submit"

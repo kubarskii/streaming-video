@@ -14,34 +14,30 @@ ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 class VideoTranscoder {
     constructor() {
-        // Define quality presets with target resolutions and bitrates
+        // Define quality presets with target heights and bitrates
+        // Width will be calculated based on source aspect ratio
         this.qualityPresets = {
             '240p': {
-                width: 426,
                 height: 240,
                 bitrate: '400k',
                 audioBitrate: '64k'
             },
             '360p': {
-                width: 640,
                 height: 360,
                 bitrate: '800k',
                 audioBitrate: '96k'
             },
             '480p': {
-                width: 854,
                 height: 480,
                 bitrate: '1400k',
                 audioBitrate: '128k'
             },
             '720p': {
-                width: 1280,
                 height: 720,
                 bitrate: '2800k',
                 audioBitrate: '128k'
             },
             '1080p': {
-                width: 1920,
                 height: 1080,
                 bitrate: '5000k',
                 audioBitrate: '192k'
@@ -96,32 +92,55 @@ class VideoTranscoder {
     }
 
     /**
+     * Calculate output dimensions while preserving aspect ratio
+     * @param {number} sourceWidth - Source video width
+     * @param {number} sourceHeight - Source video height
+     * @param {number} targetHeight - Target height for output
+     * @returns {{width: number, height: number}} Output dimensions
+     */
+    calculateDimensions(sourceWidth, sourceHeight, targetHeight) {
+        const aspectRatio = sourceWidth / sourceHeight;
+        const outputHeight = targetHeight;
+        const outputWidth = Math.round(outputHeight * aspectRatio);
+
+        // Ensure dimensions are divisible by 2 (required for H.264)
+        return {
+            width: outputWidth % 2 === 0 ? outputWidth : outputWidth + 1,
+            height: outputHeight % 2 === 0 ? outputHeight : outputHeight + 1
+        };
+    }
+
+    /**
      * Transcode video to a specific quality level
      * @param {string} inputPath - Path to source video
      * @param {string} outputPath - Path for output video
      * @param {string} quality - Quality level (e.g., "720p")
+     * @param {number} sourceWidth - Source video width
+     * @param {number} sourceHeight - Source video height
      * @param {Function} onProgress - Progress callback
      * @returns {Promise<{width: number, height: number, sizeBytes: number, bitrate: string}>}
      */
-    async transcodeToQuality(inputPath, outputPath, quality, onProgress = null) {
+    async transcodeToQuality(inputPath, outputPath, quality, sourceWidth, sourceHeight, onProgress = null) {
         const preset = this.qualityPresets[quality];
 
         if (!preset) {
             throw new Error(`Unknown quality preset: ${quality}`);
         }
 
-        return new Promise((resolve, reject) => {
-            let outputWidth = preset.width;
-            let outputHeight = preset.height;
+        // Calculate output dimensions preserving aspect ratio
+        const dimensions = this.calculateDimensions(sourceWidth, sourceHeight, preset.height);
 
+        return new Promise((resolve, reject) => {
             const command = ffmpeg(inputPath)
                 .output(outputPath)
                 .videoCodec('libx264')
                 .audioCodec('aac')
                 .videoBitrate(preset.bitrate)
                 .audioBitrate(preset.audioBitrate)
-                .size(`${preset.width}x${preset.height}`)
-                .autopad()
+                // Use scale filter to preserve aspect ratio (width=-2 ensures divisible by 2)
+                .videoFilters([
+                    `scale=-2:${preset.height}`
+                ])
                 .format('mp4')
                 .outputOptions([
                     '-preset fast',
@@ -145,8 +164,8 @@ class VideoTranscoder {
                 // Get output file size
                 const stats = fs.statSync(outputPath);
                 resolve({
-                    width: outputWidth,
-                    height: outputHeight,
+                    width: dimensions.width,
+                    height: dimensions.height,
                     sizeBytes: stats.size,
                     bitrate: preset.bitrate
                 });
@@ -200,6 +219,8 @@ class VideoTranscoder {
                     inputPath,
                     outputPath,
                     quality,
+                    metadata.width,
+                    metadata.height,
                     onProgress ? (progress) => onProgress(quality, progress) : null
                 );
 
@@ -209,7 +230,7 @@ class VideoTranscoder {
                     ...result
                 });
 
-                console.log(`✅ ${quality} complete: ${(result.sizeBytes / (1024 * 1024)).toFixed(2)} MB`);
+                console.log(`✅ ${quality} complete: ${(result.sizeBytes / (1024 * 1024)).toFixed(2)} MB (${result.width}x${result.height})`);
             } catch (error) {
                 console.error(`❌ Failed to transcode to ${quality}:`, error.message);
                 // Continue with other qualities even if one fails

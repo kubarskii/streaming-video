@@ -109,6 +109,10 @@ class VideoController {
                     id: video.user.id,
                     username: video.user.username,
                     email: video.user.email,
+                    channel: video.user.channel ? {
+                        id: video.user.channel.id,
+                        name: video.user.channel.name,
+                    } : null,
                 } : null,
             }));
 

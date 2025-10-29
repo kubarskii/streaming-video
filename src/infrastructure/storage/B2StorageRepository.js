@@ -93,13 +93,19 @@ class B2StorageRepository extends IStorageRepository {
 
     async delete(storageKey) {
         try {
+            // Note: With B2 versioning enabled, this creates a "hide marker"
+            // The file is hidden but not permanently deleted
+            // To permanently delete, you need to:
+            // 1. Configure lifecycle rules in B2 to clean up hidden files, OR
+            // 2. Manually delete all versions using B2 native API
+
             const command = new DeleteObjectCommand({
                 Bucket: this.bucket,
                 Key: storageKey,
             });
 
             await this.client.send(command);
-            console.log(`Successfully deleted from B2: ${storageKey}`);
+            console.log(`Successfully deleted from B2: ${storageKey} (hidden, not permanently deleted if versioning enabled)`);
             return true;
         } catch (error) {
             // If file doesn't exist (NoSuchKey), consider it already deleted (success)
