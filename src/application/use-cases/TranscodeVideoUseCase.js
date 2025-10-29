@@ -86,7 +86,11 @@ class TranscodeVideoUseCase {
                 }
             );
 
-            console.log(`✅ Transcoding complete. Generated ${transcodedVideos.length} qualities`);
+            if (transcodedVideos.length > 0) {
+                console.log(`✅ Transcoding complete. Generated ${transcodedVideos.length} qualities`);
+            } else {
+                console.log(`ℹ️  No transcoded qualities generated (source resolution too low)`);
+            }
 
             // Upload transcoded videos and save to database
             const qualityVariants = [];
@@ -141,7 +145,8 @@ class TranscodeVideoUseCase {
             let originalQualityLabel = `${originalHeight}p`;
 
             // If original matches a standard quality, use that label
-            if (originalHeight === 360) originalQualityLabel = '360p';
+            if (originalHeight === 240) originalQualityLabel = '240p';
+            else if (originalHeight === 360) originalQualityLabel = '360p';
             else if (originalHeight === 480) originalQualityLabel = '480p';
             else if (originalHeight === 720) originalQualityLabel = '720p';
             else if (originalHeight === 1080) originalQualityLabel = '1080p';

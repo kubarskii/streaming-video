@@ -16,6 +16,12 @@ class VideoTranscoder {
     constructor() {
         // Define quality presets with target resolutions and bitrates
         this.qualityPresets = {
+            '240p': {
+                width: 426,
+                height: 240,
+                bitrate: '400k',
+                audioBitrate: '64k'
+            },
             '360p': {
                 width: 640,
                 height: 360,
@@ -80,6 +86,7 @@ class VideoTranscoder {
 
         // Only generate qualities that are smaller than source (not equal)
         // We save the original separately, so no need to transcode to same quality
+        if (sourceHeight > 240) qualities.push('240p');
         if (sourceHeight > 360) qualities.push('360p');
         if (sourceHeight > 480) qualities.push('480p');
         if (sourceHeight > 720) qualities.push('720p');
@@ -176,7 +183,8 @@ class VideoTranscoder {
         console.log(`Generating qualities: ${qualitiesToGenerate.join(', ')}`);
 
         if (qualitiesToGenerate.length === 0) {
-            throw new Error('Source video resolution is too low for transcoding');
+            console.log('⚠️  Source video resolution is too low for transcoding. Will use original only.');
+            return []; // Return empty array, original will still be saved
         }
 
         // Transcode to each quality
