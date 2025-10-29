@@ -78,7 +78,16 @@ export const VideoCard = ({
                 <div className="ui-video-card__info">
                     <h3 className="ui-video-card__title">{video.title}</h3>
 
-                    {showUser && video.user && (
+                    {showUser && video.user && video.userId && (
+                        <Link
+                            to={`/channel/${video.userId}`}
+                            className="ui-video-card__author"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {video.user.username || video.user.name}
+                        </Link>
+                    )}
+                    {showUser && video.user && !video.userId && (
                         <div className="ui-video-card__author">
                             {video.user.username || video.user.name}
                         </div>

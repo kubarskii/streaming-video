@@ -36,7 +36,6 @@ body {
 
 .main-content {
   flex: 1;
-  padding-top: 24px;
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;

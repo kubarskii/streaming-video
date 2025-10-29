@@ -8,9 +8,12 @@ const https = require('https');
 const http = require('http');
 
 class StreamController {
-    constructor(videoService, storageRepository) {
+    constructor(videoService, storageRepository, incrementVideoViewsUseCase) {
         this.videoService = videoService;
         this.storageRepository = storageRepository;
+        this.incrementVideoViewsUseCase = incrementVideoViewsUseCase;
+        // Track viewed videos in this session to avoid duplicate counts
+        this.viewedVideos = new Set();
     }
 
     /**
@@ -28,6 +31,16 @@ class StreamController {
                 }
                 res.writeHead(404, { 'Content-Type': 'text/plain' });
                 return res.end('Video not found');
+            }
+
+            // Increment view count if this is the first time streaming this video in this session
+            // Only count initial request (not range requests for seeking)
+            if (this.incrementVideoViewsUseCase && !this.viewedVideos.has(video.id)) {
+                this.viewedVideos.add(video.id);
+                // Increment views asynchronously without blocking the stream
+                this.incrementVideoViewsUseCase.execute(video.id).catch(err => {
+                    console.error('Failed to increment video views:', err);
+                });
             }
 
             // For local storage, stream from filesystem

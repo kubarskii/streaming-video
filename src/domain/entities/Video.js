@@ -20,7 +20,8 @@ class Video {
         uploadedAt,
         updatedAt,
         userId,
-        thumbnailUrl
+        thumbnailUrl,
+        views = 0
     }) {
         this.id = id;
         this.title = title;
@@ -39,6 +40,7 @@ class Video {
         this.updatedAt = updatedAt;
         this.userId = userId;
         this.thumbnailUrl = thumbnailUrl;
+        this.views = views;
 
         this.validate();
     }
@@ -102,6 +104,10 @@ class Video {
         return `/video?file=${this.storageKey}`;
     }
 
+    incrementViews() {
+        this.views = (this.views || 0) + 1;
+    }
+
     // Convert to plain object for persistence
     toObject() {
         return {
@@ -121,7 +127,8 @@ class Video {
             uploadedAt: this.uploadedAt,
             updatedAt: this.updatedAt,
             userId: this.userId,
-            thumbnailUrl: this.thumbnailUrl
+            thumbnailUrl: this.thumbnailUrl,
+            views: this.views
         };
     }
 
@@ -150,7 +157,8 @@ class Video {
             uploadedAt: dbRecord.uploadedAt,
             updatedAt: dbRecord.updatedAt,
             userId: dbRecord.userId,
-            thumbnailUrl: dbRecord.thumbnailUrl
+            thumbnailUrl: dbRecord.thumbnailUrl,
+            views: dbRecord.views || 0
         });
     }
 }

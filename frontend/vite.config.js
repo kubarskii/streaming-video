@@ -7,6 +7,9 @@ export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory
   const env = loadEnv(mode, process.cwd(), '')
 
+  // Backend URL with fallback
+  const backendUrl = env.VITE_BACKEND_URL || 'http://localhost:3000'
+
   return {
     plugins: [react()],
     resolve: {
@@ -22,11 +25,19 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         '/api': {
-          target: env.VITE_BACKEND_URL,
+          target: backendUrl,
           changeOrigin: true,
+          configure: (proxy, options) => {
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              console.log('[Vite Proxy] →', req.method, req.url, '→', backendUrl + req.url);
+            });
+            proxy.on('proxyRes', (proxyRes, req, res) => {
+              console.log('[Vite Proxy] ←', proxyRes.statusCode, req.url);
+            });
+          },
         },
         '/video': {
-          target: env.VITE_BACKEND_URL,
+          target: backendUrl,
           changeOrigin: true,
         },
       },

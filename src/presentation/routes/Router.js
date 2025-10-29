@@ -5,11 +5,14 @@
 const { URL } = require('url');
 
 class Router {
-    constructor(videoController, streamController, authController, uploadController) {
+    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController) {
         this.videoController = videoController;
         this.streamController = streamController;
         this.authController = authController;
         this.uploadController = uploadController;
+        this.channelController = channelController;
+        this.subscriptionController = subscriptionController;
+        this.commentController = commentController;
     }
 
     /**
@@ -77,6 +80,62 @@ class Router {
                 return res.end('Missing ?file parameter');
             }
             return await this.streamController.streamVideo(req, res, fileName);
+        }
+
+        // Channel Routes
+        if (pathname === '/api/channels' && req.method === 'POST') {
+            return await this.channelController.createChannel(req, res);
+        }
+
+        if (pathname === '/api/channels' && req.method === 'GET') {
+            return await this.channelController.getChannel(req, res, queryParams);
+        }
+
+        if (pathname === '/api/channels/list' && req.method === 'GET') {
+            return await this.channelController.listChannels(req, res, queryParams);
+        }
+
+        if (pathname.match(/^\/api\/channels\/[^/]+$/) && req.method === 'PATCH') {
+            const channelId = pathname.split('/')[3];
+            return await this.channelController.updateChannel(req, res, channelId);
+        }
+
+        // Subscription Routes
+        if (pathname === '/api/subscriptions' && req.method === 'POST') {
+            return await this.subscriptionController.subscribe(req, res);
+        }
+
+        if (pathname === '/api/subscriptions' && req.method === 'GET') {
+            return await this.subscriptionController.getSubscriptions(req, res, queryParams);
+        }
+
+        if (pathname.match(/^\/api\/subscriptions\/[^/]+$/) && req.method === 'DELETE') {
+            const channelId = pathname.split('/')[3];
+            return await this.subscriptionController.unsubscribe(req, res, channelId);
+        }
+
+        if (pathname.match(/^\/api\/subscriptions\/[^/]+\/status$/) && req.method === 'GET') {
+            const channelId = pathname.split('/')[3];
+            return await this.subscriptionController.checkStatus(req, res, channelId);
+        }
+
+        // Comment Routes
+        if (pathname === '/api/comments' && req.method === 'POST') {
+            return await this.commentController.createComment(req, res);
+        }
+
+        if (pathname === '/api/comments' && req.method === 'GET') {
+            return await this.commentController.getComments(req, res, urlObj.searchParams);
+        }
+
+        if (pathname.match(/^\/api\/comments\/[^/]+$/) && req.method === 'PATCH') {
+            const commentId = pathname.split('/')[3];
+            return await this.commentController.updateComment(req, res, commentId);
+        }
+
+        if (pathname.match(/^\/api\/comments\/[^/]+$/) && req.method === 'DELETE') {
+            const commentId = pathname.split('/')[3];
+            return await this.commentController.deleteComment(req, res, commentId);
         }
 
         // Not found

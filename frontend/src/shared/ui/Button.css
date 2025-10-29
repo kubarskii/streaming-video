@@ -45,48 +45,63 @@
 
 /* Variants */
 .ui-button--primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: white;
+  border: 1px solid #667eea;
 }
 
 .ui-button--primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  background: #5568d3;
+  border-color: #5568d3;
 }
 
 .ui-button--primary:active:not(:disabled) {
-  transform: translateY(0);
+  background: #4c5fd4;
 }
 
 .ui-button--secondary {
-  background: transparent;
-  color: #667eea;
-  border: 1px solid #e5e7eb;
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
 }
 
 .ui-button--secondary:hover:not(:disabled) {
-  background: rgba(102, 126, 234, 0.05);
-  border-color: #667eea;
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.ui-button--secondary:active:not(:disabled) {
+  background: #f3f4f6;
 }
 
 .ui-button--danger {
   background: #ef4444;
   color: white;
+  border: 1px solid #ef4444;
 }
 
 .ui-button--danger:hover:not(:disabled) {
   background: #dc2626;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  border-color: #dc2626;
+}
+
+.ui-button--danger:active:not(:disabled) {
+  background: #b91c1c;
 }
 
 .ui-button--ghost {
   background: transparent;
-  color: #4b5563;
+  color: #6b7280;
+  border: 1px solid transparent;
 }
 
 .ui-button--ghost:hover:not(:disabled) {
   background: #f3f4f6;
+  color: #374151;
+}
+
+.ui-button--ghost:active:not(:disabled) {
+  background: #e5e7eb;
 }
 
 /* Full width */

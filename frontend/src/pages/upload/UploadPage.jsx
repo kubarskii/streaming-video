@@ -1,10 +1,16 @@
 // Pages: Upload Page
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useAuth } from '../../shared/context/AuthContext';
 import { videosAPI } from '../../shared/api/videos';
+import { channelsAPI } from '../../shared/api/channels';
+import { Button, EmptyState } from '../../shared/ui';
 import './UploadPage.css';
 
 export const UploadPage = () => {
+    const { user } = useAuth();
+    const [channel, setChannel] = useState(null);
+    const [checkingChannel, setCheckingChannel] = useState(true);
     const [file, setFile] = useState(null);
     const [thumbnail, setThumbnail] = useState(null);
     const [thumbnailPreview, setThumbnailPreview] = useState(null);
@@ -17,6 +23,28 @@ export const UploadPage = () => {
     const fileInputRef = useRef(null);
     const thumbnailInputRef = useRef(null);
     const navigate = useNavigate();
+
+    // Check if user has a channel
+    useEffect(() => {
+        const checkChannel = async () => {
+            if (!user?.id) {
+                setCheckingChannel(false);
+                return;
+            }
+
+            try {
+                const channelData = await channelsAPI.getChannel({ userId: user.id });
+                setChannel(channelData);
+            } catch (err) {
+                // User doesn't have a channel
+                setChannel(null);
+            } finally {
+                setCheckingChannel(false);
+            }
+        };
+
+        checkChannel();
+    }, [user]);
 
     const handleDrag = (e) => {
         e.preventDefault();
@@ -147,6 +175,42 @@ export const UploadPage = () => {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     };
+
+    // Show loading while checking for channel
+    if (checkingChannel) {
+        return (
+            <div className="upload-page">
+                <div className="upload-container">
+                    <div className="loading">Checking your channel...</div>
+                </div>
+            </div>
+        );
+    }
+
+    // Show prompt to create channel if user doesn't have one
+    if (!channel) {
+        return (
+            <div className="upload-page">
+                <div className="upload-container">
+                    <EmptyState
+                        icon={
+                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                                <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" />
+                                <path d="M32 20v24M20 32h24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                        }
+                        title="Create Your Channel First"
+                        message="You need to create a channel before you can upload videos. Channels help organize your content and let others discover your videos."
+                        action={
+                            <Button onClick={() => navigate({ to: '/profile' })}>
+                                Create Channel
+                            </Button>
+                        }
+                    />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="upload-page">

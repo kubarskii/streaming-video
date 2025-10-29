@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from '@tanstack/react-router';
 import { videosAPI } from '../../shared/api/videos';
 import { useAuth } from '../../shared/context/AuthContext';
+import { CommentsSection } from '../../shared/ui';
 import './VideoPage.css';
 
 export const VideoPage = () => {
@@ -116,6 +117,14 @@ export const VideoPage = () => {
                         )}
                     </div>
 
+                    {video.userId && (
+                        <div className="video-channel">
+                            <Link to={`/channel/${video.userId}`} className="channel-link">
+                                View Channel
+                            </Link>
+                        </div>
+                    )}
+
                     {video.description && (
                         <div className="video-description">
                             <p>{video.description}</p>
@@ -146,6 +155,9 @@ export const VideoPage = () => {
                             <span className="metadata-value">{video.mimeType}</span>
                         </div>
                     </div>
+
+                    {/* Comments Section */}
+                    <CommentsSection videoId={video.id} />
                 </div>
             </div>
         </div>

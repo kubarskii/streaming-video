@@ -96,12 +96,7 @@ export const HomePage = () => {
                     <EmptyState
                         icon={<VideoEmptyIcon />}
                         title="No videos yet"
-                        description="Be the first to upload a video!"
-                        action={
-                            <Link to="/upload">
-                                <Button variant="primary">Upload Video</Button>
-                            </Link>
-                        }
+                        description="Check back soon for new content!"
                     />
                 )}
             </div>

@@ -5,9 +5,10 @@
 const path = require('path');
 
 class DeleteVideoUseCase {
-    constructor(videoRepository, storageRepository) {
+    constructor(videoRepository, storageRepository, channelRepository) {
         this.videoRepository = videoRepository;
         this.storageRepository = storageRepository;
+        this.channelRepository = channelRepository;
     }
 
     /**
@@ -65,6 +66,21 @@ class DeleteVideoUseCase {
 
             if (!deleted) {
                 throw new Error('Failed to delete video from database');
+            }
+
+            // 4. Decrement channel video count
+            if (video.userId && this.channelRepository) {
+                try {
+                    const channel = await this.channelRepository.findByUserId(video.userId);
+                    if (channel && channel.videoCount > 0) {
+                        await this.channelRepository.update(channel.id, {
+                            videoCount: channel.videoCount - 1
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to update channel video count:', error);
+                    // Don't fail the deletion if count update fails
+                }
             }
 
             // If there were storage errors, log warning

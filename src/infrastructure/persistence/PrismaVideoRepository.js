@@ -120,6 +120,17 @@ class PrismaVideoRepository extends IVideoRepository {
 
         return await this.prisma.video.count({ where });
     }
+
+    async incrementViews(id) {
+        await this.prisma.video.update({
+            where: { id },
+            data: {
+                views: {
+                    increment: 1
+                }
+            }
+        });
+    }
 }
 
 module.exports = PrismaVideoRepository;

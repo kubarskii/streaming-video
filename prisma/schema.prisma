@@ -10,24 +10,58 @@ datasource db {
 }
 
 model User {
-  id            String   @id
-  email         String   @unique
-  username      String   @unique
+  id            String         @id
+  email         String         @unique
+  username      String         @unique
   passwordHash  String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   videos        Video[]
+  channel       Channel?
+  subscriptions Subscription[]
+  comments      Comment[]
   
   @@index([email])
   @@index([username])
 }
 
+model Channel {
+  id               String         @id
+  userId           String         @unique
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  description      String?
+  avatarUrl        String?
+  bannerUrl        String?
+  subscriberCount  Int            @default(0)
+  videoCount       Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  subscriptions    Subscription[]
+  
+  @@index([userId])
+  @@index([subscriberCount])
+}
+
+model Subscription {
+  id          String   @id
+  userId      String
+  channelId   String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  subscribedAt DateTime @default(now())
+  
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@index([channelId])
+}
+
 model Video {
-  id            String   @id
+  id            String    @id
   title         String
   description   String?
-  fileName      String   @unique
-  storageKey    String   @unique
+  fileName      String    @unique
+  storageKey    String    @unique
   storageUrl    String
   cdnUrl        String?
   mimeType      String
@@ -35,16 +69,32 @@ model Video {
   durationMs    Int?
   width         Int?
   height        Int?
-  status        String   @default("ready") // pending, processing, ready, failed
-  uploadedAt    DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  status        String    @default("ready") // pending, processing, ready, failed
+  uploadedAt    DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   userId        String?
-  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   thumbnailUrl  String?
-  views         Int      @default(0)
+  views         Int       @default(0)
+  comments      Comment[]
   
   @@index([status])
   @@index([uploadedAt])
   @@index([userId])
+}
+
+model Comment {
+  id        String   @id
+  videoId   String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([videoId])
+  @@index([userId])
+  @@index([createdAt])
 }
 

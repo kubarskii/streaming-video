@@ -10,11 +10,11 @@ const UpdateVideoMetadataUseCase = require('../use-cases/UpdateVideoMetadataUseC
 const UpdateVideoThumbnailUseCase = require('../use-cases/UpdateVideoThumbnailUseCase');
 
 class VideoService {
-    constructor(videoRepository, storageRepository, thumbnailGenerator) {
-        this.uploadVideoUseCase = new UploadVideoUseCase(videoRepository, storageRepository, thumbnailGenerator);
+    constructor(videoRepository, storageRepository, thumbnailGenerator, channelRepository) {
+        this.uploadVideoUseCase = new UploadVideoUseCase(videoRepository, storageRepository, thumbnailGenerator, channelRepository);
         this.getVideoUseCase = new GetVideoUseCase(videoRepository);
         this.listVideosUseCase = new ListVideosUseCase(videoRepository);
-        this.deleteVideoUseCase = new DeleteVideoUseCase(videoRepository, storageRepository);
+        this.deleteVideoUseCase = new DeleteVideoUseCase(videoRepository, storageRepository, channelRepository);
         this.updateVideoMetadataUseCase = new UpdateVideoMetadataUseCase(videoRepository);
         this.updateVideoThumbnailUseCase = new UpdateVideoThumbnailUseCase(videoRepository, storageRepository);
     }

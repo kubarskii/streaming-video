@@ -8,10 +8,18 @@ const Video = require('../../domain/entities/Video');
 const VideoStatus = require('../../domain/value-objects/VideoStatus');
 
 class UploadVideoUseCase {
-    constructor(videoRepository, storageRepository, thumbnailGenerator) {
+    /**
+     * Creates an instance of UploadVideoUseCase.
+     * @param {import('../../domain/repositories/IVideoRepository')} videoRepository - Repository for video persistence
+     * @param {import('../../domain/repositories/IStorageRepository')} storageRepository - Repository for file storage operations
+     * @param {import('../../infrastructure/media/ThumbnailGenerator')} thumbnailGenerator - Service for generating video thumbnails
+     * @param {import('../../domain/repositories/IChannelRepository')} channelRepository - Repository for channel operations
+     */
+    constructor(videoRepository, storageRepository, thumbnailGenerator, channelRepository) {
         this.videoRepository = videoRepository;
         this.storageRepository = storageRepository;
         this.thumbnailGenerator = thumbnailGenerator;
+        this.channelRepository = channelRepository;
     }
 
     /**
@@ -47,6 +55,16 @@ class UploadVideoUseCase {
         }
         if (!input.sizeBytes) {
             throw new Error('File size is required');
+        }
+
+        // Require user to have a channel
+        if (!input.userId) {
+            throw new Error('You must be logged in to upload videos');
+        }
+
+        const channel = await this.channelRepository.findByUserId(input.userId);
+        if (!channel) {
+            throw new Error('You must create a channel before uploading videos');
         }
 
         // Generate unique ID and storage key
@@ -177,6 +195,16 @@ class UploadVideoUseCase {
 
         // Save to database
         const savedVideo = await this.videoRepository.save(video);
+
+        // Increment channel video count
+        try {
+            await this.channelRepository.update(channel.id, {
+                videoCount: channel.videoCount + 1
+            });
+        } catch (error) {
+            console.error('Failed to update channel video count:', error);
+            // Don't fail the upload if count update fails
+        }
 
         return savedVideo;
     }

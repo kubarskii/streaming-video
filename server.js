@@ -13,19 +13,40 @@ const DatabaseConfig = require('./src/infrastructure/config/DatabaseConfig');
 const StorageConfig = require('./src/infrastructure/config/StorageConfig');
 const PrismaVideoRepository = require('./src/infrastructure/persistence/PrismaVideoRepository');
 const PrismaUserRepository = require('./src/infrastructure/persistence/PrismaUserRepository');
+const PrismaChannelRepository = require('./src/infrastructure/persistence/PrismaChannelRepository');
+const PrismaSubscriptionRepository = require('./src/infrastructure/persistence/PrismaSubscriptionRepository');
+const PrismaCommentRepository = require('./src/infrastructure/persistence/PrismaCommentRepository');
 const PasswordHasher = require('./src/infrastructure/auth/PasswordHasher');
 const JWTService = require('./src/infrastructure/auth/JWTService');
 const ThumbnailGenerator = require('./src/infrastructure/media/ThumbnailGenerator');
 
-// Application
+// Application - Services
 const VideoService = require('./src/application/services/VideoService');
 const AuthService = require('./src/application/services/AuthService');
+
+// Application - Use Cases
+const CreateChannelUseCase = require('./src/application/use-cases/CreateChannelUseCase');
+const GetChannelUseCase = require('./src/application/use-cases/GetChannelUseCase');
+const UpdateChannelUseCase = require('./src/application/use-cases/UpdateChannelUseCase');
+const ListChannelsUseCase = require('./src/application/use-cases/ListChannelsUseCase');
+const SubscribeToChannelUseCase = require('./src/application/use-cases/SubscribeToChannelUseCase');
+const UnsubscribeFromChannelUseCase = require('./src/application/use-cases/UnsubscribeFromChannelUseCase');
+const GetUserSubscriptionsUseCase = require('./src/application/use-cases/GetUserSubscriptionsUseCase');
+const CheckSubscriptionStatusUseCase = require('./src/application/use-cases/CheckSubscriptionStatusUseCase');
+const IncrementVideoViewsUseCase = require('./src/application/use-cases/IncrementVideoViewsUseCase');
+const CreateCommentUseCase = require('./src/application/use-cases/CreateCommentUseCase');
+const GetVideoCommentsUseCase = require('./src/application/use-cases/GetVideoCommentsUseCase');
+const UpdateCommentUseCase = require('./src/application/use-cases/UpdateCommentUseCase');
+const DeleteCommentUseCase = require('./src/application/use-cases/DeleteCommentUseCase');
 
 // Presentation
 const VideoController = require('./src/presentation/controllers/VideoController');
 const StreamController = require('./src/presentation/controllers/StreamController');
 const AuthController = require('./src/presentation/controllers/AuthController');
 const UploadController = require('./src/presentation/controllers/UploadController');
+const ChannelController = require('./src/presentation/controllers/ChannelController');
+const SubscriptionController = require('./src/presentation/controllers/SubscriptionController');
+const CommentController = require('./src/presentation/controllers/CommentController');
 const Router = require('./src/presentation/routes/Router');
 const corsMiddleware = require('./src/presentation/middleware/corsMiddleware');
 const { authMiddleware } = require('./src/presentation/middleware/authMiddleware');
@@ -35,8 +56,8 @@ const HOST = process.env.HOST || '127.0.0.1';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const SPA_STATIC_PATHS = new Set(['/', '/login', '/register', '/upload', '/profile']);
-const SPA_PREFIXES = ['/video/'];
+const SPA_STATIC_PATHS = new Set(['/', '/login', '/register', '/upload', '/profile', '/channels', '/subscriptions']);
+const SPA_PREFIXES = ['/video/', '/channel/'];
 
 // Dependency Injection Container
 class Container {
@@ -45,21 +66,65 @@ class Container {
         const prismaClient = DatabaseConfig.getPrismaClient();
         const videoRepository = new PrismaVideoRepository(prismaClient);
         const userRepository = new PrismaUserRepository(prismaClient);
+        const channelRepository = new PrismaChannelRepository(prismaClient);
+        const subscriptionRepository = new PrismaSubscriptionRepository(prismaClient);
+        const commentRepository = new PrismaCommentRepository(prismaClient);
         const storageRepository = StorageConfig.createStorageRepository();
         const passwordHasher = new PasswordHasher();
         const jwtService = new JWTService();
         const thumbnailGenerator = new ThumbnailGenerator();
 
-        // Application layer
-        const videoService = new VideoService(videoRepository, storageRepository, thumbnailGenerator);
+        // Application layer - Services
+        const videoService = new VideoService(videoRepository, storageRepository, thumbnailGenerator, channelRepository);
         const authService = new AuthService(userRepository, passwordHasher, jwtService);
+
+        // Application layer - Use Cases
+        const createChannelUseCase = new CreateChannelUseCase(channelRepository, userRepository);
+        const getChannelUseCase = new GetChannelUseCase(channelRepository);
+        const updateChannelUseCase = new UpdateChannelUseCase(channelRepository);
+        const listChannelsUseCase = new ListChannelsUseCase(channelRepository);
+        const subscribeToChannelUseCase = new SubscribeToChannelUseCase(subscriptionRepository, channelRepository);
+        const unsubscribeFromChannelUseCase = new UnsubscribeFromChannelUseCase(subscriptionRepository, channelRepository);
+        const getUserSubscriptionsUseCase = new GetUserSubscriptionsUseCase(subscriptionRepository);
+        const checkSubscriptionStatusUseCase = new CheckSubscriptionStatusUseCase(subscriptionRepository);
+        const incrementVideoViewsUseCase = new IncrementVideoViewsUseCase(videoRepository);
+        const createCommentUseCase = new CreateCommentUseCase(commentRepository, videoRepository);
+        const getVideoCommentsUseCase = new GetVideoCommentsUseCase(commentRepository);
+        const updateCommentUseCase = new UpdateCommentUseCase(commentRepository);
+        const deleteCommentUseCase = new DeleteCommentUseCase(commentRepository);
 
         // Presentation layer
         const videoController = new VideoController(videoService);
-        const streamController = new StreamController(videoService, storageRepository);
+        const streamController = new StreamController(videoService, storageRepository, incrementVideoViewsUseCase);
         const authController = new AuthController(authService);
         const uploadController = new UploadController(videoService);
-        const router = new Router(videoController, streamController, authController, uploadController);
+        const channelController = new ChannelController(
+            createChannelUseCase,
+            getChannelUseCase,
+            updateChannelUseCase,
+            listChannelsUseCase
+        );
+        const subscriptionController = new SubscriptionController(
+            subscribeToChannelUseCase,
+            unsubscribeFromChannelUseCase,
+            getUserSubscriptionsUseCase,
+            checkSubscriptionStatusUseCase
+        );
+        const commentController = new CommentController(
+            createCommentUseCase,
+            getVideoCommentsUseCase,
+            updateCommentUseCase,
+            deleteCommentUseCase
+        );
+        const router = new Router(
+            videoController,
+            streamController,
+            authController,
+            uploadController,
+            channelController,
+            subscriptionController,
+            commentController
+        );
 
         return { router, prismaClient, storageRepository, authService };
     }

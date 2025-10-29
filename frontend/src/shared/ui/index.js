@@ -5,6 +5,9 @@
  * Following FSD principles, only these exports are available to other layers.
  */
 
+// Layout System
+export { Container, Flex, FlexItem, Stack, Box, Section } from './Layout';
+
 // Form Components
 export { Button } from './Button';
 export { Input } from './Input';
@@ -23,6 +26,9 @@ export { ProfileVideoCard, ProfileVideoGrid } from './ProfileVideoCard';
 
 // Overlay
 export { Modal, ConfirmDialog } from './Modal';
+
+// Comments
+export { CommentsSection, CommentForm, CommentItem } from './Comments';
 
 // Icons - Export all icons
 export * from './Icons';

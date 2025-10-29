@@ -1,14 +1,18 @@
 import './Button.css';
 
 /**
- * Reusable Button Component
+ * Reusable Button Component (Shared UI Kit)
+ * Following FSD architecture - shared/ui layer
  * 
- * @param {string} variant - 'primary' | 'secondary' | 'danger' | 'ghost'
- * @param {string} size - 'small' | 'medium' | 'large'
- * @param {boolean} fullWidth - Makes button full width
- * @param {boolean} loading - Shows loading state
- * @param {React.ReactNode} icon - Optional icon element
- * @param {React.ReactNode} children - Button content
+ * @param {Object} props - Button properties
+ * @param {'primary' | 'secondary' | 'danger' | 'ghost'} props.variant - Button style variant
+ * @param {'small' | 'medium' | 'large'} props.size - Button size
+ * @param {boolean} props.fullWidth - Makes button full width
+ * @param {boolean} props.loading - Shows loading state
+ * @param {boolean} props.disabled - Disables button
+ * @param {React.ReactNode} props.icon - Optional icon element
+ * @param {React.ReactNode} props.children - Button content
+ * @param {string} props.className - Additional CSS classes
  */
 export const Button = ({
     variant = 'primary',

@@ -7,6 +7,9 @@ import { LoginPage } from '../pages/auth/LoginPage';
 import { RegisterPage } from '../pages/auth/RegisterPage';
 import { UploadPageProtected } from '../pages/upload/UploadPageProtected';
 import { ProfilePage } from '../pages/profile/ProfilePage';
+import { ChannelPage } from '../pages/channel/ChannelPage';
+import { ChannelsListPage } from '../pages/channels/ChannelsListPage';
+import { SubscriptionsPage } from '../pages/subscriptions/SubscriptionsPage';
 
 // Root route
 const rootRoute = createRootRoute({
@@ -60,6 +63,27 @@ const profileRoute = createRoute({
     component: ProfilePage,
 });
 
+// Channel route
+const channelRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/channel/$userId',
+    component: ChannelPage,
+});
+
+// Channels list route
+const channelsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/channels',
+    component: ChannelsListPage,
+});
+
+// Subscriptions route (protected)
+const subscriptionsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/subscriptions',
+    component: SubscriptionsPage,
+});
+
 // Route tree
 const routeTree = rootRoute.addChildren([
     indexRoute,
@@ -68,6 +92,9 @@ const routeTree = rootRoute.addChildren([
     registerRoute,
     uploadRoute,
     profileRoute,
+    channelRoute,
+    channelsRoute,
+    subscriptionsRoute,
 ]);
 
 // Create router

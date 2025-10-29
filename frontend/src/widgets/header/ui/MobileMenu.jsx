@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { Avatar, Button } from '../../../shared/ui';
-import { UploadIcon, UserIcon, LogoutIcon, CloseIcon } from '../../../shared/ui';
+import { UserIcon, LogoutIcon, CloseIcon } from '../../../shared/ui';
 
 export const MobileMenu = ({ isOpen, isAuthenticated, user, onClose, onLogout }) => {
     const handleLogout = async () => {
@@ -36,34 +36,42 @@ export const MobileMenu = ({ isOpen, isAuthenticated, user, onClose, onLogout })
                                 </div>
                             </div>
                             <div className="header-mobile-divider" />
-                            <Link to="/upload" className="header-mobile-item" onClick={onClose}>
-                                <UploadIcon size={22} />
-                                <span>Upload Video</span>
+                            <Link to="/channels" className="header-mobile-item" onClick={onClose}>
+                                <span>Channels</span>
                             </Link>
+                            <Link to="/subscriptions" className="header-mobile-item" onClick={onClose}>
+                                <span>Subscriptions</span>
+                            </Link>
+                            <div className="header-mobile-divider" />
                             <Link to="/profile" className="header-mobile-item" onClick={onClose}>
                                 <UserIcon size={22} />
                                 <span>My Profile</span>
                             </Link>
-                            <div className="header-mobile-divider" />
                             <button onClick={handleLogout} className="header-mobile-item header-mobile-item--logout">
                                 <LogoutIcon size={22} />
                                 <span>Sign Out</span>
                             </button>
                         </>
                     ) : (
-                        <div className="header-mobile-auth">
-                            <p className="header-mobile-auth-text">Sign in to upload and manage your videos</p>
-                            <Link to="/login" onClick={onClose}>
-                                <Button variant="secondary" fullWidth size="large">
-                                    Sign In
-                                </Button>
+                        <>
+                            <Link to="/channels" className="header-mobile-item" onClick={onClose}>
+                                <span>Channels</span>
                             </Link>
-                            <Link to="/register" onClick={onClose}>
-                                <Button variant="primary" fullWidth size="large">
-                                    Get Started
-                                </Button>
-                            </Link>
-                        </div>
+                            <div className="header-mobile-divider" />
+                            <div className="header-mobile-auth">
+                                <p className="header-mobile-auth-text">Sign in to upload and manage your videos</p>
+                                <Link to="/login" onClick={onClose}>
+                                    <Button variant="secondary" fullWidth size="large">
+                                        Sign In
+                                    </Button>
+                                </Link>
+                                <Link to="/register" onClick={onClose}>
+                                    <Button variant="primary" fullWidth size="large">
+                                        Get Started
+                                    </Button>
+                                </Link>
+                            </div>
+                        </>
                     )}
                 </nav>
             </aside>

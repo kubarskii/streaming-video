@@ -1,0 +1,401 @@
+/**
+ * Layout System Styles - Shared UI
+ * Following FSD architecture - shared/ui layer
+ * 
+ * Responsive flexbox-based layout system
+ */
+
+/* ============================================
+   Container
+   ============================================ */
+.ui-container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+.ui-container--narrow {
+  max-width: 800px;
+}
+
+.ui-container--normal {
+  max-width: 1200px;
+}
+
+.ui-container--wide {
+  max-width: 1440px;
+}
+
+.ui-container--full {
+  max-width: 100%;
+}
+
+.ui-container--no-padding {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* ============================================
+   Flex
+   ============================================ */
+.ui-flex {
+  display: flex;
+}
+
+/* Direction */
+.ui-flex--row {
+  flex-direction: row;
+}
+
+.ui-flex--column {
+  flex-direction: column;
+}
+
+.ui-flex--row-reverse {
+  flex-direction: row-reverse;
+}
+
+.ui-flex--column-reverse {
+  flex-direction: column-reverse;
+}
+
+/* Justify */
+.ui-flex--justify-flex-start {
+  justify-content: flex-start;
+}
+
+.ui-flex--justify-center {
+  justify-content: center;
+}
+
+.ui-flex--justify-flex-end {
+  justify-content: flex-end;
+}
+
+.ui-flex--justify-space-between {
+  justify-content: space-between;
+}
+
+.ui-flex--justify-space-around {
+  justify-content: space-around;
+}
+
+.ui-flex--justify-space-evenly {
+  justify-content: space-evenly;
+}
+
+/* Align */
+.ui-flex--align-flex-start {
+  align-items: flex-start;
+}
+
+.ui-flex--align-center {
+  align-items: center;
+}
+
+.ui-flex--align-flex-end {
+  align-items: flex-end;
+}
+
+.ui-flex--align-stretch {
+  align-items: stretch;
+}
+
+.ui-flex--align-baseline {
+  align-items: baseline;
+}
+
+/* Wrap */
+.ui-flex--wrap-nowrap {
+  flex-wrap: nowrap;
+}
+
+.ui-flex--wrap-wrap {
+  flex-wrap: wrap;
+}
+
+.ui-flex--wrap-wrap-reverse {
+  flex-wrap: wrap-reverse;
+}
+
+/* Gap */
+.ui-flex--gap-xs {
+  gap: 0.25rem;
+}
+
+.ui-flex--gap-sm {
+  gap: 0.5rem;
+}
+
+.ui-flex--gap-md {
+  gap: 1rem;
+}
+
+.ui-flex--gap-lg {
+  gap: 1.5rem;
+}
+
+.ui-flex--gap-xl {
+  gap: 2rem;
+}
+
+/* Full Width/Height */
+.ui-flex--full-width {
+  width: 100%;
+}
+
+.ui-flex--full-height {
+  height: 100%;
+}
+
+/* ============================================
+   FlexItem
+   ============================================ */
+.ui-flex-item {
+  /* Flex properties are set inline via props */
+}
+
+/* ============================================
+   Stack
+   ============================================ */
+.ui-stack {
+  display: flex;
+}
+
+/* Direction */
+.ui-stack--vertical {
+  flex-direction: column;
+}
+
+.ui-stack--horizontal {
+  flex-direction: row;
+}
+
+/* Spacing */
+.ui-stack--spacing-none {
+  gap: 0;
+}
+
+.ui-stack--spacing-xs {
+  gap: 0.25rem;
+}
+
+.ui-stack--spacing-sm {
+  gap: 0.5rem;
+}
+
+.ui-stack--spacing-md {
+  gap: 1rem;
+}
+
+.ui-stack--spacing-lg {
+  gap: 1.5rem;
+}
+
+.ui-stack--spacing-xl {
+  gap: 2rem;
+}
+
+/* Justify */
+.ui-stack--justify-flex-start {
+  justify-content: flex-start;
+}
+
+.ui-stack--justify-center {
+  justify-content: center;
+}
+
+.ui-stack--justify-flex-end {
+  justify-content: flex-end;
+}
+
+.ui-stack--justify-space-between {
+  justify-content: space-between;
+}
+
+.ui-stack--justify-space-around {
+  justify-content: space-around;
+}
+
+/* Align */
+.ui-stack--align-flex-start {
+  align-items: flex-start;
+}
+
+.ui-stack--align-center {
+  align-items: center;
+}
+
+.ui-stack--align-flex-end {
+  align-items: flex-end;
+}
+
+.ui-stack--align-stretch {
+  align-items: stretch;
+}
+
+.ui-stack--align-baseline {
+  align-items: baseline;
+}
+
+/* Wrap */
+.ui-stack--wrap {
+  flex-wrap: wrap;
+}
+
+/* Full Width */
+.ui-stack--full-width {
+  width: 100%;
+}
+
+/* ============================================
+   Box
+   ============================================ */
+.ui-box {
+  background: white;
+  border-radius: 0.75rem;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* Padding */
+.ui-box--padding-none {
+  padding: 0;
+}
+
+.ui-box--padding-sm {
+  padding: 1rem;
+}
+
+.ui-box--padding-md {
+  padding: 1.5rem;
+}
+
+.ui-box--padding-lg {
+  padding: 2rem;
+}
+
+/* Shadow */
+.ui-box--shadow-none {
+  box-shadow: none;
+}
+
+.ui-box--shadow-sm {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.ui-box--shadow-md {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.ui-box--shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Border */
+.ui-box--bordered {
+  border: 1px solid #e5e7eb;
+}
+
+/* Hoverable */
+.ui-box--hoverable {
+  cursor: pointer;
+}
+
+.ui-box--hoverable:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+/* ============================================
+   Section
+   ============================================ */
+.ui-section {
+  width: 100%;
+}
+
+/* Spacing */
+.ui-section--spacing-xs {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.ui-section--spacing-sm {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.ui-section--spacing-md {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.ui-section--spacing-lg {
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.ui-section--spacing-xl {
+  padding-top: 3rem;
+  padding-bottom: 3rem;
+}
+
+/* Bordered */
+.ui-section--bordered {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Background */
+.ui-section--background {
+  background: #f9fafb;
+}
+
+/* ============================================
+   Responsive Utilities
+   ============================================ */
+@media (max-width: 768px) {
+  .ui-container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Stack becomes vertical on mobile by default */
+  .ui-stack--horizontal {
+    flex-direction: column;
+  }
+
+  /* Reduce box padding on mobile */
+  .ui-box--padding-md {
+    padding: 1rem;
+  }
+
+  .ui-box--padding-lg {
+    padding: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .ui-container {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  /* Further reduce spacing on small screens */
+  .ui-flex--gap-lg {
+    gap: 1rem;
+  }
+
+  .ui-flex--gap-xl {
+    gap: 1.5rem;
+  }
+
+  .ui-stack--spacing-lg {
+    gap: 1rem;
+  }
+
+  .ui-stack--spacing-xl {
+    gap: 1.5rem;
+  }
+}
+

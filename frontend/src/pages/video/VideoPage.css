@@ -72,6 +72,28 @@
   border-color: var(--error-color);
 }
 
+.video-channel {
+  padding: 12px 0;
+  margin-bottom: 16px;
+}
+
+.channel-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-radius: 18px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.channel-link:hover {
+  background: var(--bg-hover);
+}
+
 .video-description {
   background: var(--bg-secondary);
   border-radius: 12px;
