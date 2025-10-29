@@ -22,7 +22,7 @@ const { ZodError } = require('zod');
  * @param {ZodError} error - Zod validation error object
  * @returns {{error: string, details: Object.<string, string[]>, fields: string[]}} Formatted error response
  * @description Transforms Zod's technical validation errors into a client-friendly format
- * with field-specific error messages
+ * with field-specific error messages. Note: ZodError uses 'issues' property, not 'errors'.
  * @example
  * // Input: ZodError with multiple field errors
  * // Output:
@@ -39,16 +39,24 @@ function formatValidationErrors(error) {
     /** @type {Object.<string, string[]>} */
     const errors = {};
     
-    // @ts-ignore - ZodError has errors property
-    error.errors.forEach((err) => {
-        const path = err.path.join('.');
-        const field = path || 'general';
+    // Check if error has issues array (ZodError structure uses 'issues', not 'errors')
+    if (!error || !error.issues || !Array.isArray(error.issues)) {
+        return {
+            error: 'Validation failed',
+            details: { general: [error?.message || 'Unknown validation error'] },
+            fields: ['general']
+        };
+    }
+    
+    error.issues.forEach((err) => {
+        const path = err.path && err.path.length > 0 ? err.path.join('.') : 'general';
+        const field = path;
         
         if (!errors[field]) {
             errors[field] = [];
         }
         
-        errors[field].push(err.message);
+        errors[field].push(err.message || 'Validation error');
     });
     
     return {
