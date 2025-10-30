@@ -292,6 +292,60 @@ const getSubscriptionsQuerySchema = z.object({
 });
 
 // ============================================================================
+// Playlist Schemas
+// ============================================================================
+
+const playlistTitleSchema = z.string()
+    .min(1, 'Title is required')
+    .max(200, 'Title must be at most 200 characters')
+    .trim();
+
+const playlistDescriptionSchema = z.string()
+    .max(5000, 'Description must be at most 5000 characters')
+    .optional()
+    .nullable();
+
+const playlistSlugSchema = z.string()
+    .min(3, 'Slug must be at least 3 characters')
+    .max(100, 'Slug must be at most 100 characters')
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug can only contain lowercase letters, numbers, and hyphens')
+    .optional()
+    .nullable();
+
+const createPlaylistSchema = z.object({
+    title: playlistTitleSchema,
+    description: playlistDescriptionSchema,
+    isPublic: z.boolean().optional(),
+    slug: playlistSlugSchema,
+    videoIds: z.array(uuidSchema).optional()
+});
+
+const updatePlaylistSchema = z.object({
+    title: playlistTitleSchema.optional(),
+    description: playlistDescriptionSchema,
+    isPublic: z.boolean().optional(),
+    slug: playlistSlugSchema
+}).refine(
+    (data) => data.title !== undefined || data.description !== undefined || data.isPublic !== undefined || data.slug !== undefined,
+    { message: 'At least one field must be provided' }
+);
+
+const listPlaylistsQuerySchema = paginationSchema.extend({
+    userId: uuidSchema.optional(),
+    isPublic: z.coerce.boolean().optional(),
+    search: z.string().max(200, 'Search must be at most 200 characters').optional()
+});
+
+const addVideoToPlaylistSchema = z.object({
+    videoId: uuidSchema,
+    position: z.coerce.number().int().min(0).optional()
+});
+
+const reorderPlaylistVideosSchema = z.object({
+    videoIds: z.array(uuidSchema).min(1, 'At least one video id is required')
+});
+
+// ============================================================================
 // Quality/Transcode Schemas
 // ============================================================================
 
@@ -344,6 +398,13 @@ module.exports = {
     // Subscription
     subscribeSchema,
     getSubscriptionsQuerySchema,
+
+    // Playlists
+    createPlaylistSchema,
+    updatePlaylistSchema,
+    listPlaylistsQuerySchema,
+    addVideoToPlaylistSchema,
+    reorderPlaylistVideosSchema,
 
     // Quality
     qualityLevelSchema

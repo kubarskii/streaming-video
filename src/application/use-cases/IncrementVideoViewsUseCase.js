@@ -17,7 +17,7 @@ class IncrementVideoViewsUseCase {
     /**
      * Increment views for a video
      * @param {string} videoId - Video ID
-     * @returns {Promise<void>}
+     * @returns {Promise<number>} Updated view count
      */
     async execute(videoId) {
         if (!videoId) {
@@ -34,8 +34,9 @@ class IncrementVideoViewsUseCase {
 
             // Increment views in the database directly for performance
             // This avoids loading and saving the entire video entity
-            await this.videoRepository.incrementViews(videoId);
+            const views = await this.videoRepository.incrementViews(videoId);
 
+            return views;
         } catch (error) {
             console.error('Error incrementing video views:', error);
             throw error;

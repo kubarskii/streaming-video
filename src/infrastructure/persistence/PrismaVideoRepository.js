@@ -189,14 +189,19 @@ class PrismaVideoRepository extends IVideoRepository {
     }
 
     async incrementViews(id) {
-        await this.prisma.video.update({
+        const updated = await this.prisma.video.update({
             where: { id },
             data: {
                 views: {
                     increment: 1
                 }
+            },
+            select: {
+                views: true
             }
         });
+
+        return updated.views;
     }
 }
 

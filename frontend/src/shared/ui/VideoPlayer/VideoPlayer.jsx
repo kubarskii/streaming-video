@@ -10,6 +10,8 @@ import {
     FaCompress,
     FaCog,
     FaCheck,
+    FaStepBackward,
+    FaStepForward,
 } from 'react-icons/fa';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import './VideoPlayer.css';
@@ -28,6 +30,10 @@ export const VideoPlayer = ({
     className = '',
     mimeType,
     onAmbientUpdate,
+    onNext,
+    onPrevious,
+    canPlayNext = true,
+    canPlayPrevious = true,
 }) => {
     const videoRef = useRef(null);
     const containerRef = useRef(null);
@@ -67,9 +73,25 @@ export const VideoPlayer = ({
         const video = videoRef.current;
         if (!video) return;
 
-        // When src changes, reload the video
+        // When src changes, reload the video and optionally auto-play
         video.load();
-    }, [src]);
+
+        if (autoPlay) {
+            const playPromise = video.play();
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise
+                    .then(() => {
+                        setIsPlaying(true);
+                    })
+                    .catch(err => {
+                        console.log('Autoplay prevented after source change:', err);
+                        setIsPlaying(false);
+                    });
+            }
+        } else {
+            setIsPlaying(false);
+        }
+    }, [src, autoPlay]);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -184,6 +206,18 @@ export const VideoPlayer = ({
                     e.preventDefault();
                     seekForward(10);
                     break;
+                case 'n':
+                    if (onNext && canPlayNext) {
+                        e.preventDefault();
+                        handleNextVideo();
+                    }
+                    break;
+                case 'p':
+                    if (onPrevious && canPlayPrevious) {
+                        e.preventDefault();
+                        handlePreviousVideo();
+                    }
+                    break;
                 case '?':
                     e.preventDefault();
                     setShowKeyboardShortcuts(!showKeyboardShortcuts);
@@ -203,7 +237,7 @@ export const VideoPlayer = ({
         return () => {
             window.removeEventListener('keydown', handleKeyPress);
         };
-    }, [showKeyboardShortcuts]);
+    }, [showKeyboardShortcuts, onNext, onPrevious, canPlayNext, canPlayPrevious]);
 
     const togglePlayPause = () => {
         if (!videoRef.current) return;
@@ -216,6 +250,20 @@ export const VideoPlayer = ({
             setIsPlaying(false);
         }
         showControlsTemporarily();
+    };
+
+    const handleNextVideo = () => {
+        if (onNext && canPlayNext) {
+            onNext();
+            showControlsTemporarily();
+        }
+    };
+
+    const handlePreviousVideo = () => {
+        if (onPrevious && canPlayPrevious) {
+            onPrevious();
+            showControlsTemporarily();
+        }
     };
 
     const seekTo = (time) => {
@@ -396,7 +444,7 @@ export const VideoPlayer = ({
         const handlePlay = () => {
             updateAmbient();
             // Update every 500ms for smoother transitions
-            ambientIntervalRef.current = setIntegitrval(updateAmbient, 16);
+            ambientIntervalRef.current = setInterval(updateAmbient, 16);
         };
 
         const handlePause = () => {
@@ -475,9 +523,33 @@ export const VideoPlayer = ({
 
                     <div className="controls-row">
                         <div className="controls-left">
+                            {onPrevious && (
+                                <button
+                                    className="control-button"
+                                    onClick={handlePreviousVideo}
+                                    disabled={!canPlayPrevious}
+                                    title="Previous video (p)"
+                                    type="button"
+                                >
+                                    <FaStepBackward />
+                                </button>
+                            )}
+
                             <button className="control-button" onClick={togglePlayPause} title="Play/Pause (k)">
                                 {isPlaying ? <FaPause /> : <FaPlay />}
                             </button>
+
+                            {onNext && (
+                                <button
+                                    className="control-button"
+                                    onClick={handleNextVideo}
+                                    disabled={!canPlayNext}
+                                    title="Next video (n)"
+                                    type="button"
+                                >
+                                    <FaStepForward />
+                                </button>
+                            )}
 
                             <div className="volume-control">
                                 <button className="control-button" onClick={toggleMute} title="Mute (m)">

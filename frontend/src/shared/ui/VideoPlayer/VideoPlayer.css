@@ -214,6 +214,19 @@
   transform: scale(0.95);
 }
 
+.control-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.control-button:disabled:hover {
+  opacity: 0.35;
+}
+
+.control-button:disabled:active {
+  transform: none;
+}
+
 .seek-text {
   font-size: 13px;
   font-weight: 500;

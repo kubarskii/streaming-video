@@ -12,6 +12,8 @@ export const KeyboardShortcuts = ({ onClose, show }) => {
         { key: '↑ / ↓', description: 'Volume up/down' },
         { key: 'M', description: 'Mute/Unmute' },
         { key: 'F', description: 'Fullscreen' },
+        { key: 'N', description: 'Next video (if available)' },
+        { key: 'P', description: 'Previous video (if available)' },
         { key: '?', description: 'Show shortcuts' },
     ];
 

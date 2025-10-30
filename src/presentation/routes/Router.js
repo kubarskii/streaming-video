@@ -5,7 +5,7 @@
 const { URL } = require('url');
 
 class Router {
-    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController, chunkUploadController, videoLikeController) {
+    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController, chunkUploadController, videoLikeController, playlistController) {
         this.videoController = videoController;
         this.streamController = streamController;
         this.authController = authController;
@@ -15,6 +15,7 @@ class Router {
         this.commentController = commentController;
         this.chunkUploadController = chunkUploadController;
         this.videoLikeController = videoLikeController;
+        this.playlistController = playlistController;
     }
 
     /**
@@ -75,6 +76,50 @@ class Router {
             return await this.videoController.listVideos(req, res, queryParams);
         }
 
+        // Playlist Routes
+        if (pathname === '/api/playlists' && req.method === 'GET') {
+            return await this.playlistController.listPlaylists(req, res, queryParams);
+        }
+
+        if (pathname === '/api/playlists' && req.method === 'POST') {
+            return await this.playlistController.createPlaylist(req, res);
+        }
+
+        if (pathname.match(/^\/api\/playlists\/slug\/[^/]+$/) && req.method === 'GET') {
+            const slug = decodeURIComponent(pathname.split('/')[4]);
+            return await this.playlistController.getPlaylistBySlug(req, res, slug);
+        }
+
+        if (pathname.match(/^\/api\/playlists\/[^/]+\/videos\/[^/]+$/) && req.method === 'DELETE') {
+            const [, , , playlistId, , videoId] = pathname.split('/');
+            return await this.playlistController.removeVideoFromPlaylist(req, res, playlistId, videoId);
+        }
+
+        if (pathname.match(/^\/api\/playlists\/[^/]+\/videos$/) && req.method === 'POST') {
+            const playlistId = pathname.split('/')[3];
+            return await this.playlistController.addVideoToPlaylist(req, res, playlistId);
+        }
+
+        if (pathname.match(/^\/api\/playlists\/[^/]+\/reorder$/) && req.method === 'POST') {
+            const playlistId = pathname.split('/')[3];
+            return await this.playlistController.reorderPlaylist(req, res, playlistId);
+        }
+
+        if (pathname.match(/^\/api\/playlists\/[^/]+$/) && req.method === 'GET') {
+            const playlistId = pathname.split('/')[3];
+            return await this.playlistController.getPlaylist(req, res, playlistId);
+        }
+
+        if (pathname.match(/^\/api\/playlists\/[^/]+$/) && req.method === 'PATCH') {
+            const playlistId = pathname.split('/')[3];
+            return await this.playlistController.updatePlaylist(req, res, playlistId);
+        }
+
+        if (pathname.match(/^\/api\/playlists\/[^/]+$/) && req.method === 'DELETE') {
+            const playlistId = pathname.split('/')[3];
+            return await this.playlistController.deletePlaylist(req, res, playlistId);
+        }
+
         // Get video qualities (GET) - MUST come before generic getVideo route
         if (pathname.match(/^\/api\/videos\/[^/]+\/qualities$/) && req.method === 'GET') {
             const videoId = pathname.split('/')[3];
@@ -110,6 +155,12 @@ class Router {
         if (pathname.match(/^\/api\/videos\/[^/]+\/like$/) && req.method === 'DELETE') {
             const videoId = pathname.split('/')[3];
             return await this.videoLikeController.removeLike(req, res, videoId);
+        }
+
+        // Increment video views (POST /api/videos/:videoId/views)
+        if (pathname.match(/^\/api\/videos\/[^/]+\/views$/) && req.method === 'POST') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoController.incrementVideoViews(req, res, videoId);
         }
 
         // Get single video by ID (GET /api/videos/:id)
