@@ -331,9 +331,74 @@ class ChunkUploadController {
 
             console.log(`✅ B2 multipart upload completed: ${storageKey}`);
 
-            // Generate thumbnail from a temporary downloaded chunk or skip
-            // For now, we'll handle thumbnail generation during transcoding
+            // Generate thumbnail by downloading video temporarily
             let thumbnailUrl = null;
+            const tempVideoPath = path.join(process.cwd(), 'videos', 'temp', `temp_${videoId}${path.extname(session.fileName)}`);
+
+            try {
+                console.log('🎬 Generating thumbnail...');
+
+                // Download only first 10MB of video for thumbnail generation
+                const rangeSize = 10 * 1024 * 1024; // 10MB
+                const { stream: videoStream } = await this.storageRepository.getObjectStream(
+                    storageKey,
+                    `bytes=0-${rangeSize - 1}`
+                );
+                const writeStream = fs.createWriteStream(tempVideoPath);
+
+                await new Promise((resolve, reject) => {
+                    videoStream.pipe(writeStream);
+                    videoStream.on('error', (err) => reject(err));
+                    writeStream.on('finish', () => resolve());
+                    writeStream.on('error', (err) => reject(err));
+                });
+
+                console.log('   First 10MB downloaded for thumbnail generation');
+
+                // Generate thumbnail
+                const ThumbnailGenerator = require('../../infrastructure/media/ThumbnailGenerator');
+                const thumbnailGenerator = new ThumbnailGenerator();
+                const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
+
+                const generatedThumbnailPath = await thumbnailGenerator.generateFromVideo(
+                    tempVideoPath,
+                    thumbnailTempPath,
+                    { size: '640x360' }
+                );
+
+                // Upload thumbnail to B2
+                const fileExt = path.extname(generatedThumbnailPath).toLowerCase();
+                const contentType = fileExt === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+                const thumbnailKey = `thumb_${videoId}${fileExt}`;
+
+                const thumbnailUpload = await this.storageRepository.upload(
+                    generatedThumbnailPath,
+                    thumbnailKey,
+                    {
+                        contentType: contentType,
+                        originalName: `${videoId}_thumbnail${fileExt}`,
+                    }
+                );
+
+                thumbnailUrl = thumbnailUpload.cdnUrl || thumbnailUpload.storageUrl;
+                console.log(`✅ Thumbnail generated and uploaded: ${thumbnailUrl}`);
+
+                // Clean up temp files
+                try {
+                    if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
+                    if (fs.existsSync(generatedThumbnailPath)) fs.unlinkSync(generatedThumbnailPath);
+                } catch (e) { }
+
+            } catch (thumbnailError) {
+                console.error('❌ Failed to generate thumbnail:', thumbnailError.message);
+                // Continue without thumbnail - video upload should not fail
+                console.log('⚠️  Video will be saved without thumbnail, transcoding will try again');
+
+                // Clean up temp video if it exists
+                try {
+                    if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
+                } catch (e) { }
+            }
 
             // Create video entity directly in database
             const Video = require('../../domain/entities/Video');
