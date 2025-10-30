@@ -32,10 +32,11 @@
   margin-right: -50vw;
   background: #000;
   margin-bottom: 0;
+  min-height: 500px;
 }
 
 .video-player-wrapper {
-  position: relative;
+  position: static; /* Remove positioning context so controls position relative to substrate */
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
@@ -43,7 +44,25 @@
   max-height: calc(100vh - 120px);
   background: #000;
   border-radius: 0;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 1;
+}
+
+.video-player-wrapper .youtube-video-player {
+  position: static; /* Remove positioning context */
+}
+
+/* Position video player controls at bottom of substrate, full viewport width */
+.video-player-substrate .video-controls {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  transform: none !important;
+  width: 100vw !important;
+  max-width: none !important;
+  margin: 0 !important;
+  z-index: 30 !important;
 }
 
 .video-player-wrapper .youtube-video-player {

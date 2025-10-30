@@ -452,7 +452,7 @@ export const VideoPlayer = ({
                                         value={volume}
                                         onChange={(e) => handleVolumeChange(Number(e.target.value))}
                                         style={{
-                                            background: `linear-gradient(to right, #fff 0%, #fff ${volume}%, rgba(255, 255, 255, 0.3) ${volume}%, rgba(255, 255, 255, 0.3) 100%)`
+                                            '--volume-width': `${volume}%`
                                         }}
                                     />
                                 </div>
