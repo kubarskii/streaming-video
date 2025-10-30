@@ -10,6 +10,7 @@ import { ProfilePage } from '../pages/profile/ProfilePage';
 import { ChannelPage } from '../pages/channel/ChannelPage';
 import { ChannelsListPage } from '../pages/channels/ChannelsListPage';
 import { SubscriptionsPage } from '../pages/subscriptions/SubscriptionsPage';
+import { PlaylistManagePage } from '../pages/playlist/PlaylistManagePage';
 
 // Root route
 const rootRoute = createRootRoute({
@@ -84,6 +85,13 @@ const subscriptionsRoute = createRoute({
     component: SubscriptionsPage,
 });
 
+// Playlist manage route (protected)
+const playlistManageRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/playlist/$playlistId/manage',
+    component: PlaylistManagePage,
+});
+
 // Route tree
 const routeTree = rootRoute.addChildren([
     indexRoute,
@@ -95,6 +103,7 @@ const routeTree = rootRoute.addChildren([
     channelRoute,
     channelsRoute,
     subscriptionsRoute,
+    playlistManageRoute,
 ]);
 
 // Create router

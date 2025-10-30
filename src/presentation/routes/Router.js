@@ -100,7 +100,7 @@ class Router {
             return await this.playlistController.addVideoToPlaylist(req, res, playlistId);
         }
 
-        if (pathname.match(/^\/api\/playlists\/[^/]+\/reorder$/) && req.method === 'POST') {
+        if (pathname.match(/^\/api\/playlists\/[^/]+\/videos\/reorder$/) && (req.method === 'POST' || req.method === 'PATCH')) {
             const playlistId = pathname.split('/')[3];
             return await this.playlistController.reorderPlaylist(req, res, playlistId);
         }

@@ -56,6 +56,10 @@ export const VideoPlayer = React.forwardRef(({
     const [selectedQuality, setSelectedQuality] = useState(null);
     const [isReady, setIsReady] = useState(false);
     const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const [hoverTime, setHoverTime] = useState(null);
+    const [hoverPosition, setHoverPosition] = useState(0);
+    const [wasPlayingBeforeDrag, setWasPlayingBeforeDrag] = useState(false);
 
     const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -159,86 +163,6 @@ export const VideoPlayer = React.forwardRef(({
         };
     }, []);
 
-    useEffect(() => {
-        const handleKeyPress = (e) => {
-            if (!videoRef.current) return;
-
-            // Don't handle keyboard shortcuts when typing in input fields
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-                return;
-            }
-
-            switch (e.key.toLowerCase()) {
-                case ' ':
-                case 'k':
-                    e.preventDefault();
-                    togglePlayPause();
-                    break;
-                case 'arrowleft':
-                    e.preventDefault();
-                    seekBackward();
-                    break;
-                case 'arrowright':
-                    e.preventDefault();
-                    seekForward();
-                    break;
-                case 'arrowup':
-                    e.preventDefault();
-                    increaseVolume();
-                    break;
-                case 'arrowdown':
-                    e.preventDefault();
-                    decreaseVolume();
-                    break;
-                case 'f':
-                    e.preventDefault();
-                    toggleFullscreen();
-                    break;
-                case 'm':
-                    e.preventDefault();
-                    toggleMute();
-                    break;
-                case 'j':
-                    e.preventDefault();
-                    seekBackward(10);
-                    break;
-                case 'l':
-                    e.preventDefault();
-                    seekForward(10);
-                    break;
-                case 'n':
-                    if (onNext && canPlayNext) {
-                        e.preventDefault();
-                        handleNextVideo();
-                    }
-                    break;
-                case 'p':
-                    if (onPrevious && canPlayPrevious) {
-                        e.preventDefault();
-                        handlePreviousVideo();
-                    }
-                    break;
-                case '?':
-                    e.preventDefault();
-                    setShowKeyboardShortcuts(!showKeyboardShortcuts);
-                    break;
-                case 'escape':
-                    if (showKeyboardShortcuts) {
-                        e.preventDefault();
-                        setShowKeyboardShortcuts(false);
-                    }
-                    break;
-                default:
-                    break;
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyPress);
-        return () => {
-            window.removeEventListener('keydown', handleKeyPress);
-        };
-    }, [showKeyboardShortcuts, onNext, onPrevious, canPlayNext, canPlayPrevious]);
-
     const togglePlayPause = () => {
         if (!videoRef.current) return;
 
@@ -286,11 +210,101 @@ export const VideoPlayer = React.forwardRef(({
         showControlsTemporarily();
     };
 
-    const handleProgressChange = (e) => {
+    const calculateTimeFromPosition = (clientX) => {
+        if (!progressBarRef.current || !duration) return 0;
         const rect = progressBarRef.current.getBoundingClientRect();
-        const pos = (e.clientX - rect.left) / rect.width;
-        const newTime = pos * duration;
-        seekTo(newTime);
+        const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        return pos * duration;
+    };
+
+    const handleProgressMouseMove = (e) => {
+        if (!progressBarRef.current || !duration) return;
+        const time = calculateTimeFromPosition(e.clientX);
+        setHoverTime(time);
+
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        setHoverPosition(pos * 100);
+    };
+
+    const handleProgressMouseLeave = () => {
+        if (!isDragging) {
+            setHoverTime(null);
+            setHoverPosition(0);
+        }
+    };
+
+    const handleProgressMouseDown = (e) => {
+        if (!videoRef.current || !duration) return;
+        e.preventDefault();
+        setIsDragging(true);
+        setWasPlayingBeforeDrag(!videoRef.current.paused);
+
+        const time = calculateTimeFromPosition(e.clientX);
+        setHoverTime(time);
+
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        setHoverPosition(pos * 100);
+
+        // Update video time immediately
+        seekTo(time);
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!isDragging || !progressBarRef.current || !duration) return;
+
+            const time = calculateTimeFromPosition(e.clientX);
+            setHoverTime(time);
+
+            const rect = progressBarRef.current.getBoundingClientRect();
+            const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            setHoverPosition(pos * 100);
+
+            // Update video time while dragging
+            if (videoRef.current) {
+                const wasPlaying = !videoRef.current.paused;
+                seekTo(time);
+
+                // Resume playback if it was playing before (video continues during drag)
+                if (wasPlaying && videoRef.current.paused) {
+                    videoRef.current.play().catch(() => {
+                        setIsPlaying(false);
+                    });
+                }
+            }
+        };
+
+        const handleMouseUp = () => {
+            if (!isDragging) return;
+
+            setIsDragging(false);
+
+            // Keep video playing if it was playing before drag (video continues during drag)
+
+            // Clear hover immediately
+            setHoverTime(null);
+            setHoverPosition(0);
+        };
+
+        if (isDragging) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+
+            return () => {
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+            };
+        }
+    }, [isDragging, duration, wasPlayingBeforeDrag]);
+
+    const handleProgressChange = (e) => {
+        // Only handle click if not dragging
+        if (isDragging) return;
+
+        const time = calculateTimeFromPosition(e.clientX);
+        seekTo(time);
     };
 
     const handleVolumeChange = (newVolume) => {
@@ -397,6 +411,104 @@ export const VideoPlayer = React.forwardRef(({
     useImperativeHandle(ref, () => ({
         showControls: showControlsTemporarily,
     }));
+
+    // Keyboard shortcuts handler
+    useEffect(() => {
+        const handleKeyPress = (e) => {
+            if (!videoRef.current) return;
+
+            // Don't handle keyboard shortcuts when typing in input fields or when dragging
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                return;
+            }
+
+            // Don't handle shortcuts while dragging
+            if (isDragging) {
+                return;
+            }
+
+            const key = e.key.toLowerCase();
+            const code = e.code.toLowerCase();
+
+            // Handle arrow keys by code (more reliable)
+            if (code === 'arrowleft' || key === 'arrowleft') {
+                e.preventDefault();
+                seekBackward();
+                return;
+            }
+            if (code === 'arrowright' || key === 'arrowright') {
+                e.preventDefault();
+                seekForward();
+                return;
+            }
+            if (code === 'arrowup' || key === 'arrowup') {
+                e.preventDefault();
+                increaseVolume();
+                return;
+            }
+            if (code === 'arrowdown' || key === 'arrowdown') {
+                e.preventDefault();
+                decreaseVolume();
+                return;
+            }
+
+            switch (key) {
+                case ' ':
+                    e.preventDefault();
+                    togglePlayPause();
+                    break;
+                case 'k':
+                    e.preventDefault();
+                    togglePlayPause();
+                    break;
+                case 'f':
+                    e.preventDefault();
+                    toggleFullscreen();
+                    break;
+                case 'm':
+                    e.preventDefault();
+                    toggleMute();
+                    break;
+                case 'j':
+                    e.preventDefault();
+                    seekBackward(10);
+                    break;
+                case 'l':
+                    e.preventDefault();
+                    seekForward(10);
+                    break;
+                case 'n':
+                    if (onNext && canPlayNext) {
+                        e.preventDefault();
+                        handleNextVideo();
+                    }
+                    break;
+                case 'p':
+                    if (onPrevious && canPlayPrevious) {
+                        e.preventDefault();
+                        handlePreviousVideo();
+                    }
+                    break;
+                case '?':
+                    e.preventDefault();
+                    setShowKeyboardShortcuts(!showKeyboardShortcuts);
+                    break;
+                case 'escape':
+                    if (showKeyboardShortcuts) {
+                        e.preventDefault();
+                        setShowKeyboardShortcuts(false);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyPress);
+        return () => {
+            window.removeEventListener('keydown', handleKeyPress);
+        };
+    }, [showKeyboardShortcuts, onNext, onPrevious, canPlayNext, canPlayPrevious, isDragging, togglePlayPause, seekBackward, seekForward, increaseVolume, decreaseVolume, toggleMute, toggleFullscreen, handleNextVideo, handlePreviousVideo]);
 
     const formatTime = (seconds) => {
         if (isNaN(seconds)) return '0:00';
@@ -616,10 +728,22 @@ export const VideoPlayer = React.forwardRef(({
 
                 <div className={`video-controls ${showControls ? 'show' : ''}`}>
                     <div
-                        className="progress-bar-container"
+                        className={`progress-bar-container ${isDragging ? 'dragging' : ''}`}
                         ref={progressBarRef}
                         onClick={handleProgressChange}
+                        onMouseMove={handleProgressMouseMove}
+                        onMouseLeave={handleProgressMouseLeave}
+                        onMouseDown={handleProgressMouseDown}
                     >
+                        {/* Time preview tooltip */}
+                        {(hoverTime !== null || isDragging) && (
+                            <div
+                                className="progress-bar-tooltip"
+                                style={{ left: `${hoverPosition}%` }}
+                            >
+                                {formatTime(hoverTime || 0)}
+                            </div>
+                        )}
                         <div className="progress-bar-background">
                             <div
                                 className="progress-bar-fill"
@@ -628,6 +752,16 @@ export const VideoPlayer = React.forwardRef(({
                                     backgroundColor: primaryColor,
                                 }}
                             />
+                            {/* Preview indicator while hovering/dragging */}
+                            {(hoverTime !== null || isDragging) && (
+                                <div
+                                    className="progress-bar-preview"
+                                    style={{
+                                        left: `${hoverPosition}%`,
+                                        backgroundColor: primaryColor,
+                                    }}
+                                />
+                            )}
                         </div>
                     </div>
 
