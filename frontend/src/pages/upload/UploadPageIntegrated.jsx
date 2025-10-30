@@ -171,11 +171,17 @@ export const UploadPage = () => {
     };
 
     const handleSimpleUpload = async (startTime) => {
+        // Create FormData for simple upload
+        const formData = new FormData();
+        formData.append('video', file);
+        formData.append('title', title);
+        formData.append('description', description);
+        if (thumbnail) {
+            formData.append('thumbnail', thumbnail);
+        }
+
         const result = await videosAPI.uploadVideo(
-            file,
-            title,
-            description,
-            thumbnail,
+            formData,
             (progressEvent) => {
                 const percentCompleted = Math.round(
                     (progressEvent.loaded * 100) / progressEvent.total
