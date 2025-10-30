@@ -182,17 +182,22 @@ export const UploadPage = () => {
 
         const result = await videosAPI.uploadVideo(
             formData,
-            (progressEvent) => {
-                const percentCompleted = Math.round(
-                    (progressEvent.loaded * 100) / progressEvent.total
-                );
-                setProgress(percentCompleted);
+            (progressPercent) => {
+                // Progress is already calculated by the API (0-100)
+                setProgress(progressPercent);
 
-                // Calculate upload speed
+                // Calculate upload speed using file size
                 const elapsed = (Date.now() - startTime) / 1000;
-                const speed = progressEvent.loaded / elapsed;
-                setUploadSpeed(speed);
-            }
+                if (elapsed > 0 && file.size) {
+                    // Estimate loaded bytes from progress
+                    const estimatedLoaded = (progressPercent / 100) * file.size;
+                    const speed = estimatedLoaded / elapsed;
+                    setUploadSpeed(speed);
+                } else {
+                    setUploadSpeed(0);
+                }
+            },
+            file.size
         );
 
         console.log('Simple upload complete!', result);

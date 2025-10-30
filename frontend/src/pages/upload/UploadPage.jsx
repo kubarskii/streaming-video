@@ -154,7 +154,7 @@ export const UploadPage = () => {
         }
 
         try {
-            const data = await videosAPI.uploadVideo(formData, setProgress);
+            const data = await videosAPI.uploadVideo(formData, setProgress, file.size);
 
             // Redirect to the uploaded video
             setTimeout(() => {

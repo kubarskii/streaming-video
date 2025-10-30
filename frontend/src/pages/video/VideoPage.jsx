@@ -21,6 +21,7 @@ export const VideoPage = () => {
     const [likeStats, setLikeStats] = useState({ likes: 0, dislikes: 0, userLike: null });
     const [likingInProgress, setLikingInProgress] = useState(false);
     const ambientCanvasRef = useRef(null);
+    const videoPlayerRef = useRef(null);
     const [playlist, setPlaylist] = useState([]);
     const [playlistLoading, setPlaylistLoading] = useState(false);
     const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
@@ -322,12 +323,29 @@ export const VideoPage = () => {
 
     const canDelete = user && user.id === video.userId;
 
+    const handleSubstrateMouseMove = () => {
+        if (videoPlayerRef.current) {
+            videoPlayerRef.current.showControls();
+        }
+    };
+
+    const handleSubstrateMouseEnter = () => {
+        if (videoPlayerRef.current) {
+            videoPlayerRef.current.showControls();
+        }
+    };
+
     return (
         <div className="video-page">
-            <div className="video-player-substrate">
+            <div
+                className="video-player-substrate"
+                onMouseMove={handleSubstrateMouseMove}
+                onMouseEnter={handleSubstrateMouseEnter}
+            >
                 <div className="video-player-wrapper">
                     <canvas ref={ambientCanvasRef} className="ambient-canvas" />
                     <VideoPlayer
+                        ref={videoPlayerRef}
                         src={currentVideoUrl}
                         poster={video.thumbnailUrl}
                         title={video.title}

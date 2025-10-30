@@ -1,5 +1,5 @@
 // Shared UI: Video Player Component
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useImperativeHandle } from 'react';
 import {
     FaPlay,
     FaPause,
@@ -16,7 +16,7 @@ import {
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import './VideoPlayer.css';
 
-export const VideoPlayer = ({
+export const VideoPlayer = React.forwardRef(({
     src,
     poster,
     title,
@@ -34,7 +34,7 @@ export const VideoPlayer = ({
     onPrevious,
     canPlayNext = true,
     canPlayPrevious = true,
-}) => {
+}, ref) => {
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const controlsTimeoutRef = useRef(null);
@@ -393,6 +393,11 @@ export const VideoPlayer = ({
         showControlsTemporarily();
     };
 
+    // Expose methods to parent via ref
+    useImperativeHandle(ref, () => ({
+        showControls: showControlsTemporarily,
+    }));
+
     const formatTime = (seconds) => {
         if (isNaN(seconds)) return '0:00';
         const hours = Math.floor(seconds / 3600);
@@ -435,35 +440,140 @@ export const VideoPlayer = ({
         const video = videoRef.current;
         if (!video || !onAmbientUpdate) return;
 
+        let animationFrameId = null;
+        let intervalId = null;
+        let isRunning = false;
+
         const updateAmbient = () => {
-            if (video.readyState >= 2 && !video.paused) {
-                onAmbientUpdate(video);
+            try {
+                // Check if video is ready and playing
+                if (video.readyState >= 2 && !video.paused && !video.ended) {
+                    onAmbientUpdate(video);
+                    return true;
+                }
+                return false;
+            } catch (err) {
+                // Silent fail for CORS or other errors
+                console.debug('Ambient update error:', err);
+                return false;
+            }
+        };
+
+        const startAmbientUpdates = () => {
+            if (isRunning) return;
+            isRunning = true;
+
+            // Use requestAnimationFrame for smooth updates
+            const frameUpdate = () => {
+                if (!video || video.paused || video.ended) {
+                    isRunning = false;
+                    if (animationFrameId) {
+                        cancelAnimationFrame(animationFrameId);
+                        animationFrameId = null;
+                    }
+                    return;
+                }
+
+                // Update if video is ready
+                if (video.readyState >= 2) {
+                    updateAmbient();
+                }
+
+                animationFrameId = requestAnimationFrame(frameUpdate);
+            };
+
+            // Also use interval as fallback to ensure it keeps running
+            // This monitors and restarts the animation frame loop if it stops
+            intervalId = setInterval(() => {
+                if (video && !video.paused && !video.ended && video.readyState >= 2) {
+                    // Force update in case animation frame stopped
+                    updateAmbient();
+
+                    // If animation frame stopped but video is playing, restart it
+                    if (animationFrameId === null && isRunning) {
+                        // Animation frame loop somehow stopped, restart it
+                        const restartFrameUpdate = () => {
+                            if (!video || video.paused || video.ended) {
+                                isRunning = false;
+                                if (animationFrameId) {
+                                    cancelAnimationFrame(animationFrameId);
+                                    animationFrameId = null;
+                                }
+                                return;
+                            }
+                            if (video.readyState >= 2) {
+                                updateAmbient();
+                            }
+                            animationFrameId = requestAnimationFrame(restartFrameUpdate);
+                        };
+                        animationFrameId = requestAnimationFrame(restartFrameUpdate);
+                    }
+                }
+            }, 100);
+
+            // Start animation frame loop
+            animationFrameId = requestAnimationFrame(frameUpdate);
+            ambientIntervalRef.current = intervalId;
+        };
+
+        const stopAmbientUpdates = () => {
+            isRunning = false;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+                ambientIntervalRef.current = null;
             }
         };
 
         const handlePlay = () => {
-            updateAmbient();
-            // Update every 500ms for smoother transitions
-            ambientIntervalRef.current = setInterval(updateAmbient, 16);
+            startAmbientUpdates();
         };
 
         const handlePause = () => {
-            if (ambientIntervalRef.current) {
-                clearInterval(ambientIntervalRef.current);
+            stopAmbientUpdates();
+        };
+
+        const handleEnded = () => {
+            stopAmbientUpdates();
+        };
+
+        const handleLoadedData = () => {
+            // Restart updates when new data loads (e.g., quality change)
+            if (!video.paused && !video.ended) {
+                startAmbientUpdates();
             }
         };
 
+        const handleTimeUpdate = () => {
+            // Ensure updates are running during playback
+            if (!video.paused && !video.ended && !isRunning && video.readyState >= 2) {
+                startAmbientUpdates();
+            }
+        };
+
+        // Add event listeners
         video.addEventListener('play', handlePlay);
         video.addEventListener('pause', handlePause);
+        video.addEventListener('ended', handleEnded);
+        video.addEventListener('loadeddata', handleLoadedData);
+        video.addEventListener('timeupdate', handleTimeUpdate);
 
-        if (!video.paused && video.readyState >= 2) {
-            handlePlay();
+        // Start if already playing
+        if (!video.paused && !video.ended && video.readyState >= 2) {
+            startAmbientUpdates();
         }
 
         return () => {
-            if (ambientIntervalRef.current) clearInterval(ambientIntervalRef.current);
+            stopAmbientUpdates();
             video.removeEventListener('play', handlePlay);
             video.removeEventListener('pause', handlePause);
+            video.removeEventListener('ended', handleEnded);
+            video.removeEventListener('loadeddata', handleLoadedData);
+            video.removeEventListener('timeupdate', handleTimeUpdate);
         };
     }, [src, onAmbientUpdate]);
 
@@ -674,7 +784,9 @@ export const VideoPlayer = ({
             />
         </>
     );
-};
+});
+
+VideoPlayer.displayName = 'VideoPlayer';
 
 export default VideoPlayer;
 

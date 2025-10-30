@@ -52,15 +52,35 @@ export const videosAPI = {
         return response.data;
     },
 
-    uploadVideo: async (formData, onProgress) => {
+    uploadVideo: async (formData, onProgress, fileSize) => {
+        // Extract file size from FormData if not provided
+        let totalSize = fileSize;
+        if (!totalSize && formData instanceof FormData) {
+            const videoFile = formData.get('video');
+            if (videoFile instanceof File) {
+                totalSize = videoFile.size;
+            }
+        }
+
         const response = await api.post('/upload', formData, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
             onUploadProgress: (progressEvent) => {
-                if (onProgress && progressEvent.total) {
-                    const progress = (progressEvent.loaded / progressEvent.total) * 100;
-                    onProgress(Math.round(progress));
+                if (!onProgress) return;
+
+                // Use progressEvent.total if available, otherwise fall back to fileSize
+                const total = progressEvent.total || totalSize || 0;
+                const loaded = progressEvent.loaded || 0;
+
+                if (total > 0 && loaded >= 0) {
+                    const progress = (loaded / total) * 100;
+                    const progressPercent = Math.round(progress);
+                    // Ensure progress is between 0 and 100 and is a valid number
+                    const clampedProgress = Math.max(0, Math.min(100, progressPercent));
+                    if (!isNaN(clampedProgress) && isFinite(clampedProgress)) {
+                        onProgress(clampedProgress);
+                    }
                 }
             },
         });
