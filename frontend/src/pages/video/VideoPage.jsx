@@ -1,14 +1,16 @@
 // Pages: Video Player Page
 import { useState, useEffect } from 'react';
-import { useParams, Link } from '@tanstack/react-router';
+import { useParams, Link, useNavigate } from '@tanstack/react-router';
 import { videosAPI } from '../../shared/api/videos';
 import { useAbortController } from '../../shared/lib';
 import { useAuth } from '../../shared/context/AuthContext';
 import { CommentsSection, VideoPlayer } from '../../shared/ui';
+import { formatDuration } from '../../shared/lib';
 import './VideoPage.css';
 
 export const VideoPage = () => {
     const { id } = useParams({ from: '/video/$id' });
+    const navigate = useNavigate();
     const { user } = useAuth();
     const signal = useAbortController();
     const [video, setVideo] = useState(null);
@@ -18,6 +20,9 @@ export const VideoPage = () => {
     const [currentVideoUrl, setCurrentVideoUrl] = useState(null);
     const [likeStats, setLikeStats] = useState({ likes: 0, dislikes: 0, userLike: null });
     const [likingInProgress, setLikingInProgress] = useState(false);
+    const [playlist, setPlaylist] = useState([]);
+    const [playlistLoading, setPlaylistLoading] = useState(false);
+    const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0);
 
     useEffect(() => {
         const fetchVideo = async () => {
@@ -78,6 +83,110 @@ export const VideoPage = () => {
 
         fetchVideo();
     }, [id, signal]);
+
+    useEffect(() => {
+        if (!video) {
+            return;
+        }
+
+        const loadPlaylist = async () => {
+            setPlaylistLoading(true);
+
+            const createPlaylistItem = (item) => ({
+                id: item.id,
+                title: item.title,
+                thumbnailUrl: item.thumbnailUrl,
+                playbackUrl: item.playbackUrl || (item.storageKey ? videosAPI.getVideoUrl(item.storageKey) : null),
+                durationMs: item.durationMs,
+                views: item.views,
+                uploadedAt: item.uploadedAt,
+            });
+
+            try {
+                const params = { limit: 20, signal };
+                if (video.userId) {
+                    params.userId = video.userId;
+                }
+
+                const data = await videosAPI.getVideos(params);
+                const videos = data?.videos || [];
+
+                const seen = new Set();
+                const playlistItems = [];
+
+                const addItem = (item) => {
+                    if (!item || !item.id) return;
+                    const key = String(item.id);
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    playlistItems.push(createPlaylistItem(item));
+                };
+
+                addItem(video);
+                videos.forEach(addItem);
+
+                setPlaylist(playlistItems.length > 0 ? playlistItems : [createPlaylistItem(video)]);
+            } catch (playlistErr) {
+                if (playlistErr.name === 'AbortError' || playlistErr.name === 'CanceledError') {
+                    return;
+                }
+                console.error('Error loading playlist:', playlistErr);
+                setPlaylist([createPlaylistItem(video)]);
+            } finally {
+                setPlaylistLoading(false);
+            }
+        };
+
+        loadPlaylist();
+    }, [video, signal]);
+
+    useEffect(() => {
+        if (!playlist.length) {
+            setCurrentPlaylistIndex(0);
+            return;
+        }
+
+        const currentIndex = playlist.findIndex((item) => String(item.id) === String(id));
+        setCurrentPlaylistIndex(currentIndex === -1 ? 0 : currentIndex);
+    }, [playlist, id]);
+
+    const handleNavigateToVideo = (videoId) => {
+        navigate({ to: '/video/$id', params: { id: String(videoId) } });
+    };
+
+    const hasPrevious = currentPlaylistIndex > 0;
+    const hasNext = currentPlaylistIndex < playlist.length - 1;
+
+    const handleNextVideo = () => {
+        if (!hasNext) return;
+        const nextItem = playlist[currentPlaylistIndex + 1];
+        if (nextItem) {
+            setCurrentPlaylistIndex((prev) => Math.min(prev + 1, playlist.length - 1));
+            handleNavigateToVideo(nextItem.id);
+        }
+    };
+
+    const handlePreviousVideo = () => {
+        if (!hasPrevious) return;
+        const prevItem = playlist[currentPlaylistIndex - 1];
+        if (prevItem) {
+            setCurrentPlaylistIndex((prev) => Math.max(prev - 1, 0));
+            handleNavigateToVideo(prevItem.id);
+        }
+    };
+
+    const handlePlaylistSelect = (index) => {
+        const item = playlist[index];
+        if (!item || String(item.id) === String(id)) return;
+        setCurrentPlaylistIndex(index);
+        handleNavigateToVideo(item.id);
+    };
+
+    const handleVideoEnded = () => {
+        if (hasNext) {
+            handleNextVideo();
+        }
+    };
 
     const handleQualityChange = (quality) => {
         console.log('Quality changed to:', quality);
@@ -183,38 +292,44 @@ export const VideoPage = () => {
 
     return (
         <div className="video-page">
-            <div className="video-container">
-                <div className="video-player-substrate">
-                    <div className="video-player-wrapper">
-                        <VideoPlayer
-                            src={currentVideoUrl}
-                            poster={video.thumbnailUrl}
-                            title={video.title}
-                            autoPlay={true}
-                            primaryColor="#ff0000"
-                            qualities={qualities}
-                            onQualityChange={handleQualityChange}
-                            mimeType={video.mimeType}
-                            onTimeUpdate={(time) => {
-                                // Update view count after 30 seconds
-                                if (Math.floor(time) === 30) {
-                                    videosAPI.incrementViews(id, signal).catch(console.error);
-                                }
-                            }}
-                            onError={() => {
-                                console.error('Error loading video');
-                                setError('Failed to load video');
-                            }}
-                        />
-                    </div>
+            <div className="video-player-substrate">
+                <div className="video-player-wrapper">
+                    <VideoPlayer
+                        src={currentVideoUrl}
+                        poster={video.thumbnailUrl}
+                        title={video.title}
+                        autoPlay={true}
+                        primaryColor="#ff0000"
+                        qualities={qualities}
+                        onQualityChange={handleQualityChange}
+                        mimeType={video.mimeType}
+                        onTimeUpdate={(time) => {
+                            // Update view count after 30 seconds
+                            if (Math.floor(time) === 30) {
+                                videosAPI.incrementViews(id, signal).catch(console.error);
+                            }
+                        }}
+                        onError={() => {
+                            console.error('Error loading video');
+                            setError('Failed to load video');
+                        }}
+                        onEnded={handleVideoEnded}
+                        onNext={playlist.length > 1 ? handleNextVideo : undefined}
+                        onPrevious={playlist.length > 1 ? handlePreviousVideo : undefined}
+                        canPlayNext={hasNext}
+                        canPlayPrevious={hasPrevious}
+                    />
                 </div>
+            </div>
 
-                <div className="video-details">
-                    <h1 className="video-title">{video.title}</h1>
+            <div className="video-content">
+                <div className="video-main-column">
+                    <div className="video-details">
+                        <h1 className="video-title">{video.title}</h1>
 
-                    <div className="video-stats">
-                        <div className="video-views">
-                            {formatViews(video.views)} views • {formatDate(video.uploadedAt)}
+                        <div className="video-stats">
+                            <div className="video-views">
+                                {formatViews(video.views)} views • {formatDate(video.uploadedAt)}
                         </div>
                         <div className="video-actions">
                             {/* Like/Dislike buttons with separator */}
@@ -297,6 +412,73 @@ export const VideoPage = () => {
                     {/* Comments Section */}
                     <CommentsSection videoId={video.id} />
                 </div>
+                </div>
+                <aside className="video-playlist" aria-label="Playlist">
+                    <div className="playlist-header">
+                        <div>
+                            <h2>Playlist</h2>
+                            <span>{playlist.length} video{playlist.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <div className="playlist-controls">
+                            <button
+                                type="button"
+                                onClick={handlePreviousVideo}
+                                disabled={!hasPrevious}
+                            >
+                                Previous
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleNextVideo}
+                                disabled={!hasNext}
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="playlist-items">
+                        {playlistLoading && (
+                            <div className="playlist-empty">Loading playlist…</div>
+                        )}
+
+                        {!playlistLoading && playlist.length === 0 && (
+                            <div className="playlist-empty">No videos available</div>
+                        )}
+
+                        {!playlistLoading && playlist.map((item, index) => {
+                            const isActive = index === currentPlaylistIndex;
+                            const metaParts = [];
+
+                            if (item.durationMs) {
+                                metaParts.push(formatDuration(item.durationMs));
+                            }
+                            metaParts.push(`${formatViews(item.views || 0)} views`);
+                            if (item.uploadedAt) {
+                                metaParts.push(formatDate(item.uploadedAt));
+                            }
+
+                            return (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    className={`playlist-item ${isActive ? 'active' : ''}`}
+                                    onClick={() => handlePlaylistSelect(index)}
+                                >
+                                    {item.thumbnailUrl ? (
+                                        <img src={item.thumbnailUrl} alt="" className="playlist-thumbnail" />
+                                    ) : (
+                                        <div className="playlist-thumbnail placeholder">No thumbnail</div>
+                                    )}
+                                    <div className="playlist-info">
+                                        <span className="playlist-title">{item.title}</span>
+                                        <span className="playlist-meta">{metaParts.join(' • ')}</span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </aside>
             </div>
         </div>
     );

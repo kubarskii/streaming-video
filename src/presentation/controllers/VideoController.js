@@ -132,6 +132,35 @@ class VideoController {
     }
 
     /**
+     * Increment view count for a video
+     */
+    async incrementVideoViews(req, res, videoId) {
+        try {
+            const validation = validateParams(z.object({ id: uuidSchema }), { id: videoId });
+            if (validation.success === false) {
+                return sendValidationError(res, validation.error, 400);
+            }
+
+            const views = await this.videoService.incrementVideoViews(videoId);
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                message: 'View recorded',
+                views,
+            }));
+        } catch (error) {
+            if (error.message === 'Video not found') {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ error: 'Video not found' }));
+            }
+
+            console.error('Error incrementing video views:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+    }
+
+    /**
      * Delete video
      */
     async deleteVideo(req, res, videoId) {

@@ -82,7 +82,7 @@ class IVideoRepository {
     /**
      * Increment view count for a video
      * @param {string} id - Video ID
-     * @returns {Promise<void>}
+     * @returns {Promise<number>} - Updated view count
      */
     async incrementViews(id) {
         throw new Error('Method not implemented');

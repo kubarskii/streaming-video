@@ -5,6 +5,7 @@
 const UploadVideoUseCase = require('../use-cases/UploadVideoUseCase');
 const GetVideoUseCase = require('../use-cases/GetVideoUseCase');
 const ListVideosUseCase = require('../use-cases/ListVideosUseCase');
+const IncrementVideoViewsUseCase = require('../use-cases/IncrementVideoViewsUseCase');
 const DeleteVideoUseCase = require('../use-cases/DeleteVideoUseCase');
 const UpdateVideoMetadataUseCase = require('../use-cases/UpdateVideoMetadataUseCase');
 const UpdateVideoThumbnailUseCase = require('../use-cases/UpdateVideoThumbnailUseCase');
@@ -19,6 +20,7 @@ class VideoService {
         this.deleteVideoUseCase = new DeleteVideoUseCase(videoRepository, storageRepository, channelRepository);
         this.updateVideoMetadataUseCase = new UpdateVideoMetadataUseCase(videoRepository);
         this.updateVideoThumbnailUseCase = new UpdateVideoThumbnailUseCase(videoRepository, storageRepository);
+        this.incrementVideoViewsUseCase = new IncrementVideoViewsUseCase(videoRepository);
 
         // Quality-related use cases (optional)
         if (videoQualityRepository) {
@@ -73,6 +75,10 @@ class VideoService {
             throw new Error('Transcoding is not configured');
         }
         return await this.transcodeVideoUseCase.execute(videoId);
+    }
+
+    async incrementVideoViews(videoId) {
+        return await this.incrementVideoViewsUseCase.execute(videoId);
     }
 }
 
