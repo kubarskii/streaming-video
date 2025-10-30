@@ -8,10 +8,11 @@
 .upload-container {
   max-width: 720px;
   margin: 0 auto;
-  background: #fff;
+  background: var(--bg-primary);
   border-radius: 12px;
   padding: 40px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .upload-title {
@@ -35,10 +36,10 @@
 
 .upload-error {
   padding: 12px 16px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid var(--error-color);
   border-radius: 8px;
-  color: #dc2626;
+  color: var(--error-color);
   font-size: 14px;
 }
 
@@ -55,7 +56,7 @@
 .upload-dropzone:hover,
 .upload-dropzone.active {
   border-color: var(--secondary-color);
-  background: #f0f7ff;
+  background: var(--bg-hover);
 }
 
 .upload-icon {
@@ -135,7 +136,7 @@
 }
 
 .btn-remove:hover {
-  background: #fee;
+  background: rgba(220, 38, 38, 0.1);
   color: var(--error-color);
 }
 
@@ -154,7 +155,7 @@
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--secondary-color), var(--primary-color));
+  background: var(--secondary-color);
   transition: width 0.3s ease;
 }
 
@@ -198,17 +199,17 @@
   margin: 12px;
   padding: 8px 16px;
   background: rgba(0, 0, 0, 0.7);
-  color: #fff;
+  color: var(--bg-primary);
   border: none;
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.15s ease-out;
   z-index: 1;
 }
 
 .btn-remove-thumb:hover {
-  background: rgba(239, 68, 68, 0.9);
+  background: rgba(220, 38, 38, 0.9);
 }
 
 .form-actions {

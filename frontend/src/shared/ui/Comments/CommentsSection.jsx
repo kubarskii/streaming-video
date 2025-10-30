@@ -154,6 +154,7 @@ export const CommentsSection = ({ videoId }) => {
                 <CommentForm
                     onSubmit={handleCreateComment}
                     isSubmitting={isSubmitting}
+                    user={user}
                 />
             ) : (
                 <div className="comments-auth-prompt">

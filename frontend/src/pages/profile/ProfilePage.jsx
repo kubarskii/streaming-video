@@ -6,7 +6,7 @@ import { useAbortController } from '../../shared/lib';
 import { videosAPI } from '../../shared/api/videos';
 import { channelsAPI } from '../../shared/api/channels';
 import { useNavigate } from '@tanstack/react-router';
-import { ProfileVideoCard, ProfileVideoGrid, Avatar, Button, EmptyState, VideoEmptyIcon } from '../../shared/ui';
+import { VideoCard, VideoCardGrid, Avatar, Button, EmptyState, VideoEmptyIcon, EditIcon, EyeIcon, DeleteIcon, UploadIcon, ConfirmDialog } from '../../shared/ui';
 import './ProfilePage.css';
 
 export const ProfilePage = () => {
@@ -22,6 +22,8 @@ export const ProfilePage = () => {
         name: '',
         description: '',
     });
+    const [uploadingThumbnail, setUploadingThumbnail] = useState(null);
+    const [deleteConfirm, setDeleteConfirm] = useState(null);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -104,17 +106,28 @@ export const ProfilePage = () => {
         }
     };
 
-    const handleDelete = async (videoId) => {
+    const handleDelete = async () => {
+        if (!deleteConfirm) return;
         try {
-            await videosAPI.deleteVideo(videoId);
-            setVideos(videos.filter(v => v.id !== videoId));
+            await videosAPI.deleteVideo(deleteConfirm);
+            setVideos(videos.filter(v => v.id !== deleteConfirm));
+            setDeleteConfirm(null);
         } catch (err) {
             console.error('Error deleting video:', err);
             alert('Failed to delete video');
         }
     };
 
-    const handleThumbnailUpdate = async (videoId, file) => {
+    const handleThumbnailChange = async (videoId, event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            alert('Please select an image file');
+            return;
+        }
+
+        setUploadingThumbnail(videoId);
         try {
             const response = await videosAPI.updateVideoThumbnail(videoId, file);
             setVideos(videos.map(v =>
@@ -124,12 +137,10 @@ export const ProfilePage = () => {
             ));
         } catch (err) {
             console.error('Error updating thumbnail:', err);
-            throw err;
+            alert('Failed to update thumbnail');
+        } finally {
+            setUploadingThumbnail(null);
         }
-    };
-
-    const handleView = (video) => {
-        navigate({ to: `/video/${video.id}` });
     };
 
     if (loading) {
@@ -275,20 +286,83 @@ export const ProfilePage = () => {
                         }
                     />
                 ) : (
-                    <ProfileVideoGrid>
+                    <VideoCardGrid>
                         {videos.map(video => (
-                            <ProfileVideoCard
+                            <VideoCard
                                 key={video.id}
                                 video={video}
-                                onUpdate={handleUpdate}
-                                onDelete={handleDelete}
-                                onThumbnailUpdate={handleThumbnailUpdate}
-                                onView={handleView}
+                                variant="grid"
+                                showFileSize={true}
+                                showDescription={false}
+                                onThumbnailUpload={
+                                    <label
+                                        htmlFor={`thumbnail-${video.id}`}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '48px',
+                                            height: '48px',
+                                            background: 'rgba(255, 255, 255, 0.9)',
+                                            borderRadius: '50%',
+                                            cursor: 'pointer',
+                                            color: '#333',
+                                        }}
+                                        title="Change thumbnail"
+                                    >
+                                        {uploadingThumbnail === video.id ? (
+                                            <span style={{ fontSize: '14px' }}>...</span>
+                                        ) : (
+                                            <UploadIcon size={20} />
+                                        )}
+                                        <input
+                                            id={`thumbnail-${video.id}`}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => handleThumbnailChange(video.id, e)}
+                                            style={{ display: 'none' }}
+                                            disabled={uploadingThumbnail === video.id}
+                                        />
+                                    </label>
+                                }
+                                actions={
+                                    <>
+                                        <Button
+                                            variant="primary"
+                                            size="small"
+                                            onClick={() => navigate({ to: `/video/${video.id}` })}
+                                            icon={<EyeIcon size={16} />}
+                                        >
+                                            View
+                                        </Button>
+                                        <Button
+                                            variant="danger"
+                                            size="small"
+                                            onClick={() => setDeleteConfirm(video.id)}
+                                            icon={<DeleteIcon size={16} />}
+                                        >
+                                            Delete
+                                        </Button>
+                                    </>
+                                }
                             />
                         ))}
-                    </ProfileVideoGrid>
+                    </VideoCardGrid>
                 )}
             </div>
+
+            {/* Delete Confirmation Dialog */}
+            {deleteConfirm && (
+                <ConfirmDialog
+                    isOpen={!!deleteConfirm}
+                    onClose={() => setDeleteConfirm(null)}
+                    onConfirm={handleDelete}
+                    title="Delete Video"
+                    message={`Are you sure you want to delete this video? This action cannot be undone.`}
+                    confirmText="Delete"
+                    variant="danger"
+                />
+            )}
         </div>
     );
 };

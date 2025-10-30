@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #ff6b35;
   color: white;
   font-weight: 600;
   overflow: hidden;
@@ -91,7 +91,7 @@
 }
 
 .ui-avatar--more {
-  background: #e5e7eb;
-  color: #4b5563;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
 }
 

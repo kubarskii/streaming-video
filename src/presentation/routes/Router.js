@@ -5,7 +5,7 @@
 const { URL } = require('url');
 
 class Router {
-    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController, chunkUploadController) {
+    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController, chunkUploadController, videoLikeController) {
         this.videoController = videoController;
         this.streamController = streamController;
         this.authController = authController;
@@ -14,6 +14,7 @@ class Router {
         this.subscriptionController = subscriptionController;
         this.commentController = commentController;
         this.chunkUploadController = chunkUploadController;
+        this.videoLikeController = videoLikeController;
     }
 
     /**
@@ -90,6 +91,25 @@ class Router {
         if (pathname.match(/^\/api\/videos\/[^/]+\/thumbnail$/) && req.method === 'PUT') {
             const videoId = pathname.split('/')[3];
             return await this.videoController.updateVideoThumbnail(req, res, videoId);
+        }
+
+        // Like/Dislike video routes - MUST come before generic video routes
+        // Get video like stats (GET /api/videos/:videoId/likes)
+        if (pathname.match(/^\/api\/videos\/[^/]+\/likes$/) && req.method === 'GET') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoLikeController.getLikeStats(req, res, videoId);
+        }
+
+        // Like/Dislike video (POST /api/videos/:videoId/like)
+        if (pathname.match(/^\/api\/videos\/[^/]+\/like$/) && req.method === 'POST') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoLikeController.likeVideo(req, res, videoId);
+        }
+
+        // Remove like/dislike (DELETE /api/videos/:videoId/like)
+        if (pathname.match(/^\/api\/videos\/[^/]+\/like$/) && req.method === 'DELETE') {
+            const videoId = pathname.split('/')[3];
+            return await this.videoLikeController.removeLike(req, res, videoId);
         }
 
         // Get single video by ID (GET /api/videos/:id)

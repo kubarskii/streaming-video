@@ -17,6 +17,7 @@ const PrismaChannelRepository = require('./src/infrastructure/persistence/Prisma
 const PrismaSubscriptionRepository = require('./src/infrastructure/persistence/PrismaSubscriptionRepository');
 const PrismaCommentRepository = require('./src/infrastructure/persistence/PrismaCommentRepository');
 const PrismaVideoQualityRepository = require('./src/infrastructure/persistence/PrismaVideoQualityRepository');
+const PrismaVideoLikeRepository = require('./src/infrastructure/persistence/PrismaVideoLikeRepository');
 const PasswordHasher = require('./src/infrastructure/auth/PasswordHasher');
 const JWTService = require('./src/infrastructure/auth/JWTService');
 const ThumbnailGenerator = require('./src/infrastructure/media/ThumbnailGenerator');
@@ -40,6 +41,9 @@ const CreateCommentUseCase = require('./src/application/use-cases/CreateCommentU
 const GetVideoCommentsUseCase = require('./src/application/use-cases/GetVideoCommentsUseCase');
 const UpdateCommentUseCase = require('./src/application/use-cases/UpdateCommentUseCase');
 const DeleteCommentUseCase = require('./src/application/use-cases/DeleteCommentUseCase');
+const LikeVideoUseCase = require('./src/application/use-cases/LikeVideoUseCase');
+const GetVideoLikeStatsUseCase = require('./src/application/use-cases/GetVideoLikeStatsUseCase');
+const RemoveVideoLikeUseCase = require('./src/application/use-cases/RemoveVideoLikeUseCase');
 
 // Presentation
 const VideoController = require('./src/presentation/controllers/VideoController');
@@ -50,6 +54,7 @@ const ChunkUploadController = require('./src/presentation/controllers/ChunkUploa
 const ChannelController = require('./src/presentation/controllers/ChannelController');
 const SubscriptionController = require('./src/presentation/controllers/SubscriptionController');
 const CommentController = require('./src/presentation/controllers/CommentController');
+const VideoLikeController = require('./src/presentation/controllers/VideoLikeController');
 const ChunkUploadService = require('./src/application/services/ChunkUploadService');
 const InMemoryUploadSessionRepository = require('./src/infrastructure/persistence/InMemoryUploadSessionRepository');
 const Router = require('./src/presentation/routes/Router');
@@ -75,6 +80,7 @@ class Container {
         const subscriptionRepository = new PrismaSubscriptionRepository(prismaClient);
         const commentRepository = new PrismaCommentRepository(prismaClient);
         const videoQualityRepository = new PrismaVideoQualityRepository(prismaClient);
+        const videoLikeRepository = new PrismaVideoLikeRepository(prismaClient);
         const storageRepository = StorageConfig.createStorageRepository();
         const passwordHasher = new PasswordHasher();
         const jwtService = new JWTService();
@@ -106,6 +112,9 @@ class Container {
         const getVideoCommentsUseCase = new GetVideoCommentsUseCase(commentRepository);
         const updateCommentUseCase = new UpdateCommentUseCase(commentRepository);
         const deleteCommentUseCase = new DeleteCommentUseCase(commentRepository);
+        const likeVideoUseCase = new LikeVideoUseCase(videoLikeRepository, videoRepository);
+        const getVideoLikeStatsUseCase = new GetVideoLikeStatsUseCase(videoLikeRepository);
+        const removeVideoLikeUseCase = new RemoveVideoLikeUseCase(videoLikeRepository);
 
         // Presentation layer
         const videoController = new VideoController(videoService);
@@ -130,6 +139,11 @@ class Container {
             updateCommentUseCase,
             deleteCommentUseCase
         );
+        const videoLikeController = new VideoLikeController(
+            likeVideoUseCase,
+            getVideoLikeStatsUseCase,
+            removeVideoLikeUseCase
+        );
 
         // Chunked Upload
         const uploadSessionRepository = new InMemoryUploadSessionRepository();
@@ -144,7 +158,8 @@ class Container {
             channelController,
             subscriptionController,
             commentController,
-            chunkUploadController
+            chunkUploadController,
+            videoLikeController
         );
 
         return { router, prismaClient, storageRepository, authService };

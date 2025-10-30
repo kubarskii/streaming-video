@@ -92,5 +92,21 @@ export const videosAPI = {
             }
         }
     },
+
+    // Like/Dislike functionality
+    likeVideo: async (id, isLike) => {
+        const response = await api.post(`/videos/${id}/like`, { isLike });
+        return response.data;
+    },
+
+    removeLike: async (id) => {
+        const response = await api.delete(`/videos/${id}/like`);
+        return response.data;
+    },
+
+    getLikeStats: async (id, signal) => {
+        const response = await api.get(`/videos/${id}/likes`, { signal });
+        return response.data;
+    },
 };
 

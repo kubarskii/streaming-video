@@ -14,12 +14,12 @@
     margin: 0 0 0.5rem 0;
     font-size: 2rem;
     font-weight: 700;
-    color: var(--color-text-primary);
+    color: var(--text-primary);
 }
 
 .page-description {
     margin: 0;
-    color: var(--color-text-secondary);
+    color: var(--text-secondary);
 }
 
 .subscriptions-grid {
@@ -33,15 +33,16 @@
     align-items: center;
     gap: 1rem;
     padding: 1.5rem;
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease-out;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .subscription-card:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: var(--secondary-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .subscription-info {
@@ -61,19 +62,19 @@
     margin: 0 0 0.25rem 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: var(--color-text-primary);
+    color: var(--text-primary);
 }
 
 .subscription-stats {
     margin: 0 0 0.5rem 0;
     font-size: 0.875rem;
-    color: var(--color-text-secondary);
+    color: var(--text-secondary);
 }
 
 .subscription-description {
     margin: 0;
     font-size: 0.875rem;
-    color: var(--color-text-secondary);
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -82,7 +83,7 @@
 .loading {
     text-align: center;
     padding: 4rem 2rem;
-    color: var(--color-text-secondary);
+    color: var(--text-secondary);
 }
 
 /* Responsive */

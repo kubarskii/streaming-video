@@ -1,24 +1,49 @@
 /* Pages: Video Player Page Styles */
 .video-page {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 24px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .video-container {
-  max-width: 1280px;
-  margin: 0 auto;
+  max-width: 100%;
+  margin: 0;
+}
+
+/* Full-width black substrate for video player */
+.video-player-substrate {
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  background: #000;
+  margin-bottom: 0;
 }
 
 .video-player-wrapper {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9; /* Default video aspect ratio */
-  max-height: calc(100vh - 64px - 24px); /* 100vh - header(64px) - page-padding-top(24px) */
+  max-width: 1280px;
+  margin: 0 auto;
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 120px);
   background: #000;
-  border-radius: 12px;
+  border-radius: 0;
   overflow: hidden;
-  margin-bottom: 16px;
 }
 
 .video-player-wrapper .youtube-video-player {
@@ -28,128 +53,196 @@
 /* Video player automatically inherits max-height from wrapper */
 
 .video-details {
-  padding: 16px 0;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 24px;
 }
 
 .video-title {
   font-size: 20px;
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1.4;
   color: var(--text-primary);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .video-stats {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 16px;
+  padding: 0;
+  margin-bottom: 12px;
+  gap: 16px;
 }
 
 .video-views {
   font-size: 14px;
+  font-weight: 500;
   color: var(--text-secondary);
+  flex: 1;
 }
 
 .btn-delete {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  background: transparent;
-  border: 1px solid var(--border-color);
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: none;
   border-radius: 18px;
-  color: var(--error-color);
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s ease-out;
 }
 
 .btn-delete:hover {
-  background: #fff0f0;
-  border-color: var(--error-color);
+  background: var(--bg-hover);
 }
 
 .video-channel {
-  padding: 12px 0;
-  margin-bottom: 16px;
+  padding: 16px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .channel-link {
   display: inline-flex;
   align-items: center;
-  padding: 8px 16px;
-  background: var(--bg-secondary);
-  border-radius: 18px;
+  gap: 8px;
   color: var(--text-primary);
   text-decoration: none;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: opacity 0.15s ease-out;
 }
 
 .channel-link:hover {
-  background: var(--bg-hover);
+  opacity: 0.7;
 }
 
 .video-description {
   background: var(--bg-secondary);
   border-radius: 12px;
-  padding: 16px;
+  padding: 12px;
   margin-bottom: 16px;
-}
-
-.video-description p {
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
+}
+
+.video-description p {
+  margin: 0;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
 
-.video-metadata {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  padding: 16px;
-  background: var(--bg-secondary);
-  border-radius: 12px;
-}
-
-.metadata-item {
+/* Like/Dislike Buttons */
+.video-actions {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  align-items: center;
 }
 
-.metadata-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.like-dislike-group {
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border-radius: 18px;
+  overflow: hidden;
 }
 
-.metadata-value {
-  font-size: 14px;
+.btn-like,
+.btn-dislike {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
   color: var(--text-primary);
+  font-size: 14px;
   font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+  position: relative;
+}
+
+.btn-like {
+  padding-right: 12px;
+}
+
+.btn-dislike {
+  padding-left: 12px;
+}
+
+/* Separator between like and dislike */
+.like-dislike-separator {
+  width: 1px;
+  height: 24px;
+  background: var(--border-color);
+}
+
+/* Hover effect */
+.btn-like:hover:not(:disabled),
+.btn-dislike:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+/* Active state */
+.btn-like.active,
+.btn-dislike.active {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.btn-like.active:hover,
+.btn-dislike.active:hover {
+  background: var(--bg-hover);
+}
+
+/* Disabled state */
+.btn-like:disabled,
+.btn-dislike:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Share button */
+.btn-share {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+}
+
+.btn-share:hover {
+  background: var(--bg-hover);
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .video-page {
-    padding: 16px;
-  }
-
-  .video-player-wrapper {
-    border-radius: 8px;
-    aspect-ratio: 16 / 9;
-    max-height: calc(100vh - 64px - 16px); /* header(64px) - page-padding-top(16px) */
-  }
-
   .video-title {
     font-size: 18px;
   }
@@ -160,28 +253,21 @@
     gap: 12px;
   }
 
-  .video-metadata {
-    grid-template-columns: 1fr;
+  .video-actions {
+    width: 100%;
+    flex-wrap: wrap;
   }
 }
 
 @media (max-width: 480px) {
-  .video-page {
-    padding: 12px;
-  }
-
-  .video-player-wrapper {
-    border-radius: 0;
-    margin-left: -12px;
-    margin-right: -12px;
-    margin-bottom: 12px;
-    width: calc(100% + 24px);
-    aspect-ratio: 16 / 9;
-    max-height: calc(100vh - 64px - 12px); /* header(64px) - page-padding-top(12px) */
-  }
-
   .video-title {
     font-size: 16px;
+  }
+
+  .btn-like span,
+  .btn-share span,
+  .btn-delete span {
+    display: none;
   }
 }
 

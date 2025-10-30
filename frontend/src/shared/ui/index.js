@@ -22,7 +22,6 @@ export { ErrorState } from './ErrorState';
 export { Avatar, AvatarGroup } from './Avatar';
 export { Card, CardHeader, CardBody, CardFooter } from './Card';
 export { VideoCard, VideoCardGrid, VideoCardSkeleton } from './VideoCard';
-export { ProfileVideoCard, ProfileVideoGrid } from './ProfileVideoCard';
 
 // Overlay
 export { Modal, ConfirmDialog } from './Modal';

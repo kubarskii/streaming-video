@@ -16,6 +16,8 @@ export const VideoPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [currentVideoUrl, setCurrentVideoUrl] = useState(null);
+    const [likeStats, setLikeStats] = useState({ likes: 0, dislikes: 0, userLike: null });
+    const [likingInProgress, setLikingInProgress] = useState(false);
 
     useEffect(() => {
         const fetchVideo = async () => {
@@ -51,6 +53,17 @@ export const VideoPage = () => {
                     setQualities([]);
                 }
 
+                // Fetch like statistics
+                try {
+                    const stats = await videosAPI.getLikeStats(id, signal);
+                    setLikeStats(stats);
+                } catch (statsErr) {
+                    // Ignore abort errors
+                    if (statsErr.name !== 'AbortError' && statsErr.name !== 'CanceledError') {
+                        console.log('Error fetching like stats:', statsErr);
+                    }
+                }
+
                 setLoading(false);
             } catch (err) {
                 // Ignore abort errors
@@ -84,6 +97,46 @@ export const VideoPage = () => {
         } catch (err) {
             console.error('Error deleting video:', err);
             alert('Failed to delete video');
+        }
+    };
+
+    const handleLike = async () => {
+        if (!user) {
+            alert('Please log in to like videos');
+            return;
+        }
+
+        if (likingInProgress) return;
+
+        try {
+            setLikingInProgress(true);
+            const result = await videosAPI.likeVideo(id, true);
+            setLikeStats(result.stats);
+        } catch (err) {
+            console.error('Error liking video:', err);
+            alert('Failed to like video');
+        } finally {
+            setLikingInProgress(false);
+        }
+    };
+
+    const handleDislike = async () => {
+        if (!user) {
+            alert('Please log in to dislike videos');
+            return;
+        }
+
+        if (likingInProgress) return;
+
+        try {
+            setLikingInProgress(true);
+            const result = await videosAPI.likeVideo(id, false);
+            setLikeStats(result.stats);
+        } catch (err) {
+            console.error('Error disliking video:', err);
+            alert('Failed to dislike video');
+        } finally {
+            setLikingInProgress(false);
         }
     };
 
@@ -131,27 +184,29 @@ export const VideoPage = () => {
     return (
         <div className="video-page">
             <div className="video-container">
-                <div className="video-player-wrapper">
-                    <VideoPlayer
-                        src={currentVideoUrl}
-                        poster={video.thumbnailUrl}
-                        title={video.title}
-                        autoPlay={true}
-                        primaryColor="#ff0000"
-                        qualities={qualities}
-                        onQualityChange={handleQualityChange}
-                        mimeType={video.mimeType}
-                        onTimeUpdate={(time) => {
-                            // Update view count after 30 seconds
-                            if (Math.floor(time) === 30) {
-                                videosAPI.incrementViews(id, signal).catch(console.error);
-                            }
-                        }}
-                        onError={() => {
-                            console.error('Error loading video');
-                            setError('Failed to load video');
-                        }}
-                    />
+                <div className="video-player-substrate">
+                    <div className="video-player-wrapper">
+                        <VideoPlayer
+                            src={currentVideoUrl}
+                            poster={video.thumbnailUrl}
+                            title={video.title}
+                            autoPlay={true}
+                            primaryColor="#ff0000"
+                            qualities={qualities}
+                            onQualityChange={handleQualityChange}
+                            mimeType={video.mimeType}
+                            onTimeUpdate={(time) => {
+                                // Update view count after 30 seconds
+                                if (Math.floor(time) === 30) {
+                                    videosAPI.incrementViews(id, signal).catch(console.error);
+                                }
+                            }}
+                            onError={() => {
+                                console.error('Error loading video');
+                                setError('Failed to load video');
+                            }}
+                        />
+                    </div>
                 </div>
 
                 <div className="video-details">
@@ -161,13 +216,65 @@ export const VideoPage = () => {
                         <div className="video-views">
                             {formatViews(video.views)} views • {formatDate(video.uploadedAt)}
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div className="video-actions">
+                            {/* Like/Dislike buttons with separator */}
+                            <div className="like-dislike-group">
+                                <button
+                                    onClick={handleLike}
+                                    disabled={likingInProgress}
+                                    className={`btn-like ${likeStats.userLike === true ? 'active' : ''}`}
+                                    aria-label="Like this video"
+                                    title={`${likeStats.likes} likes`}
+                                >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill={likeStats.userLike === true ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+                                    </svg>
+                                    <span>{likeStats.likes}</span>
+                                </button>
+                                <div className="like-dislike-separator"></div>
+                                <button
+                                    onClick={handleDislike}
+                                    disabled={likingInProgress}
+                                    className={`btn-dislike ${likeStats.userLike === false ? 'active' : ''}`}
+                                    aria-label="Dislike this video"
+                                    title="Dislike"
+                                >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill={likeStats.userLike === false ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(180deg)' }}>
+                                        <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    if (navigator.share) {
+                                        navigator.share({
+                                            title: video.title,
+                                            url: window.location.href
+                                        }).catch(() => { });
+                                    } else {
+                                        navigator.clipboard.writeText(window.location.href);
+                                        alert('Link copied to clipboard!');
+                                    }
+                                }}
+                                className="btn-share"
+                                aria-label="Share this video"
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                                    <polyline points="16 6 12 2 8 6" />
+                                    <line x1="12" y1="2" x2="12" y2="15" />
+                                </svg>
+                                <span>Share</span>
+                            </button>
+
                             {canDelete && (
                                 <button onClick={handleDelete} className="btn-delete">
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                                        <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5zM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.5a.5.5 0 0 0 0 1h.75l.5 10.5A1.5 1.5 0 0 0 5.25 15h5.5a1.5 1.5 0 0 0 1.5-1.5L12.75 3.5h.75a.5.5 0 0 0 0-1H11z" />
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                                     </svg>
-                                    Delete
+                                    <span>Delete</span>
                                 </button>
                             )}
                         </div>
@@ -186,31 +293,6 @@ export const VideoPage = () => {
                             <p>{video.description}</p>
                         </div>
                     )}
-
-                    <div className="video-metadata">
-                        <div className="metadata-item">
-                            <span className="metadata-label">File:</span>
-                            <span className="metadata-value">{video.fileName}</span>
-                        </div>
-                        <div className="metadata-item">
-                            <span className="metadata-label">Size:</span>
-                            <span className="metadata-value">
-                                {(video.sizeBytes / (1024 * 1024)).toFixed(2)} MB
-                            </span>
-                        </div>
-                        {video.width && video.height && (
-                            <div className="metadata-item">
-                                <span className="metadata-label">Resolution:</span>
-                                <span className="metadata-value">
-                                    {video.width} × {video.height}
-                                </span>
-                            </div>
-                        )}
-                        <div className="metadata-item">
-                            <span className="metadata-label">Format:</span>
-                            <span className="metadata-value">{video.mimeType}</span>
-                        </div>
-                    </div>
 
                     {/* Comments Section */}
                     <CommentsSection videoId={video.id} />

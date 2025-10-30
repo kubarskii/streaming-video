@@ -20,6 +20,7 @@ model User {
   channel       Channel?
   subscriptions Subscription[]
   comments      Comment[]
+  likes         VideoLike[]
   
   @@index([email])
   @@index([username])
@@ -78,6 +79,7 @@ model Video {
   views         Int            @default(0)
   comments      Comment[]
   qualities     VideoQuality[]
+  likes         VideoLike[]
   
   @@index([status])
   @@index([uploadedAt])
@@ -118,6 +120,21 @@ model Comment {
   @@index([videoId])
   @@index([userId])
   @@index([createdAt])
+}
+
+model VideoLike {
+  id        String   @id
+  videoId   String
+  userId    String
+  isLike    Boolean  // true for like, false for dislike
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, videoId])
+  @@index([videoId])
+  @@index([userId])
 }
 
 model UploadSession {

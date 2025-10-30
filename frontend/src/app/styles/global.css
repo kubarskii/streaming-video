@@ -18,6 +18,113 @@
   --success-color: #00a65a;
 }
 
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-primary: #f1f1f1;
+    --text-secondary: #aaa;
+    --border-color: #303030;
+    --bg-primary: #0f0f0f;
+    --bg-secondary: #272727;
+    --bg-hover: #3a3a3a;
+  }
+  
+  .header {
+    box-shadow: 0 1px 3px rgba(255, 255, 255, 0.03);
+  }
+  
+  .header-user-dropdown {
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  }
+  
+  /* Adjust video card shadows for dark mode */
+  .ui-video-card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  
+  .ui-video-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+  
+  /* Adjust profile page shadows for dark mode */
+  .profile-header,
+  .videos-section,
+  .channel-section {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Adjust subscription and channel card shadows for dark mode */
+  .subscription-card,
+  .channel-card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  
+  .subscription-card:hover,
+  .channel-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+  
+  /* Adjust upload page shadows for dark mode */
+  .upload-container {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Adjust auth page shadows for dark mode */
+  .auth-card {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Manual dark theme class */
+.dark-theme {
+  --text-primary: #f1f1f1;
+  --text-secondary: #aaa;
+  --border-color: #303030;
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #272727;
+  --bg-hover: #3a3a3a;
+}
+
+.dark-theme .header {
+  box-shadow: 0 1px 3px rgba(255, 255, 255, 0.03);
+}
+
+.dark-theme .header-user-dropdown {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.dark-theme .ui-video-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme .ui-video-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.dark-theme .profile-header,
+.dark-theme .videos-section,
+.dark-theme .channel-section {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme .subscription-card,
+.dark-theme .channel-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme .subscription-card:hover,
+.dark-theme .channel-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.dark-theme .upload-container {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme .auth-card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
 body {
   font-family: "Roboto", "Arial", sans-serif;
   color: var(--text-primary);

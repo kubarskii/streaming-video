@@ -2,20 +2,18 @@
 .home-page {
   width: 100%;
   max-width: 100%;
-  min-height: calc(100vh - 80px);
+  min-height: calc(100vh - 64px);
   overflow-x: hidden;
-  background: #f9fafb;
-  padding: 1.5rem;
+  background: var(--bg-primary);
+  padding: 24px;
 }
 
 .search-header {
   max-width: 1440px;
-  margin: 0 auto 1.5rem;
-  padding: 1.5rem;
-  background: white;
-  border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  margin: 0 auto 24px;
+  padding: 16px 0;
+  background: transparent;
+  border-bottom: 1px solid var(--border-color);
 }
 
 /* Video grid container */
@@ -27,32 +25,32 @@
 .search-header h2 {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin: 0 0 0.5rem;
 }
 
 .results-count {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin: 0;
 }
 
 .loading-container {
-  min-height: calc(100vh - 80px);
+  min-height: calc(100vh - 64px);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f9fafb;
+  background: var(--bg-primary);
 }
 
 .error-container,
 .empty-container {
-  min-height: calc(100vh - 140px);
+  min-height: calc(100vh - 64px);
   padding: 3rem 1.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f9fafb;
+  background: var(--bg-primary);
 }
 
 .loading-more {
@@ -70,13 +68,13 @@
 }
 
 .end-message p {
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 0.9375rem;
   margin: 0;
   padding: 1rem 1.5rem;
-  background: white;
+  background: var(--bg-primary);
   border-radius: 0.5rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
 }
 
 /* Override infinite scroll container styles */
@@ -87,12 +85,12 @@
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .home-page {
-    padding: 1rem;
+    padding: 16px;
   }
   
   .search-header {
-    margin: 0 0 1rem;
-    padding: 1rem;
+    margin: 0 0 16px;
+    padding: 12px 0;
   }
   
   .search-header h2 {
@@ -107,7 +105,7 @@
 
 @media (max-width: 480px) {
   .home-page {
-    padding: 0.75rem;
+    padding: 12px;
   }
 }
 

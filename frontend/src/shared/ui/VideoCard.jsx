@@ -8,17 +8,23 @@ import './VideoCard.css';
  * Shared Video Card Component
  * 
  * @param {Object} video - Video object with title, thumbnail, views, etc.
- * @param {string} variant - 'grid' | 'list' | 'compact'
+ * @param {string} variant - 'grid' | 'list' | 'compact' | 'management'
  * @param {boolean} showUser - Show user avatar and name
  * @param {boolean} showDescription - Show video description
+ * @param {boolean} showFileSize - Show file size (for management variant)
  * @param {function} onClick - Optional click handler
+ * @param {function} onThumbnailUpload - Optional thumbnail upload handler
+ * @param {ReactNode} actions - Optional action buttons/content
  */
 export const VideoCard = ({
     video,
     variant = 'grid',
     showUser = false,
     showDescription = false,
+    showFileSize = false,
     onClick,
+    onThumbnailUpload,
+    actions,
     className = '',
 }) => {
     const navigate = useNavigate();
@@ -29,26 +35,35 @@ export const VideoCard = ({
     const cardClasses = [
         'ui-video-card',
         `ui-video-card--${variant}`,
+        actions && 'ui-video-card--has-actions',
         className,
     ]
         .filter(Boolean)
         .join(' ');
 
     const handleCardClick = (e) => {
-        // Don't navigate if clicking on a link (channel author link)
-        if (e.target.closest('a')) {
+        // Don't navigate if clicking on a link, button, or input
+        if (e.target.closest('a, button, input, label')) {
             return;
         }
 
         if (onClick) {
             onClick(video);
-        } else {
+        } else if (!actions) {
+            // Only auto-navigate if there are no custom actions (management mode)
             navigate({ to: videoLink });
         }
     };
 
+    const formatFileSize = (bytes) => {
+        if (!bytes) return '0 B';
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
+    };
+
     return (
-        <div className={cardClasses} onClick={handleCardClick} style={{ cursor: 'pointer' }}>
+        <div className={cardClasses} onClick={handleCardClick} style={{ cursor: actions ? 'default' : 'pointer' }}>
             {/* Thumbnail */}
             <div className="ui-video-card__thumbnail">
                 {thumbnailUrl ? (
@@ -71,6 +86,11 @@ export const VideoCard = ({
                 )}
                 {video.status && video.status !== 'ready' && (
                     <div className="ui-video-card__status">{video.status}</div>
+                )}
+                {onThumbnailUpload && (
+                    <div className="ui-video-card__thumbnail-overlay">
+                        {onThumbnailUpload}
+                    </div>
                 )}
             </div>
 
@@ -100,6 +120,11 @@ export const VideoCard = ({
                     )}
 
                     <div className="ui-video-card__meta">
+                        {showFileSize && video.sizeBytes && (
+                            <span className="ui-video-card__filesize">
+                                {formatFileSize(video.sizeBytes)}
+                            </span>
+                        )}
                         {video.views !== undefined && (
                             <span className="ui-video-card__views">
                                 <EyeIcon size={14} />
@@ -118,6 +143,13 @@ export const VideoCard = ({
                     )}
                 </div>
             </div>
+
+            {/* Custom Actions */}
+            {actions && (
+                <div className="ui-video-card__actions">
+                    {actions}
+                </div>
+            )}
         </div>
     );
 };
