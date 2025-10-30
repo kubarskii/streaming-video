@@ -1,5 +1,5 @@
 // Pages: Video Player Page
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from '@tanstack/react-router';
 import { videosAPI } from '../../shared/api/videos';
 import { useAbortController } from '../../shared/lib';
@@ -18,6 +18,38 @@ export const VideoPage = () => {
     const [currentVideoUrl, setCurrentVideoUrl] = useState(null);
     const [likeStats, setLikeStats] = useState({ likes: 0, dislikes: 0, userLike: null });
     const [likingInProgress, setLikingInProgress] = useState(false);
+    const ambientCanvasRef = useRef(null);
+
+    // Update ambient canvas with video frame
+    const updateAmbientLight = (videoElement) => {
+        const canvas = ambientCanvasRef.current;
+        if (!canvas || !videoElement) return;
+
+        const ctx = canvas.getContext('2d', {
+            alpha: false,
+            willReadFrequently: false
+        });
+
+        const aspectRatio = videoElement.videoWidth / videoElement.videoHeight || 16 / 9;
+
+        // Only resize if dimensions changed
+        const newWidth = 1280;
+        const newHeight = newWidth / aspectRatio;
+
+        if (canvas.width !== newWidth || canvas.height !== newHeight) {
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+        }
+
+        try {
+            // Use smooth rendering
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        } catch (err) {
+            // CORS error - silent fail
+        }
+    };
 
     useEffect(() => {
         const fetchVideo = async () => {
@@ -186,6 +218,7 @@ export const VideoPage = () => {
             <div className="video-container">
                 <div className="video-player-substrate">
                     <div className="video-player-wrapper">
+                        <canvas ref={ambientCanvasRef} className="ambient-canvas" />
                         <VideoPlayer
                             src={currentVideoUrl}
                             poster={video.thumbnailUrl}
@@ -195,6 +228,7 @@ export const VideoPage = () => {
                             qualities={qualities}
                             onQualityChange={handleQualityChange}
                             mimeType={video.mimeType}
+                            onAmbientUpdate={updateAmbientLight}
                             onTimeUpdate={(time) => {
                                 // Update view count after 30 seconds
                                 if (Math.floor(time) === 30) {

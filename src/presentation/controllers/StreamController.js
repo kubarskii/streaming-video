@@ -195,6 +195,9 @@ class StreamController {
                 'Content-Length': fileSize,
                 'Accept-Ranges': 'bytes',
                 'Cache-Control': 'public, max-age=31536000',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+                'Access-Control-Allow-Headers': 'Range',
             });
             return fs.createReadStream(filePath).pipe(res);
         }
@@ -224,6 +227,9 @@ class StreamController {
             'Content-Length': chunkSize,
             'Content-Type': contentType,
             'Cache-Control': 'public, max-age=31536000',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': 'Range',
         });
 
         const stream = fs.createReadStream(filePath, { start, end });
@@ -261,6 +267,11 @@ class StreamController {
             if (result.contentRange) {
                 responseHeaders['Content-Range'] = result.contentRange;
             }
+
+            // Add CORS headers for ambient light canvas access
+            responseHeaders['Access-Control-Allow-Origin'] = '*';
+            responseHeaders['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS';
+            responseHeaders['Access-Control-Allow-Headers'] = 'Range';
 
             // Write response headers
             res.writeHead(result.statusCode, responseHeaders);
@@ -329,6 +340,11 @@ class StreamController {
                 if (upstreamRes.headers['content-range']) {
                     responseHeaders['Content-Range'] = upstreamRes.headers['content-range'];
                 }
+
+                // Add CORS headers for ambient light canvas access
+                responseHeaders['Access-Control-Allow-Origin'] = '*';
+                responseHeaders['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS';
+                responseHeaders['Access-Control-Allow-Headers'] = 'Range';
 
                 res.writeHead(statusCode, responseHeaders);
                 upstreamRes.pipe(res);

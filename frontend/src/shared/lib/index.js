@@ -11,4 +11,5 @@ export {
 } from './format';
 
 export { useAbortController } from './useAbortController';
+export { extractImageColor } from './extractImageColor';
 

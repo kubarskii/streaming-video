@@ -39,6 +39,17 @@ export default defineConfig(({ mode }) => {
         '/video': {
           target: backendUrl,
           changeOrigin: true,
+          bypass: (req, res, options) => {
+            // If URL has a path parameter (like /video/123), don't proxy it (let SPA handle it)
+            // Only proxy if it has a query string (like /video?file=...)
+            if (req.url.startsWith('/video/') || req.url === '/video') {
+              console.log('[Vite] Bypassing proxy for SPA route:', req.url);
+              return '/index.html'; // Let Vite serve the SPA
+            }
+            // If it has query params like /video?file=..., proxy to backend
+            console.log('[Vite] Proxying video stream:', req.url);
+            return null; // Continue with proxy
+          },
         },
       },
     },

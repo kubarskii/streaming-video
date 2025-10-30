@@ -1,3 +1,4 @@
+// Shared UI: Video Player Component
 import React, { useEffect, useState, useRef } from 'react';
 import {
     FaPlay,
@@ -26,11 +27,13 @@ export const VideoPlayer = ({
     onQualityChange,
     className = '',
     mimeType,
+    onAmbientUpdate,
 }) => {
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const controlsTimeoutRef = useRef(null);
     const progressBarRef = useRef(null);
+    const ambientIntervalRef = useRef(null);
 
     const [isPlaying, setIsPlaying] = useState(autoPlay);
     const [currentTime, setCurrentTime] = useState(0);
@@ -378,6 +381,43 @@ export const VideoPlayer = ({
     };
 
     const videoMimeType = mimeType || detectMimeType(src);
+
+    // Ambient light effect
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !onAmbientUpdate) return;
+
+        const updateAmbient = () => {
+            if (video.readyState >= 2 && !video.paused) {
+                onAmbientUpdate(video);
+            }
+        };
+
+        const handlePlay = () => {
+            updateAmbient();
+            // Update every 500ms for smoother transitions
+            ambientIntervalRef.current = setIntegitrval(updateAmbient, 16);
+        };
+
+        const handlePause = () => {
+            if (ambientIntervalRef.current) {
+                clearInterval(ambientIntervalRef.current);
+            }
+        };
+
+        video.addEventListener('play', handlePlay);
+        video.addEventListener('pause', handlePause);
+
+        if (!video.paused && video.readyState >= 2) {
+            handlePlay();
+        }
+
+        return () => {
+            if (ambientIntervalRef.current) clearInterval(ambientIntervalRef.current);
+            video.removeEventListener('play', handlePlay);
+            video.removeEventListener('pause', handlePause);
+        };
+    }, [src, onAmbientUpdate]);
 
     return (
         <>
