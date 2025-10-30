@@ -360,10 +360,14 @@ class ChunkUploadController {
                 const thumbnailGenerator = new ThumbnailGenerator();
                 const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
 
+                // Extract thumbnail from beginning since we only have first 10MB
                 const generatedThumbnailPath = await thumbnailGenerator.generateFromVideo(
                     tempVideoPath,
                     thumbnailTempPath,
-                    { size: '640x360' }
+                    {
+                        size: '640x360',
+                        timestamp: '00:00:02.000' // 2 seconds in, works with partial file
+                    }
                 );
 
                 // Upload thumbnail to B2
