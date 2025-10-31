@@ -74,7 +74,6 @@ export const VideoPage = () => {
     useEffect(() => {
         // Skip normal video loading during seamless navigation
         if (isSeamlessNavigationRef.current) {
-            console.log('[Seamless Nav] Video loading useEffect skipped');
             return;
         }
 
@@ -171,7 +170,6 @@ export const VideoPage = () => {
 
         // Skip playlist reload during seamless navigation
         if (isSeamlessNavigationRef.current) {
-            console.log('[Seamless Nav] Playlist reload skipped');
             // Don't reset flag here - let loadVideoData reset it after all updates complete
             return;
         }
@@ -406,7 +404,6 @@ export const VideoPage = () => {
     useEffect(() => {
         // Skip index update during seamless navigation - loadVideoData handles it
         if (isSeamlessNavigationRef.current) {
-            console.log('[Seamless Nav] Index update skipped');
             return;
         }
 
@@ -443,7 +440,6 @@ export const VideoPage = () => {
 
             // Mark as seamless navigation to prevent playlist reload
             isSeamlessNavigationRef.current = true;
-            console.log('[Seamless Nav] Starting, flag set to true');
 
             // Fetch video data
             const data = await videosAPI.getVideo(videoId, signal);
@@ -522,7 +518,6 @@ export const VideoPage = () => {
             // Reset flag after all state updates and useEffects have completed
             // Use a delay to ensure startTransition and all derived effects finish
             seamlessResetTimeoutRef.current = setTimeout(() => {
-                console.log('[Seamless Nav] All updates complete, resetting flag');
                 isSeamlessNavigationRef.current = false;
                 seamlessResetTimeoutRef.current = null;
             }, 200);
@@ -817,6 +812,7 @@ export const VideoPage = () => {
                     )}
                     <VideoPlayer
                         ref={videoPlayerRef}
+                        videoId={video.id}
                         src={currentVideoUrl}
                         poster={video.thumbnailUrl}
                         title={video.title}

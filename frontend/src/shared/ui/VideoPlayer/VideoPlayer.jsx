@@ -20,6 +20,7 @@ export const VideoPlayer = React.forwardRef(({
     src,
     poster,
     title,
+    videoId,
     autoPlay = false,
     onTimeUpdate,
     onEnded,
@@ -40,6 +41,10 @@ export const VideoPlayer = React.forwardRef(({
     const controlsTimeoutRef = useRef(null);
     const progressBarRef = useRef(null);
     const ambientIntervalRef = useRef(null);
+    const lastSavedTimeRef = useRef(0);
+    const hasRestoredPositionRef = useRef(false);
+    const saveIntervalRef = useRef(null);
+    const pendingRestorePositionRef = useRef(null);
 
     const [isPlaying, setIsPlaying] = useState(autoPlay);
     const [currentTime, setCurrentTime] = useState(0);
@@ -63,6 +68,172 @@ export const VideoPlayer = React.forwardRef(({
 
     const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+    // Debug: Log videoId changes
+    useEffect(() => {
+        console.log('[VideoPlayer] videoId changed to:', videoId);
+    }, [videoId]);
+
+    // Save/restore video position functions
+    const getStorageKey = () => videoId ? `video_position_${videoId}` : null;
+
+    const saveVideoPosition = (time) => {
+        const key = getStorageKey();
+        // if (!key || !time || time < 5) return; // Don't save if less than 5 seconds
+
+        // Only save if at least 1 second has passed since last save (throttle)
+        if (Math.abs(time - lastSavedTimeRef.current) < 1) return;
+
+        lastSavedTimeRef.current = time;
+        try {
+            localStorage.setItem(key, time.toString());
+        } catch (err) {
+            console.error('Failed to save video position:', err);
+        }
+    };
+
+    const restoreVideoPosition = () => {
+        const key = getStorageKey();
+        console.log('[VideoPlayer] Attempting to restore position, key:', key, 'hasRestored:', hasRestoredPositionRef.current);
+
+        if (!key) {
+            console.log('[VideoPlayer] No storage key - videoId missing?');
+            return null;
+        }
+
+        if (hasRestoredPositionRef.current) {
+            console.log('[VideoPlayer] Already restored, skipping');
+            return null;
+        }
+
+        try {
+            const savedPosition = localStorage.getItem(key);
+            console.log('[VideoPlayer] Saved position from storage:', savedPosition);
+
+            if (savedPosition) {
+                const position = parseFloat(savedPosition);
+                if (!isNaN(position) && position > 0) {
+                    hasRestoredPositionRef.current = true;
+                    console.log('[VideoPlayer] Will restore position:', position);
+                    return position;
+                }
+            }
+        } catch (err) {
+            console.error('Failed to restore video position:', err);
+        }
+
+        console.log('[VideoPlayer] No valid position to restore');
+        return null;
+    };
+
+    const clearVideoPosition = () => {
+        const key = getStorageKey();
+        if (!key) return;
+
+        try {
+            localStorage.removeItem(key);
+        } catch (err) {
+            console.error('Failed to clear video position:', err);
+        }
+    };
+
+    // Load saved position when videoId changes
+    useEffect(() => {
+        console.log('[VideoPlayer] videoId changed, loading saved position for:', videoId);
+        hasRestoredPositionRef.current = false;
+        pendingRestorePositionRef.current = null;
+
+        if (videoId) {
+            const key = `video_position_${videoId}`;
+            try {
+                const savedPosition = localStorage.getItem(key);
+                if (savedPosition) {
+                    const position = parseFloat(savedPosition);
+                    if (!isNaN(position) && position > 5) {
+                        pendingRestorePositionRef.current = position;
+                        console.log('[VideoPlayer] Pending restore position:', position);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load saved position:', err);
+            }
+        }
+    }, [videoId]);
+
+    // Aggressive position saving - update every second while playing
+    useEffect(() => {
+        if (!videoId) return;
+
+        // Clear any existing interval
+        if (saveIntervalRef.current) {
+            clearInterval(saveIntervalRef.current);
+            saveIntervalRef.current = null;
+        }
+
+        // Start interval if playing
+        if (isPlaying && videoRef.current) {
+            console.log('[VideoPlayer] Starting save interval');
+            saveIntervalRef.current = setInterval(() => {
+                if (videoRef.current && videoId) {
+                    const time = videoRef.current.currentTime;
+                    // if (time > 5) {
+                    const key = `video_position_${videoId}`;
+                    try {
+                        localStorage.setItem(key, time.toString());
+                        console.log(`[VideoPlayer] Auto-saved position: ${time.toFixed(1)}s`);
+                    } catch (err) {
+                        console.error('Failed to save position:', err);
+                    }
+                    // }
+                }
+            }, 1000); // Save every second
+        } else if (!isPlaying) {
+            console.log('[VideoPlayer] Stopped save interval (paused)');
+        }
+
+        return () => {
+            if (saveIntervalRef.current) {
+                clearInterval(saveIntervalRef.current);
+                saveIntervalRef.current = null;
+            }
+        };
+    }, [isPlaying, videoId]);
+
+    // Save position on page unload (refresh/close) or component unmount
+    useEffect(() => {
+        if (!videoId) return;
+
+        const storageKey = `video_position_${videoId}`;
+
+        const saveOnUnload = () => {
+            const video = videoRef.current;
+            if (video) {
+                const time = video.currentTime;
+                // if (time > 5) {
+                try {
+                    localStorage.setItem(storageKey, time.toString());
+                } catch (err) {
+                    // Silent fail on unload to not block
+                }
+                // }
+            }
+        };
+
+        // beforeunload for desktop browsers
+        window.addEventListener('beforeunload', saveOnUnload);
+        // pagehide for mobile browsers (more reliable on iOS/Safari)
+        window.addEventListener('pagehide', saveOnUnload);
+        // visibilitychange as backup
+        document.addEventListener('visibilitychange', saveOnUnload);
+
+        return () => {
+            // Save on unmount (when navigating away within the app)
+            saveOnUnload();
+            window.removeEventListener('beforeunload', saveOnUnload);
+            window.removeEventListener('pagehide', saveOnUnload);
+            document.removeEventListener('visibilitychange', saveOnUnload);
+        };
+    }, [videoId]);
+
     useEffect(() => {
         if (videoRef.current && autoPlay) {
             videoRef.current.play().catch(err => {
@@ -77,6 +248,7 @@ export const VideoPlayer = React.forwardRef(({
         const video = videoRef.current;
         if (!video) return;
 
+        console.log('[VideoPlayer] Source changed, reloading video');
         // When src changes, reload the video and optionally auto-play
         video.load();
 
@@ -102,15 +274,62 @@ export const VideoPlayer = React.forwardRef(({
         if (!video) return;
 
         const handleLoadedMetadata = () => {
+            console.log('[VideoPlayer] Loaded metadata, duration:', video.duration, 'videoId:', videoId);
             setDuration(video.duration);
             setIsReady(true);
+
+            // Try to restore position
+            tryRestorePosition();
+        };
+
+        const tryRestorePosition = () => {
+            // Restore pending position if available
+            const pendingPosition = pendingRestorePositionRef.current;
+            console.log('[VideoPlayer] tryRestorePosition - pending:', pendingPosition, 'duration:', video.duration, 'hasRestored:', hasRestoredPositionRef.current);
+
+            if (pendingPosition && video.duration && pendingPosition < video.duration - 5 && !hasRestoredPositionRef.current) {
+                console.log(`[VideoPlayer] Restoring to ${pendingPosition.toFixed(1)}s`);
+                video.currentTime = pendingPosition;
+                hasRestoredPositionRef.current = true;
+                pendingRestorePositionRef.current = null;
+                console.log(`[VideoPlayer] ✅ Successfully restored to ${pendingPosition.toFixed(1)}s`);
+            } else if (pendingPosition) {
+                console.log('[VideoPlayer] ❌ Cannot restore - duration:', video.duration, 'tooCloseToEnd:', pendingPosition >= video.duration - 5, 'alreadyRestored:', hasRestoredPositionRef.current);
+            } else {
+                console.log('[VideoPlayer] ℹ️ No pending position to restore');
+            }
+        };
+
+        const handleLoadedData = () => {
+            console.log('[VideoPlayer] Loaded data (backup restore attempt)');
+            // Backup: try to restore again if it didn't work in loadedmetadata
+            if (pendingRestorePositionRef.current && !hasRestoredPositionRef.current) {
+                console.log('[VideoPlayer] Metadata restore missed, trying again in loadeddata');
+                tryRestorePosition();
+            }
         };
 
         const handleTimeUpdate = () => {
-            setCurrentTime(video.currentTime);
+            const time = video.currentTime;
+            setCurrentTime(time);
             setIsBuffering(false);
+
+            // Try to restore position on first timeupdate if not done yet
+            if (pendingRestorePositionRef.current && !hasRestoredPositionRef.current && video.duration) {
+                const pendingPosition = pendingRestorePositionRef.current;
+                if (pendingPosition < video.duration - 5) {
+                    console.log('[VideoPlayer] Restoring on timeupdate:', pendingPosition);
+                    video.currentTime = pendingPosition;
+                    hasRestoredPositionRef.current = true;
+                    pendingRestorePositionRef.current = null;
+                }
+            }
+
+            // Save position periodically
+            saveVideoPosition(time);
+
             if (onTimeUpdate) {
-                onTimeUpdate(video.currentTime);
+                onTimeUpdate(time);
             }
         };
 
@@ -124,6 +343,8 @@ export const VideoPlayer = React.forwardRef(({
 
         const handleEnded = () => {
             setIsPlaying(false);
+            // Clear saved position when video completes
+            clearVideoPosition();
             if (onEnded) {
                 onEnded();
             }
@@ -136,6 +357,7 @@ export const VideoPlayer = React.forwardRef(({
         };
 
         video.addEventListener('loadedmetadata', handleLoadedMetadata);
+        video.addEventListener('loadeddata', handleLoadedData);
         video.addEventListener('timeupdate', handleTimeUpdate);
         video.addEventListener('waiting', handleWaiting);
         video.addEventListener('playing', handlePlaying);
@@ -144,13 +366,14 @@ export const VideoPlayer = React.forwardRef(({
 
         return () => {
             video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+            video.removeEventListener('loadeddata', handleLoadedData);
             video.removeEventListener('timeupdate', handleTimeUpdate);
             video.removeEventListener('waiting', handleWaiting);
             video.removeEventListener('playing', handlePlaying);
             video.removeEventListener('ended', handleEnded);
             video.removeEventListener('error', handleError);
         };
-    }, [onTimeUpdate, onEnded, onError]);
+    }, [onTimeUpdate, onEnded, onError, videoId]);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -170,6 +393,15 @@ export const VideoPlayer = React.forwardRef(({
             videoRef.current.play();
             setIsPlaying(true);
         } else {
+            // Save position immediately when pausing
+            if (videoId) {
+                const key = `video_position_${videoId}`;
+                try {
+                    localStorage.setItem(key, videoRef.current.currentTime.toString());
+                } catch (err) {
+                    console.error('Failed to save on pause:', err);
+                }
+            }
             videoRef.current.pause();
             setIsPlaying(false);
         }
