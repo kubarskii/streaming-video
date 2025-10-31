@@ -166,10 +166,10 @@ export const MobilePlaylistSheet = ({
                         disabled={!hasNext}
                         className="mobile-playlist-nav-button"
                     >
-                        Next
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M16 6h2v12h-2zm-11.5 6l8.5-6v12z" />
+                            <path d="M16 6h2v12h-2zM6 18V6l8.5 6z" />
                         </svg>
+                        Next
                     </button>
                 </div>
 

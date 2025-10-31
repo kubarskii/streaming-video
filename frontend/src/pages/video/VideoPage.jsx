@@ -408,22 +408,78 @@ export const VideoPage = () => {
         setCurrentPlaylistIndex(currentIndex === -1 ? 0 : currentIndex);
     }, [playlist, id, currentPlaylistId]);
 
-    const handleNavigateToVideo = (videoId, options = {}) => {
-        const searchParams = { ...search };
+    // Load video data directly without navigation for seamless transitions
+    const loadVideoData = async (videoId) => {
+        try {
+            // Fetch video data
+            const data = await videosAPI.getVideo(videoId, signal);
+            setVideo(data);
 
-        // Preserve playlistId if we're in a playlist
-        if (currentPlaylistId) {
-            searchParams.playlistId = currentPlaylistId;
+            // Set default video URL
+            const defaultUrl = data.playbackUrl || videosAPI.getVideoUrl(data.storageKey);
+            setCurrentVideoUrl(defaultUrl);
+
+            // Fetch available quality variants
+            try {
+                const qualitiesData = await videosAPI.getVideoQualities(videoId, signal);
+                if (qualitiesData.qualities && qualitiesData.qualities.length > 0) {
+                    setQualities(qualitiesData.qualities);
+                    const highestQuality = qualitiesData.qualities[qualitiesData.qualities.length - 1];
+                    if (highestQuality && highestQuality.playbackUrl) {
+                        setCurrentVideoUrl(highestQuality.playbackUrl);
+                    }
+                } else {
+                    setQualities([]);
+                }
+            } catch (qualErr) {
+                if (qualErr.name !== 'AbortError' && qualErr.name !== 'CanceledError') {
+                    console.log('No quality variants available:', qualErr);
+                }
+                setQualities([]);
+            }
+
+            // Fetch like statistics
+            try {
+                const stats = await videosAPI.getLikeStats(videoId, signal);
+                setLikeStats(stats);
+            } catch (statsErr) {
+                if (statsErr.name !== 'AbortError' && statsErr.name !== 'CanceledError') {
+                    console.log('Error fetching like stats:', statsErr);
+                }
+            }
+
+            // Fetch channel info if available
+            if (data.userId) {
+                try {
+                    const { channelsAPI } = await import('../../shared/api/channels');
+                    const channelData = await channelsAPI.getChannel({ userId: data.userId }, signal);
+                    setChannelInfo(channelData);
+                } catch (channelErr) {
+                    if (channelErr.name !== 'AbortError' && channelErr.name !== 'CanceledError') {
+                        console.debug('Could not load channel info:', channelErr);
+                    }
+                }
+            }
+
+            // Update URL using History API without causing navigation
+            const searchParams = new URLSearchParams();
+            if (currentPlaylistId) {
+                searchParams.set('playlistId', currentPlaylistId);
+            }
+            const newUrl = `/video/${videoId}${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+            window.history.pushState({ videoId }, '', newUrl);
+
+        } catch (err) {
+            if (err.name !== 'AbortError' && err.name !== 'CanceledError') {
+                console.error('Error loading video:', err);
+                setError(err.message || 'Failed to load video');
+            }
         }
+    };
 
-        // Update video silently without full remount
-        navigate({
-            to: '/video/$id',
-            params: { id: String(videoId) },
-            search: searchParams,
-            replace: options.replace !== false, // Default to replace for silent updates
-            resetScroll: false // Don't reset scroll position
-        });
+    const handleNavigateToVideo = (videoId, options = {}) => {
+        // Load video data directly without route navigation for seamless transition
+        loadVideoData(videoId);
     };
 
     const hasPrevious = currentPlaylistIndex > 0;
@@ -499,6 +555,22 @@ export const VideoPage = () => {
             }
         };
     }, []);
+
+    // Handle browser back/forward buttons
+    useEffect(() => {
+        const handlePopState = (event) => {
+            // Extract video ID from current URL
+            const match = window.location.pathname.match(/\/video\/([^/]+)/);
+            if (match && match[1] !== id) {
+                loadVideoData(match[1]);
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [id]);
 
     const handleQualityChange = (quality) => {
         console.log('Quality changed to:', quality);
@@ -826,6 +898,9 @@ export const VideoPage = () => {
                                     onClick={handlePreviousVideo}
                                     disabled={!hasPrevious}
                                 >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                                    </svg>
                                     Previous
                                 </button>
                                 <button
@@ -833,6 +908,9 @@ export const VideoPage = () => {
                                     onClick={handleNextVideo}
                                     disabled={!hasNext}
                                 >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M16 6h2v12h-2zM6 18V6l8.5 6z" />
+                                    </svg>
                                     Next
                                 </button>
                             </div>
