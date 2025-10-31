@@ -377,17 +377,17 @@
   margin-bottom: 6px;
 }
 
-.bottom-sheet-playlist-item:hover {
+.bottom-sheet-playlist-item:hover:not(.active) {
   background: var(--bg-hover);
 }
 
 .bottom-sheet-playlist-item.active {
-  background: var(--primary-color);
-  color: #fff;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .bottom-sheet-playlist-item.active .bottom-sheet-playlist-meta {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-secondary);
 }
 
 .bottom-sheet-playlist-number {
@@ -403,7 +403,7 @@
 }
 
 .bottom-sheet-playlist-item.active .bottom-sheet-playlist-number {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .bottom-sheet-playlist-thumbnail {
@@ -444,7 +444,7 @@
 }
 
 .bottom-sheet-playlist-item.active .bottom-sheet-playlist-title {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .bottom-sheet-playlist-meta {
@@ -540,12 +540,12 @@
   transition: background 0.15s ease-out, transform 0.15s ease-out;
 }
 
-.playlist-item:hover {
+.playlist-item:hover:not(.active) {
   background: var(--bg-hover);
 }
 
 .playlist-item.active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-secondary);
   transform: translateX(4px);
 }
 

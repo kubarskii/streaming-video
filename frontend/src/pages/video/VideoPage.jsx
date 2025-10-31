@@ -1,5 +1,5 @@
 // Pages: Video Player Page
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, startTransition } from 'react';
 import { useParams, Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { videosAPI } from '../../shared/api/videos';
 import { playlistsAPI } from '../../shared/api/playlists';
@@ -34,6 +34,8 @@ export const VideoPage = () => {
     const [currentPlaylistId, setCurrentPlaylistId] = useState(null);
     const countdownIntervalRef = useRef(null);
     const [isPlaylistBottomSheetOpen, setIsPlaylistBottomSheetOpen] = useState(false);
+    const isSeamlessNavigationRef = useRef(false);
+    const seamlessResetTimeoutRef = useRef(null);
 
     // Get playlistId from URL search params
     const playlistIdFromUrl = search?.playlistId || null;
@@ -70,6 +72,12 @@ export const VideoPage = () => {
     };
 
     useEffect(() => {
+        // Skip normal video loading during seamless navigation
+        if (isSeamlessNavigationRef.current) {
+            console.log('[Seamless Nav] Video loading useEffect skipped');
+            return;
+        }
+
         // Only show loading if we don't have a video yet (initial load)
         // For silent updates (when navigating between playlist videos), keep existing state
         const isInitialLoad = !video || String(video.id) !== String(id);
@@ -161,10 +169,20 @@ export const VideoPage = () => {
             return;
         }
 
+        // Skip playlist reload during seamless navigation
+        if (isSeamlessNavigationRef.current) {
+            console.log('[Seamless Nav] Playlist reload skipped');
+            // Don't reset flag here - let loadVideoData reset it after all updates complete
+            return;
+        }
+
         const loadPlaylist = async () => {
             // Reset playlist when video changes to ensure fresh load
             // This is important for maintaining the linked list order
-            setPlaylistLoading(true);
+            // Don't show loading during seamless navigation
+            if (!isSeamlessNavigationRef.current) {
+                setPlaylistLoading(true);
+            }
 
             const createPlaylistItem = (item) => ({
                 id: item.id,
@@ -386,6 +404,12 @@ export const VideoPage = () => {
 
 
     useEffect(() => {
+        // Skip index update during seamless navigation - loadVideoData handles it
+        if (isSeamlessNavigationRef.current) {
+            console.log('[Seamless Nav] Index update skipped');
+            return;
+        }
+
         if (!playlist.length) {
             setCurrentPlaylistIndex(0);
             return;
@@ -411,37 +435,52 @@ export const VideoPage = () => {
     // Load video data directly without navigation for seamless transitions
     const loadVideoData = async (videoId) => {
         try {
+            // Clear any pending reset timeout from previous navigation
+            if (seamlessResetTimeoutRef.current) {
+                clearTimeout(seamlessResetTimeoutRef.current);
+                seamlessResetTimeoutRef.current = null;
+            }
+
+            // Mark as seamless navigation to prevent playlist reload
+            isSeamlessNavigationRef.current = true;
+            console.log('[Seamless Nav] Starting, flag set to true');
+
             // Fetch video data
             const data = await videosAPI.getVideo(videoId, signal);
-            setVideo(data);
 
-            // Set default video URL
-            const defaultUrl = data.playbackUrl || videosAPI.getVideoUrl(data.storageKey);
-            setCurrentVideoUrl(defaultUrl);
+            // Batch initial state updates to prevent flickering
+            startTransition(() => {
+                setVideo(data);
+                // Set default video URL
+                const defaultUrl = data.playbackUrl || videosAPI.getVideoUrl(data.storageKey);
+                setCurrentVideoUrl(defaultUrl);
+            });
 
             // Fetch available quality variants
             try {
                 const qualitiesData = await videosAPI.getVideoQualities(videoId, signal);
-                if (qualitiesData.qualities && qualitiesData.qualities.length > 0) {
-                    setQualities(qualitiesData.qualities);
-                    const highestQuality = qualitiesData.qualities[qualitiesData.qualities.length - 1];
-                    if (highestQuality && highestQuality.playbackUrl) {
-                        setCurrentVideoUrl(highestQuality.playbackUrl);
+                startTransition(() => {
+                    if (qualitiesData.qualities && qualitiesData.qualities.length > 0) {
+                        setQualities(qualitiesData.qualities);
+                        const highestQuality = qualitiesData.qualities[qualitiesData.qualities.length - 1];
+                        if (highestQuality && highestQuality.playbackUrl) {
+                            setCurrentVideoUrl(highestQuality.playbackUrl);
+                        }
+                    } else {
+                        setQualities([]);
                     }
-                } else {
-                    setQualities([]);
-                }
+                });
             } catch (qualErr) {
                 if (qualErr.name !== 'AbortError' && qualErr.name !== 'CanceledError') {
                     console.log('No quality variants available:', qualErr);
                 }
-                setQualities([]);
+                startTransition(() => setQualities([]));
             }
 
             // Fetch like statistics
             try {
                 const stats = await videosAPI.getLikeStats(videoId, signal);
-                setLikeStats(stats);
+                startTransition(() => setLikeStats(stats));
             } catch (statsErr) {
                 if (statsErr.name !== 'AbortError' && statsErr.name !== 'CanceledError') {
                     console.log('Error fetching like stats:', statsErr);
@@ -453,11 +492,22 @@ export const VideoPage = () => {
                 try {
                     const { channelsAPI } = await import('../../shared/api/channels');
                     const channelData = await channelsAPI.getChannel({ userId: data.userId }, signal);
-                    setChannelInfo(channelData);
+                    startTransition(() => setChannelInfo(channelData));
                 } catch (channelErr) {
                     if (channelErr.name !== 'AbortError' && channelErr.name !== 'CanceledError') {
                         console.debug('Could not load channel info:', channelErr);
                     }
+                }
+            }
+
+            // Update playlist index if we're in a playlist
+            if (playlist.length > 0) {
+                const newIndex = playlist.findIndex((item) => {
+                    if (!item || !item.id) return false;
+                    return String(item.id) === String(videoId);
+                });
+                if (newIndex !== -1) {
+                    startTransition(() => setCurrentPlaylistIndex(newIndex));
                 }
             }
 
@@ -469,11 +519,25 @@ export const VideoPage = () => {
             const newUrl = `/video/${videoId}${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
             window.history.pushState({ videoId }, '', newUrl);
 
+            // Reset flag after all state updates and useEffects have completed
+            // Use a delay to ensure startTransition and all derived effects finish
+            seamlessResetTimeoutRef.current = setTimeout(() => {
+                console.log('[Seamless Nav] All updates complete, resetting flag');
+                isSeamlessNavigationRef.current = false;
+                seamlessResetTimeoutRef.current = null;
+            }, 200);
+
         } catch (err) {
             if (err.name !== 'AbortError' && err.name !== 'CanceledError') {
                 console.error('Error loading video:', err);
                 setError(err.message || 'Failed to load video');
             }
+            // Clear timeout and reset flag on error
+            if (seamlessResetTimeoutRef.current) {
+                clearTimeout(seamlessResetTimeoutRef.current);
+                seamlessResetTimeoutRef.current = null;
+            }
+            isSeamlessNavigationRef.current = false;
         }
     };
 
@@ -489,8 +553,7 @@ export const VideoPage = () => {
         if (!hasNext) return;
         const nextItem = playlist[currentPlaylistIndex + 1];
         if (nextItem) {
-            const newIndex = currentPlaylistIndex + 1;
-            setCurrentPlaylistIndex(newIndex);
+            // Don't update index here - loadVideoData will handle it
             handleNavigateToVideo(nextItem.id);
         }
     };
@@ -499,8 +562,7 @@ export const VideoPage = () => {
         if (!hasPrevious) return;
         const prevItem = playlist[currentPlaylistIndex - 1];
         if (prevItem) {
-            const newIndex = currentPlaylistIndex - 1;
-            setCurrentPlaylistIndex(newIndex);
+            // Don't update index here - loadVideoData will handle it
             handleNavigateToVideo(prevItem.id);
         }
     };
@@ -508,7 +570,7 @@ export const VideoPage = () => {
     const handlePlaylistSelect = (index) => {
         const item = playlist[index];
         if (!item || String(item.id) === String(id)) return;
-        setCurrentPlaylistIndex(index);
+        // Don't update index here - loadVideoData will handle it
         handleNavigateToVideo(item.id);
     };
 
@@ -547,11 +609,14 @@ export const VideoPage = () => {
         setNextVideoCountdown(null);
     };
 
-    // Cleanup countdown on unmount
+    // Cleanup countdown and seamless timeout on unmount
     useEffect(() => {
         return () => {
             if (countdownIntervalRef.current) {
                 clearInterval(countdownIntervalRef.current);
+            }
+            if (seamlessResetTimeoutRef.current) {
+                clearTimeout(seamlessResetTimeoutRef.current);
             }
         };
     }, []);
@@ -652,7 +717,8 @@ export const VideoPage = () => {
         });
     };
 
-    if (loading) {
+    // Don't show skeleton during seamless navigation - keep existing content
+    if (loading && !isSeamlessNavigationRef.current) {
         return <VideoPageSkeleton />;
     }
 

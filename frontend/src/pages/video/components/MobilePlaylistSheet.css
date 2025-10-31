@@ -216,17 +216,17 @@
     margin-bottom: 6px;
 }
 
-.mobile-playlist-item:hover {
+.mobile-playlist-item:hover:not(.active) {
     background: var(--bg-hover);
 }
 
 .mobile-playlist-item.active {
-    background: var(--primary-color);
-    color: #fff;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
 }
 
 .mobile-playlist-item.active .mobile-playlist-meta {
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--text-secondary);
 }
 
 .mobile-playlist-number {
@@ -242,7 +242,7 @@
 }
 
 .mobile-playlist-item.active .mobile-playlist-number {
-    color: #fff;
+    color: var(--text-primary);
 }
 
 .mobile-playlist-thumbnail {
@@ -283,7 +283,7 @@
 }
 
 .mobile-playlist-item.active .mobile-playlist-video-title {
-    color: #fff;
+    color: var(--text-primary);
 }
 
 .mobile-playlist-meta {

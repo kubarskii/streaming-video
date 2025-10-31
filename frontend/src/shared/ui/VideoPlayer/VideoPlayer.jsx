@@ -176,6 +176,19 @@ export const VideoPlayer = React.forwardRef(({
         showControlsTemporarily();
     };
 
+    const handleVideoClick = (e) => {
+        // On mobile/touch devices, first tap shows controls, second tap plays/pauses
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+        if (isTouchDevice && !showControls) {
+            // If controls are hidden, show them instead of toggling play/pause
+            showControlsTemporarily();
+        } else {
+            // If controls are visible or on desktop, toggle play/pause
+            togglePlayPause();
+        }
+    };
+
     const handleNextVideo = () => {
         if (onNext && canPlayNext) {
             onNext();
@@ -708,7 +721,7 @@ export const VideoPlayer = React.forwardRef(({
                     ref={videoRef}
                     className="video-element"
                     poster={poster}
-                    onClick={togglePlayPause}
+                    onClick={handleVideoClick}
                     onDoubleClick={toggleFullscreen}
                     preload="metadata"
                 >
@@ -726,7 +739,7 @@ export const VideoPlayer = React.forwardRef(({
                 )}
 
                 {!isPlaying && !isBuffering && isReady && (
-                    <div className="play-overlay" onClick={togglePlayPause}>
+                    <div className="play-overlay" onClick={handleVideoClick}>
                         <div className="play-button-large">
                             <FaPlay />
                         </div>
