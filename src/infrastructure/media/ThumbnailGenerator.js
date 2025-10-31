@@ -42,11 +42,8 @@ class ThumbnailGenerator {
                 videoPath
             ]);
 
-            const duration = parseFloat(stdout.trim());
-            console.log(`   Video duration: ${duration.toFixed(2)} seconds`);
-            return duration;
+            return parseFloat(stdout.trim());
         } catch (error) {
-            console.warn('⚠️  Could not detect video duration:', error.message);
             return null;
         }
     }
@@ -66,18 +63,9 @@ class ThumbnailGenerator {
             size = '640x360',
         } = options;
 
-        console.log('🎬 generateFromVideo called with:');
-        console.log('   videoPath:', videoPath);
-        console.log('   outputPath:', outputPath);
-        console.log('   size:', size);
-        console.log('   Video file exists:', fs.existsSync(videoPath));
-
         if (!fs.existsSync(videoPath)) {
             throw new Error(`Video file not found: ${videoPath}`);
         }
-
-        const stats = fs.statSync(videoPath);
-        console.log('   Video file size:', (stats.size / 1024 / 1024).toFixed(2), 'MB');
 
         // Get video duration and calculate middle timestamp if not provided
         let extractTimestamp = timestamp;
@@ -87,45 +75,28 @@ class ThumbnailGenerator {
                 // Extract from the middle of the video (50% through)
                 const middleTime = duration / 2;
                 extractTimestamp = this.formatTimestamp(middleTime);
-                console.log(`   Using middle timestamp: ${extractTimestamp} (${middleTime.toFixed(2)}s)`);
             } else {
                 // Fallback to 1 second if duration detection fails
                 extractTimestamp = '00:00:01';
-                console.log('   Using fallback timestamp: 00:00:01');
             }
-        } else {
-            console.log('   Using provided timestamp:', extractTimestamp);
         }
 
         // Ensure output directory exists
         const outputDir = path.dirname(outputPath);
         if (!fs.existsSync(outputDir)) {
-            console.log('   Creating output directory:', outputDir);
             fs.mkdirSync(outputDir, { recursive: true });
         }
 
         // Force JPG extension for output
         const jpgOutputPath = outputPath.replace(/\.[^.]+$/, '.jpg');
-        console.log('   JPG output path:', jpgOutputPath);
 
         try {
             // Check if ffmpeg is available
             try {
                 await execFileAsync(ffmpegPath, ['-version']);
             } catch (ffmpegCheckError) {
-                console.warn(`FFmpeg binary unavailable or not executable at path: ${ffmpegPath}`);
                 throw new Error('FFmpeg is not installed or not accessible');
             }
-
-            // Extract frame from video using ffmpeg
-            // -ss: seek to timestamp
-            // -i: input file
-            // -vframes 1: extract only 1 frame
-            // -vf scale: resize the frame
-            // -q:v 2: high quality JPEG (scale 2-31, lower is better)
-            // -y: overwrite output file
-            console.log('🎬 Extracting thumbnail from video using ffmpeg...');
-            console.log('   FFmpeg path:', ffmpegPath);
 
             // Parse size for simpler scale filter
             const [width, height] = size.split('x').map(Number);
@@ -136,61 +107,58 @@ class ThumbnailGenerator {
                 '-ss', extractTimestamp,
                 '-i', videoPath,
                 '-vframes', '1',
-                '-vf', `scale=${width}:-1`,  // -1 maintains aspect ratio, much simpler!
+                '-vf', `scale=${width}:-1`,
                 '-q:v', '2',
                 '-y',
                 jpgOutputPath,
             ];
 
-            console.log('   FFmpeg args:', JSON.stringify(ffmpegArgs, null, 2));
+            console.log(`🎬 Extracting thumbnail with ffmpeg...`);
+            console.log(`   Timestamp: ${extractTimestamp}`);
+            console.log(`   Size: ${size}`);
 
             try {
-                const { stdout, stderr } = await execFileAsync(ffmpegPath, ffmpegArgs, {
-                    timeout: 30000,  // 30 second timeout
-                    maxBuffer: 10 * 1024 * 1024  // 10MB buffer
+                const { stderr } = await execFileAsync(ffmpegPath, ffmpegArgs, {
+                    timeout: 30000,
+                    maxBuffer: 10 * 1024 * 1024
                 });
-                if (stderr) {
-                    console.log('FFmpeg stderr:', stderr);
+
+                // Log ffmpeg warnings if any
+                if (stderr && stderr.includes('Warning')) {
+                    console.warn('FFmpeg warning:', stderr);
                 }
             } catch (execFileError) {
-                // Log detailed error information
-                console.error('❌ execFile failed with error:', execFileError.message);
-                console.error('   Error code:', execFileError.code);
+                const errorOutput = (execFileError.stderr || execFileError.stdout || '').toString();
+                console.error('FFmpeg error output:', errorOutput.substring(0, 500)); // First 500 chars
 
                 // Check if it's a "video too short" or "timestamp beyond duration" error
-                const errorOutput = (execFileError.stderr || execFileError.stdout || '').toString();
-                if (errorOutput.includes('Invalid argument') || errorOutput.includes('start time') ||
-                    errorOutput.includes('past duration')) {
-                    console.warn('⚠️  Timestamp issue detected, trying with first frame (0.1s)...');
+                if (errorOutput.includes('Invalid argument') ||
+                    errorOutput.includes('start time') ||
+                    errorOutput.includes('past duration') ||
+                    errorOutput.includes('does not contain any stream')) {
+                    console.log('⚠️  Timestamp issue or incomplete video, retrying with very first frame...');
                     // Retry with first frame
                     ffmpegArgs[1] = '00:00:00.1';
-
-                    try {
-                        const { stdout, stderr } = await execFileAsync(ffmpegPath, ffmpegArgs, {
-                            timeout: 30000,
-                            maxBuffer: 10 * 1024 * 1024
-                        });
-                        if (stderr) {
-                            console.log('FFmpeg stderr (retry):', stderr);
-                        }
-                        // Success with earlier timestamp, continue to verification
-                    } catch (retryError) {
-                        console.error('❌ Retry also failed:', retryError.message);
-                        throw retryError;
-                    }
+                    await execFileAsync(ffmpegPath, ffmpegArgs, {
+                        timeout: 30000,
+                        maxBuffer: 10 * 1024 * 1024
+                    });
                 } else {
-                    // Not a timing issue, re-throw the error
                     throw execFileError;
                 }
             }
 
             // Verify the file was created and has content
             if (!fs.existsSync(jpgOutputPath)) {
+                console.error(`❌ Thumbnail file not found at: ${jpgOutputPath}`);
+                console.error(`   Video path: ${videoPath}`);
+                console.error(`   Timestamp: ${extractTimestamp}`);
                 throw new Error('Thumbnail file was not created by ffmpeg');
             }
 
             const stats = fs.statSync(jpgOutputPath);
             if (stats.size === 0) {
+                console.error(`❌ Thumbnail file is empty (0 bytes)`);
                 fs.unlinkSync(jpgOutputPath);
                 throw new Error('Thumbnail file is empty');
             }
@@ -206,12 +174,11 @@ class ThumbnailGenerator {
                 try {
                     fs.unlinkSync(jpgOutputPath);
                 } catch (unlinkError) {
-                    console.error('Failed to delete invalid thumbnail:', unlinkError.message);
+                    // Ignore cleanup errors
                 }
             }
 
-            // Create a PNG placeholder as fallback (better than SVG for thumbnails)
-            console.log('⚠️  Creating placeholder thumbnail as fallback...');
+            // Create a placeholder as fallback
             return await this.generatePlaceholderImage(jpgOutputPath, size);
         }
     }
@@ -241,7 +208,6 @@ class ThumbnailGenerator {
             // Simply copy the file
             fs.copyFile(imagePath, outputPath, (err) => {
                 if (err) {
-                    console.error('Error copying thumbnail:', err);
                     reject(new Error(`Failed to copy thumbnail: ${err.message}`));
                 } else {
                     resolve(outputPath);
@@ -322,7 +288,6 @@ class ThumbnailGenerator {
                 const svgPath = outputPath.replace(/\.[^.]+$/, '.svg');
 
                 fs.writeFileSync(svgPath, svg);
-                console.log('✅ SVG placeholder thumbnail created');
                 resolve(svgPath);
             } catch (error) {
                 reject(new Error(`Failed to create placeholder: ${error.message}`));

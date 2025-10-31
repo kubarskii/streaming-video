@@ -30,44 +30,25 @@ class PlaylistController {
 
         // Debug: Log what we're serializing
         const videoCount = Array.isArray(playlist.videos) ? playlist.videos.length : 0;
-        if (videoCount > 0) {
-            console.debug(`Serializing playlist ${playlist.id} with ${videoCount} videos`);
-            // Debug: Log first video structure
-            if (playlist.videos[0]) {
-                console.debug(`First video item structure:`, {
-                    id: playlist.videos[0].id,
-                    videoId: playlist.videos[0].videoId,
-                    hasVideo: !!playlist.videos[0].video,
-                    videoType: playlist.videos[0].video ? typeof playlist.videos[0].video : 'none',
-                    videoKeys: playlist.videos[0].video ? Object.keys(playlist.videos[0].video) : []
-                });
-            }
-        }
-
-        // Debug: Log playlist structure
-        console.debug(`Serializing playlist ${playlist.id}:`, {
-            hasVideos: !!playlist.videos,
-            videosIsArray: Array.isArray(playlist.videos),
-            videoCount: Array.isArray(playlist.videos) ? playlist.videos.length : 'not array',
-            playlistType: typeof playlist,
-            playlistKeys: Object.keys(playlist || {})
-        });
+        // if (videoCount > 0) {
+        //     console.debug(`Serializing playlist ${playlist.id} with ${videoCount} videos`);
+        //     // Debug: Log first video structure
+        //     if (playlist.videos[0]) {
+        //         console.debug(`First video item structure:`, {
+        //             id: playlist.videos[0].id,
+        //             videoId: playlist.videos[0].videoId,
+        //             hasVideo: !!playlist.videos[0].video,
+        //             videoType: playlist.videos[0].video ? typeof playlist.videos[0].video : 'none',
+        //             videoKeys: playlist.videos[0].video ? Object.keys(playlist.videos[0].video) : []
+        //         });
+        //     }
+        // }
 
         const serializedVideos = Array.isArray(playlist.videos)
             ? playlist.videos.map((item, index) => {
                 if (!item) {
-                    console.debug(`Skipping null item at index ${index}`);
                     return null;
                 }
-
-                // Debug: Log item structure
-                console.debug(`Serializing video item ${index}:`, {
-                    id: item.id,
-                    videoId: item.videoId,
-                    hasVideo: !!item.video,
-                    videoType: item.video ? typeof item.video : 'none',
-                    videoKeys: item.video ? Object.keys(item.video) : []
-                });
 
                 let video = null;
                 if (item.video) {
@@ -88,7 +69,6 @@ class PlaylistController {
                             uploadedAt: videoData.uploadedAt || null,
                             userId: videoData.userId || null
                         };
-                        console.debug(`Serialized video ${item.videoId} successfully`);
                     } catch (err) {
                         console.error(`Error serializing video ${item.videoId} at index ${index}:`, err);
                         console.error(`Video data:`, JSON.stringify(item.video, null, 2));

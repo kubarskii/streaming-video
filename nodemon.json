@@ -1,0 +1,22 @@
+{
+    "watch": [
+        "server.js",
+        "src/**/*.js",
+        "prisma/schema.prisma"
+    ],
+    "ignore": [
+        "node_modules/**",
+        "frontend/**",
+        "videos/**",
+        "*.test.js",
+        "*.spec.js",
+        ".git",
+        "dist/**"
+    ],
+    "ext": "js,json,prisma",
+    "env": {
+        "NODE_ENV": "development"
+    },
+    "verbose": false,
+    "delay": 500
+}

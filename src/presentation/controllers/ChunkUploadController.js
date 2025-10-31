@@ -75,7 +75,6 @@ class ChunkUploadController {
             if (existingSession) {
                 // Resume existing session
                 session = existingSession;
-                console.log(`♻️  Resuming upload session ${session.id}`);
             } else {
                 // Generate storage key for the final file
                 const ext = path.extname(fileName);
@@ -83,13 +82,10 @@ class ChunkUploadController {
                 const storageKey = `${videoId}${ext}`;
 
                 // Start B2 multipart upload
-                console.log(`🚀 Starting B2 multipart upload for ${storageKey}`);
                 const b2Upload = await this.storageRepository.startMultipartUpload(storageKey, {
                     contentType: mimeType,
                     originalName: fileName,
                 });
-
-                console.log(`✅ B2 multipart upload initiated: ${b2Upload.uploadId}`);
 
                 // Create new session with B2 metadata
                 session = await this.chunkUploadService.createSession({
@@ -106,7 +102,6 @@ class ChunkUploadController {
                         videoId: videoId,
                     },
                 });
-                console.log(`📝 Created upload session ${session.id}`);
             }
 
             return this.sendJson(res, 200, {
@@ -157,7 +152,6 @@ class ChunkUploadController {
             const uploadId = fields.uploadId?.[0];
             const totalChunks = parseInt(fields.totalChunks?.[0]);
 
-            console.log(`📦 Chunk ${chunkIndex}/${totalChunks - 1} received for upload ${uploadId}`);
 
             if (!chunkFile || isNaN(chunkIndex) || !chunkHash || !uploadId) {
                 console.error('Missing required fields:', { chunkFile: !!chunkFile, chunkIndex, chunkHash, uploadId });
@@ -253,7 +247,6 @@ class ChunkUploadController {
             const updatedSession = await this.chunkUploadService.getSession(uploadId);
             const progress = (updatedSession.uploadedChunks.length / totalChunks) * 100;
 
-            console.log(`✅ Chunk ${chunkIndex} saved. Progress: ${Math.round(progress)}% (${updatedSession.uploadedChunks.length}/${totalChunks})`);
 
             return this.sendJson(res, 200, {
                 chunkIndex,
@@ -316,8 +309,6 @@ class ChunkUploadController {
                 return this.sendJson(res, 500, { error: 'Missing B2 upload metadata' });
             }
 
-            console.log(`🔗 Completing B2 multipart upload: ${storageKey}`);
-            console.log(`   Total parts: ${b2Parts.length}`);
 
             // Sort parts by part number (required by B2)
             const sortedParts = b2Parts.sort((a, b) => a.partNumber - b.partNumber);
@@ -328,21 +319,34 @@ class ChunkUploadController {
                 b2UploadId,
                 sortedParts
             );
-
             console.log(`✅ B2 multipart upload completed: ${storageKey}`);
 
-            // Generate thumbnail by downloading video temporarily
+            // Generate thumbnail by downloading beginning of video with enough data to extract middle frame
             let thumbnailUrl = null;
             const tempVideoPath = path.join(process.cwd(), 'videos', 'temp', `temp_${videoId}${path.extname(session.fileName)}`);
 
             try {
-                console.log('🎬 Generating thumbnail...');
+                console.log('🎬 Generating thumbnail from video...');
 
-                // Download only first 10MB of video for thumbnail generation
-                const rangeSize = 10 * 1024 * 1024; // 10MB
+                // Get total file size from B2
+                const headCommand = new (require('@aws-sdk/client-s3').HeadObjectCommand)({
+                    Bucket: this.storageRepository.bucket,
+                    Key: storageKey,
+                });
+                const headResponse = await this.storageRepository.client.send(headCommand);
+                const totalSize = headResponse.ContentLength;
+                console.log(`📊 Total video size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+
+                // Download first 50MB which should include moov atom + enough video data
+                // This allows ffmpeg to seek to middle timestamps
+                const downloadSize = Math.min(50 * 1024 * 1024, totalSize); // 50MB or less
+                const rangeEnd = downloadSize - 1;
+
+                console.log(`📥 Downloading first ${(downloadSize / 1024 / 1024).toFixed(2)} MB (includes metadata + video data)`);
+
                 const { stream: videoStream } = await this.storageRepository.getObjectStream(
                     storageKey,
-                    `bytes=0-${rangeSize - 1}`
+                    `bytes=0-${rangeEnd}`
                 );
                 const writeStream = fs.createWriteStream(tempVideoPath);
 
@@ -353,20 +357,68 @@ class ChunkUploadController {
                     writeStream.on('error', (err) => reject(err));
                 });
 
-                console.log('   First 10MB downloaded for thumbnail generation');
+                // Verify file was downloaded
+                if (!fs.existsSync(tempVideoPath)) {
+                    throw new Error('Failed to download video chunk');
+                }
+
+                const fileStats = fs.statSync(tempVideoPath);
+                console.log(`✅ Downloaded ${(fileStats.size / 1024 / 1024).toFixed(2)} MB`);
+
+                if (fileStats.size === 0) {
+                    throw new Error('Downloaded file is empty');
+                }
 
                 // Generate thumbnail
                 const ThumbnailGenerator = require('../../infrastructure/media/ThumbnailGenerator');
                 const thumbnailGenerator = new ThumbnailGenerator();
                 const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
 
-                // Extract thumbnail from beginning since we only have first 10MB
+                // Calculate safe timestamp within downloaded data
+                // Note: ffmpeg reports FULL video duration from moov atom, not partial file duration
+                // We need to estimate what timestamp is safely within our 50MB download
+                let extractTimestamp = '00:00:02.000'; // Safe default - 10 seconds
+
+                try {
+                    const fullVideoDuration = await thumbnailGenerator.getVideoDuration(tempVideoPath);
+                    console.log(`📊 Full video duration from metadata: ${fullVideoDuration ? fullVideoDuration.toFixed(2) : 'unknown'}s`);
+
+                    if (fullVideoDuration && fullVideoDuration > 0) {
+                        // Estimate bitrate: totalSize / duration (rough approximation)
+                        const estimatedBitrate = (totalSize * 8) / fullVideoDuration; // bits per second
+                        // Calculate how many seconds are in our 50MB download
+                        const bytesDownloaded = fileStats.size;
+                        const secondsAvailable = (bytesDownloaded * 8) / estimatedBitrate;
+
+                        console.log(`📊 Estimated ${secondsAvailable.toFixed(2)}s of video in downloaded ${(bytesDownloaded / 1024 / 1024).toFixed(2)}MB`);
+
+                        // Use middle of available data, with safety margin
+                        if (secondsAvailable > 20) {
+                            // Extract from 40-60% of available data
+                            const safeMiddle = secondsAvailable * 0.5 * 0.8; // 50% of available, with 20% safety margin
+                            extractTimestamp = thumbnailGenerator.formatTimestamp(Math.min(safeMiddle, secondsAvailable - 5));
+                            console.log(`📍 Extracting from safe middle: ${extractTimestamp}`);
+                        } else if (secondsAvailable > 5) {
+                            // Short available data, use early timestamp
+                            extractTimestamp = '00:00:03.000';
+                            console.log(`📍 Limited data available, using early timestamp: ${extractTimestamp}`);
+                        } else {
+                            // Very limited data
+                            extractTimestamp = '00:00:01.000';
+                            console.log(`📍 Very limited data, using: ${extractTimestamp}`);
+                        }
+                    }
+                } catch (durationError) {
+                    console.warn('⚠️  Could not calculate safe timestamp, using default');
+                }
+
+                // Extract thumbnail
                 const generatedThumbnailPath = await thumbnailGenerator.generateFromVideo(
                     tempVideoPath,
                     thumbnailTempPath,
                     {
                         size: '640x360',
-                        timestamp: '00:00:02.000' // 2 seconds in, works with partial file
+                        timestamp: extractTimestamp
                     }
                 );
 
@@ -395,10 +447,9 @@ class ChunkUploadController {
 
             } catch (thumbnailError) {
                 console.error('❌ Failed to generate thumbnail:', thumbnailError.message);
-                // Continue without thumbnail - video upload should not fail
-                console.log('⚠️  Video will be saved without thumbnail, transcoding will try again');
+                console.log('ℹ️  Thumbnail will be generated during transcoding as fallback');
 
-                // Clean up temp video if it exists
+                // Clean up temp files
                 try {
                     if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
                 } catch (e) { }
@@ -447,7 +498,6 @@ class ChunkUploadController {
                 // This prevents creating new connections
                 const videoRepo = this.videoService.uploadVideoUseCase.videoRepository;
                 savedVideo = await videoRepo.save(video);
-
                 console.log(`✅ Video record created: ${savedVideo.id}`);
 
                 // Update channel video count
@@ -477,7 +527,7 @@ class ChunkUploadController {
             // Trigger transcoding asynchronously (don't wait for it)
             this.videoService.transcodeVideo(savedVideo.id)
                 .then(() => {
-                    console.log(`✅ Transcoding complete for video ${savedVideo.id}`);
+                    // Transcoding complete
                 })
                 .catch(err => {
                     console.error(`❌ Transcoding failed for video ${savedVideo.id}:`, err.message);
@@ -564,9 +614,7 @@ class ChunkUploadController {
 
             if (b2UploadId && storageKey) {
                 try {
-                    console.log(`🗑️  Aborting B2 multipart upload: ${storageKey}`);
                     await this.storageRepository.abortMultipartUpload(storageKey, b2UploadId);
-                    console.log(`✅ B2 multipart upload aborted`);
                 } catch (abortError) {
                     console.error('Failed to abort B2 multipart upload:', abortError.message);
                     // Continue anyway to clean up session

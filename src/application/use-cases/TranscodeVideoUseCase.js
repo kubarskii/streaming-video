@@ -140,6 +140,47 @@ class TranscodeVideoUseCase {
                 }
             }
 
+            // Generate thumbnail from the source video if video doesn't have one
+            if (!video.thumbnailUrl && sourceVideoPath && fs.existsSync(sourceVideoPath)) {
+                try {
+                    console.log('🎬 Generating thumbnail from source video...');
+                    const ThumbnailGenerator = require('../../infrastructure/media/ThumbnailGenerator');
+                    const thumbnailGenerator = new ThumbnailGenerator();
+                    const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
+
+                    const generatedThumbnailPath = await thumbnailGenerator.generateFromVideo(
+                        sourceVideoPath,
+                        thumbnailTempPath,
+                        { size: '640x360' }
+                    );
+
+                    // Upload thumbnail to storage
+                    const fileExt = path.extname(generatedThumbnailPath).toLowerCase();
+                    const contentType = fileExt === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+                    const thumbnailKey = `thumb_${videoId}${fileExt}`;
+
+                    const thumbnailUpload = await this.storageRepository.upload(
+                        generatedThumbnailPath,
+                        thumbnailKey,
+                        {
+                            contentType: contentType,
+                            originalName: `${videoId}_thumbnail${fileExt}`,
+                        }
+                    );
+
+                    video.thumbnailUrl = thumbnailUpload.cdnUrl || thumbnailUpload.storageUrl;
+                    console.log(`✅ Thumbnail generated: ${video.thumbnailUrl}`);
+
+                    // Clean up temp thumbnail
+                    if (fs.existsSync(generatedThumbnailPath)) {
+                        fs.unlinkSync(generatedThumbnailPath);
+                    }
+                } catch (thumbnailError) {
+                    console.error('❌ Failed to generate thumbnail during transcoding:', thumbnailError.message);
+                    // Continue without thumbnail
+                }
+            }
+
             // Save the original video as a quality variant with its actual resolution
             const originalHeight = sourceMetadata.height;
             let originalQualityLabel = `${originalHeight}p`;

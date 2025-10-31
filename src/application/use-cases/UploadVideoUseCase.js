@@ -80,7 +80,6 @@ class UploadVideoUseCase {
         let storageUrl, cdnUrl;
 
         if (useLargeFileAPI) {
-            console.log(`📦 File size ${(input.sizeBytes / 1024 / 1024).toFixed(2)} MB > 100MB, using multipart upload`);
             const result = await this.storageRepository.uploadLargeFile(
                 input.filePath,
                 storageKey,
@@ -95,9 +94,6 @@ class UploadVideoUseCase {
             storageUrl = result.storageUrl;
             cdnUrl = result.cdnUrl;
         } else {
-            if (input.sizeBytes > fileSizeThreshold) {
-                console.log(`⚠️  File > 100MB but multipart upload not available, using standard upload`);
-            }
             const result = await this.storageRepository.upload(
                 input.filePath,
                 storageKey,
@@ -120,7 +116,6 @@ class UploadVideoUseCase {
             const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
 
             try {
-                console.log('Processing user-provided thumbnail...');
                 const thumbnailPath = await this.thumbnailGenerator.processUploadedThumbnail(
                     input.thumbnailPath,
                     thumbnailTempPath
@@ -147,14 +142,12 @@ class UploadVideoUseCase {
             } catch (error) {
                 console.error('Failed to upload user thumbnail:', error.message);
                 // Continue to auto-generate instead
-                console.log('Falling back to auto-generated thumbnail...');
             }
         }
 
         // Auto-generate thumbnail if no user thumbnail was provided or if upload failed
         if (!thumbnailUrl) {
             try {
-                console.log('🎬 Auto-generating thumbnail from video...');
                 const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
 
                 // Generate thumbnail from video (extracts actual frame using ffmpeg)
@@ -171,8 +164,6 @@ class UploadVideoUseCase {
                 const fileExt = path.extname(generatedThumbnailPath).toLowerCase();
                 const contentType = fileExt === '.svg' ? 'image/svg+xml' : 'image/jpeg';
                 const thumbnailKey = `thumb_${videoId}${fileExt}`;
-
-                console.log(`📤 Uploading ${fileExt.toUpperCase()} thumbnail to storage...`);
 
                 // Upload generated thumbnail to storage (B2/S3 or local)
                 const thumbnailUpload = await this.storageRepository.upload(
@@ -194,9 +185,7 @@ class UploadVideoUseCase {
                 console.log(`✅ Thumbnail saved to storage: ${thumbnailUrl}`);
             } catch (error) {
                 console.error('❌ Failed to auto-generate thumbnail:', error.message);
-                console.error('Stack:', error.stack);
                 // Continue without thumbnail - video upload should not fail
-                console.log('⚠️  Video will be saved without thumbnail');
             }
         }
 

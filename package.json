@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
+    "dev": "nodemon server.js",
     "build": "cd frontend && npm install && npm run build && cd ..",
     "postinstall": "prisma generate",
     "migrate": "prisma migrate deploy",
@@ -40,6 +40,7 @@
     "@eslint/js": "^9.38.0",
     "@types/node": "^24.9.2",
     "eslint": "^9.38.0",
+    "nodemon": "^3.1.9",
     "prisma": "^5.20.0",
     "typescript": "^5.9.3"
   }

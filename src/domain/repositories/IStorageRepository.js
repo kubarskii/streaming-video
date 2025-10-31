@@ -15,6 +15,18 @@ class IStorageRepository {
     }
 
     /**
+     * Upload a large file using multipart upload (optional - for large files > 100MB)
+     * @param {string} filePath - Local path to the file
+     * @param {string} storageKey - Key/path in storage
+     * @param {Object} metadata - File metadata
+     * @param {Object} options - Upload options (partSize, etc.)
+     * @returns {Promise<{storageUrl: string, cdnUrl?: string}>}
+     */
+    async uploadLargeFile(filePath, storageKey, metadata = {}, options = {}) {
+        throw new Error('Method not implemented');
+    }
+
+    /**
      * Upload from buffer
      * @param {Buffer} buffer - File buffer
      * @param {string} storageKey - Key/path in storage
