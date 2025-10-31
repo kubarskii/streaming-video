@@ -185,6 +185,22 @@ function serveFile(res, filePath, contentType = 'text/plain') {
     });
 }
 
+// Helper to serve static files with cache headers
+function serveFileWithCache(res, filePath, contentType = 'text/plain') {
+    fs.readFile(filePath, (err, data) => {
+        if (err) {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            return res.end('404 Not Found');
+        }
+        res.writeHead(200, {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'ETag': `"${Date.now()}-${data.length}"`
+        });
+        res.end(data);
+    });
+}
+
 // Start server
 async function startServer() {
     try {
@@ -217,6 +233,18 @@ async function startServer() {
                 // Fallback to static file serving
                 const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
 
+                // Explicitly handle favicon requests with proper cache headers
+                if (pathname === '/favicon.svg' || pathname === '/favicon.ico') {
+                    const faviconPath = pathname === '/favicon.ico'
+                        ? path.join(PUBLIC_DIR, 'favicon.ico')
+                        : path.join(PUBLIC_DIR, 'favicon.svg');
+
+                    if (fs.existsSync(faviconPath)) {
+                        const contentType = pathname === '/favicon.ico' ? 'image/x-icon' : 'image/svg+xml';
+                        return serveFileWithCache(res, faviconPath, contentType);
+                    }
+                }
+
                 if (pathname === '/') {
                     return serveFile(res, path.join(PUBLIC_DIR, 'index.html'), 'text/html');
                 }
@@ -225,6 +253,10 @@ async function startServer() {
                 const safePath = path.join(PUBLIC_DIR, pathname.replace(/^\/+/, ''));
                 if (fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
                     const contentType = getContentType(safePath);
+                    // Add cache headers for static assets
+                    if (pathname.match(/\.(css|js|svg|ico|png|jpg|jpeg|gif|woff|woff2)$/)) {
+                        return serveFileWithCache(res, safePath, contentType);
+                    }
                     return serveFile(res, safePath, contentType);
                 }
 
