@@ -28,6 +28,8 @@
   display: block;
   cursor: pointer;
   z-index: 1;
+  touch-action: manipulation; /* Prevent double-tap zoom on mobile */
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
 }
 
 /* Buffering and Loading Indicators */
@@ -69,6 +71,8 @@
   cursor: pointer;
   z-index: 5;
   transition: opacity 0.2s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .play-overlay:hover {

@@ -45,6 +45,14 @@ export const VideoPlayer = React.forwardRef(({
     const hasRestoredPositionRef = useRef(false);
     const saveIntervalRef = useRef(null);
     const pendingRestorePositionRef = useRef(null);
+    const tapTimeoutRef = useRef(null);
+    const lastTouchTimeRef = useRef(0);
+    const lastTapTimeRef = useRef(0);
+
+    // Constants
+    const DOUBLE_CLICK_DELAY = 50; // ms to wait for double-click/tap detection
+    const DOUBLE_TAP_THRESHOLD = 300; // ms window for detecting second tap
+    const GHOST_CLICK_THRESHOLD = 300; // ms to ignore click after touch
 
     const [isPlaying, setIsPlaying] = useState(autoPlay);
     const [currentTime, setCurrentTime] = useState(0);
@@ -383,6 +391,10 @@ export const VideoPlayer = React.forwardRef(({
         document.addEventListener('fullscreenchange', handleFullscreenChange);
         return () => {
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            // Cleanup tap timeout on unmount
+            if (tapTimeoutRef.current) {
+                clearTimeout(tapTimeoutRef.current);
+            }
         };
     }, []);
 
@@ -408,17 +420,69 @@ export const VideoPlayer = React.forwardRef(({
         showControlsTemporarily();
     };
 
-    const handleVideoClick = (e) => {
-        // On mobile/touch devices, first tap shows controls, second tap plays/pauses
-        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const handleVideoTouch = (e) => {
+        const now = Date.now();
+        const timeSinceLastTap = now - lastTapTimeRef.current;
 
-        if (isTouchDevice && !showControls) {
-            // If controls are hidden, show them instead of toggling play/pause
-            showControlsTemporarily();
-        } else {
-            // If controls are visible or on desktop, toggle play/pause
-            togglePlayPause();
+        // Set timestamp for ghost click prevention
+        lastTouchTimeRef.current = now;
+
+        // Check for double-tap (within 300ms window)
+        if (timeSinceLastTap < DOUBLE_TAP_THRESHOLD && timeSinceLastTap > 0) {
+            // Double-tap detected → go fullscreen immediately
+            if (tapTimeoutRef.current) {
+                clearTimeout(tapTimeoutRef.current);
+                tapTimeoutRef.current = null;
+            }
+            toggleFullscreen();
+            lastTapTimeRef.current = 0; // Reset to prevent triple-tap issues
+            return;
         }
+
+        // Single tap → wait briefly (50ms) to see if a second tap is coming
+        lastTapTimeRef.current = now;
+
+        if (tapTimeoutRef.current) {
+            clearTimeout(tapTimeoutRef.current);
+        }
+
+        tapTimeoutRef.current = setTimeout(() => {
+            // Single tap confirmed → show controls (if hidden)
+            // If controls are visible, do nothing (they'll auto-hide)
+            if (!showControls) {
+                showControlsTemporarily();
+            }
+            tapTimeoutRef.current = null;
+        }, DOUBLE_CLICK_DELAY); // Use 50ms delay for execution
+    };
+
+    const handleVideoClick = (e) => {
+        // Prevent ghost clicks from touch events
+        const timeSinceTouch = Date.now() - lastTouchTimeRef.current;
+        if (timeSinceTouch < GHOST_CLICK_THRESHOLD) {
+            return;
+        }
+
+        // Mouse click: wait briefly to detect double-click
+        if (tapTimeoutRef.current) {
+            clearTimeout(tapTimeoutRef.current);
+            tapTimeoutRef.current = null;
+        }
+
+        tapTimeoutRef.current = setTimeout(() => {
+            togglePlayPause();
+            tapTimeoutRef.current = null;
+        }, DOUBLE_CLICK_DELAY);
+    };
+
+    const handleVideoDoubleClick = (e) => {
+        // Cancel pending single-click action
+        if (tapTimeoutRef.current) {
+            clearTimeout(tapTimeoutRef.current);
+            tapTimeoutRef.current = null;
+        }
+        // Toggle fullscreen immediately
+        toggleFullscreen();
     };
 
     const handleNextVideo = () => {
@@ -948,14 +1012,18 @@ export const VideoPlayer = React.forwardRef(({
                 className={`youtube-video-player ${className} ${isFullscreen ? 'fullscreen' : ''}`}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => isPlaying && setShowControls(false)}
+                onTouchStart={handleMouseMove}
             >
                 <video
                     ref={videoRef}
                     className="video-element"
                     poster={poster}
+                    onTouchEnd={handleVideoTouch}
                     onClick={handleVideoClick}
-                    onDoubleClick={toggleFullscreen}
+                    onDoubleClick={handleVideoDoubleClick}
                     preload="metadata"
+                    playsInline
+                    webkit-playsinline="true"
                 >
                     {src && <source src={src} type={videoMimeType} />}
                     <p>
@@ -971,7 +1039,23 @@ export const VideoPlayer = React.forwardRef(({
                 )}
 
                 {!isPlaying && !isBuffering && isReady && (
-                    <div className="play-overlay" onClick={handleVideoClick}>
+                    <div
+                        className="play-overlay"
+                        onTouchEnd={(e) => {
+                            e.stopPropagation();
+                            lastTouchTimeRef.current = Date.now();
+                            togglePlayPause();
+                        }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            // Prevent ghost clicks
+                            const timeSinceTouch = Date.now() - lastTouchTimeRef.current;
+                            if (timeSinceTouch < GHOST_CLICK_THRESHOLD) {
+                                return;
+                            }
+                            togglePlayPause();
+                        }}
+                    >
                         <div className="play-button-large">
                             <FaPlay />
                         </div>
