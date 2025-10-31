@@ -134,17 +134,22 @@
     position: relative;
     width: 100%;
     aspect-ratio: 16 / 9;
+    min-height: 0; /* Prevent grid from expanding beyond aspect-ratio */
+    max-height: 100%; /* Constrain to container */
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     grid-template-rows: repeat(2, 1fr);
     gap: 2px;
     background: #000;
+    overflow: hidden; /* Clip any overflowing content */
 }
 
 .playlist-grid-thumbnail {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block; /* Remove inline spacing */
+    min-height: 0; /* Allow shrinking in grid */
 }
 
 .playlist-thumbnail-grid:has(.playlist-grid-thumbnail:nth-child(2)) {

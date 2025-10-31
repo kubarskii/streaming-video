@@ -11,6 +11,7 @@ import { ChannelPage } from '../pages/channel/ChannelPage';
 import { ChannelsListPage } from '../pages/channels/ChannelsListPage';
 import { SubscriptionsPage } from '../pages/subscriptions/SubscriptionsPage';
 import { PlaylistManagePage } from '../pages/playlist/PlaylistManagePage';
+import { PlaylistViewPage } from '../pages/playlist/PlaylistViewPage';
 
 // Root route
 const rootRoute = createRootRoute({
@@ -57,10 +58,28 @@ const uploadRoute = createRoute({
     component: UploadPageProtected,
 });
 
-// Profile route (protected)
+// Profile routes (protected) - with nested routes for tabs
 const profileRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/profile',
+    component: ProfilePage,
+});
+
+const profileVideosRoute = createRoute({
+    getParentRoute: () => profileRoute,
+    path: '/',
+    component: ProfilePage,
+});
+
+const profilePlaylistsRoute = createRoute({
+    getParentRoute: () => profileRoute,
+    path: '/playlists',
+    component: ProfilePage,
+});
+
+const profileChannelRoute = createRoute({
+    getParentRoute: () => profileRoute,
+    path: '/channel',
     component: ProfilePage,
 });
 
@@ -85,6 +104,13 @@ const subscriptionsRoute = createRoute({
     component: SubscriptionsPage,
 });
 
+// Playlist view route (public)
+const playlistViewRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/playlist/$playlistId',
+    component: PlaylistViewPage,
+});
+
 // Playlist manage route (protected)
 const playlistManageRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -99,10 +125,15 @@ const routeTree = rootRoute.addChildren([
     loginRoute,
     registerRoute,
     uploadRoute,
-    profileRoute,
+    profileRoute.addChildren([
+        profileVideosRoute,
+        profilePlaylistsRoute,
+        profileChannelRoute,
+    ]),
     channelRoute,
     channelsRoute,
     subscriptionsRoute,
+    playlistViewRoute,
     playlistManageRoute,
 ]);
 

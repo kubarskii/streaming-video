@@ -25,6 +25,7 @@ export { VideoCard, VideoCardGrid, VideoCardSkeleton } from './VideoCard';
 
 // Overlay
 export { Modal, ConfirmDialog } from './Modal';
+export { BottomSheet } from './BottomSheet';
 
 // Comments
 export { CommentsSection, CommentForm, CommentItem } from './Comments';

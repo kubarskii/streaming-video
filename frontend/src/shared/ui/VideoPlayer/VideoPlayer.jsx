@@ -213,7 +213,9 @@ export const VideoPlayer = React.forwardRef(({
     const calculateTimeFromPosition = (clientX) => {
         if (!progressBarRef.current || !duration) return 0;
         const rect = progressBarRef.current.getBoundingClientRect();
-        const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const padding = 12; // padding from CSS
+        const effectiveWidth = rect.width - (padding * 2);
+        const pos = Math.max(0, Math.min(1, (clientX - rect.left - padding) / effectiveWidth));
         return pos * duration;
     };
 
@@ -223,8 +225,11 @@ export const VideoPlayer = React.forwardRef(({
         setHoverTime(time);
 
         const rect = progressBarRef.current.getBoundingClientRect();
-        const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        setHoverPosition(pos * 100);
+        const padding = 12; // padding from CSS
+        // Calculate position relative to container (raw mouse position)
+        // debugger
+        const pixelPos = Math.max(padding, Math.min(rect.width - padding, e.clientX - rect.left - padding));
+        setHoverPosition(pixelPos);
     };
 
     const handleProgressMouseLeave = () => {
@@ -244,8 +249,9 @@ export const VideoPlayer = React.forwardRef(({
         setHoverTime(time);
 
         const rect = progressBarRef.current.getBoundingClientRect();
-        const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        setHoverPosition(pos * 100);
+        const padding = 12; // padding from CSS
+        const pixelPos = Math.max(padding, Math.min(rect.width - padding, e.clientX - rect.left - padding));
+        setHoverPosition(pixelPos);
 
         // Update video time immediately
         seekTo(time);
@@ -259,8 +265,9 @@ export const VideoPlayer = React.forwardRef(({
             setHoverTime(time);
 
             const rect = progressBarRef.current.getBoundingClientRect();
-            const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            setHoverPosition(pos * 100);
+            const padding = 12; // padding from CSS
+            const pixelPos = Math.max(padding, Math.min(rect.width - padding, e.clientX - rect.left - padding));
+            setHoverPosition(pixelPos);
 
             // Update video time while dragging
             if (videoRef.current) {
@@ -739,7 +746,7 @@ export const VideoPlayer = React.forwardRef(({
                         {(hoverTime !== null || isDragging) && (
                             <div
                                 className="progress-bar-tooltip"
-                                style={{ left: `${hoverPosition}%` }}
+                                style={{ left: `${hoverPosition}px` }}
                             >
                                 {formatTime(hoverTime || 0)}
                             </div>
@@ -757,7 +764,7 @@ export const VideoPlayer = React.forwardRef(({
                                 <div
                                     className="progress-bar-preview"
                                     style={{
-                                        left: `${hoverPosition}%`,
+                                        left: `${hoverPosition}px`,
                                         backgroundColor: primaryColor,
                                     }}
                                 />

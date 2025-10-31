@@ -1,25 +1,39 @@
 // Pages: Profile Page - YouTube Studio Style
 // User profile with video and playlist management
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../shared/context/AuthContext';
 import { useAbortController } from '../../shared/lib';
 import { videosAPI } from '../../shared/api/videos';
 import { channelsAPI } from '../../shared/api/channels';
 import { playlistsAPI } from '../../shared/api/playlists';
-import { useNavigate } from '@tanstack/react-router';
-import { Avatar, Button, EmptyState, VideoEmptyIcon, EditIcon, EyeIcon, DeleteIcon, UploadIcon, Modal } from '../../shared/ui';
+import { useNavigate, useLocation, Link } from '@tanstack/react-router';
+import { Avatar, Button, EmptyState, VideoEmptyIcon, EditIcon, EyeIcon, DeleteIcon, UploadIcon, Modal, Spinner } from '../../shared/ui';
 import { formatViews, formatDate, formatDuration } from '../../shared/lib';
 import './ProfilePage.css';
 
 export const ProfilePage = () => {
     const { user, isAuthenticated } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const signal = useAbortController();
     const [videos, setVideos] = useState([]);
     const [channel, setChannel] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [activeTab, setActiveTab] = useState('videos'); // 'videos', 'playlists', 'channel'
+
+    // Determine active tab from URL
+    const getActiveTab = () => {
+        const path = location.pathname;
+        // Exact path matching for nested routes
+        if (path === '/profile/playlists' || path.startsWith('/profile/playlists/')) return 'playlists';
+        if (path === '/profile/channel' || path.startsWith('/profile/channel/')) return 'channel';
+        if (path === '/profile' || path === '/profile/') return 'videos';
+        // Fallback to includes for any other nested routes under profile
+        if (path.includes('/playlists')) return 'playlists';
+        if (path.includes('/channel')) return 'channel';
+        return 'videos';
+    };
+    const activeTab = getActiveTab();
     const [searchQuery, setSearchQuery] = useState('');
     const [showChannelForm, setShowChannelForm] = useState(false);
     const [channelForm, setChannelForm] = useState({
@@ -44,6 +58,16 @@ export const ProfilePage = () => {
     const [draggedVideoId, setDraggedVideoId] = useState(null);
     const [draggedOverIndex, setDraggedOverIndex] = useState(null);
     const [expandedPlaylistId, setExpandedPlaylistId] = useState(null);
+
+    // Loading states for playlist operations
+    const [playlistsLoading, setPlaylistsLoading] = useState(true);
+    const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+    const [updatingPlaylist, setUpdatingPlaylist] = useState(null);
+    const [deletingPlaylist, setDeletingPlaylist] = useState(null);
+    const [addingToPlaylist, setAddingToPlaylist] = useState(null);
+    const [removingFromPlaylist, setRemovingFromPlaylist] = useState(null);
+    const [reorderingPlaylist, setReorderingPlaylist] = useState(null);
+    const [addingVideosToPlaylists, setAddingVideosToPlaylists] = useState(false);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -90,6 +114,7 @@ export const ProfilePage = () => {
 
     const loadUserPlaylists = async () => {
         try {
+            setPlaylistsLoading(true);
             const data = await playlistsAPI.getPlaylists({ userId: user.id }, signal);
             const playlists = data.playlists || [];
 
@@ -110,6 +135,8 @@ export const ProfilePage = () => {
             if (err.name !== 'AbortError' && err.name !== 'CanceledError') {
                 console.error('Error loading playlists:', err);
             }
+        } finally {
+            setPlaylistsLoading(false);
         }
     };
 
@@ -164,6 +191,7 @@ export const ProfilePage = () => {
 
     const handleCreatePlaylist = async () => {
         try {
+            setCreatingPlaylist(true);
             await playlistsAPI.createPlaylist({
                 title: playlistForm.title.trim(),
                 description: playlistForm.description.trim() || null,
@@ -172,21 +200,26 @@ export const ProfilePage = () => {
             });
             setPlaylistForm({ title: '', description: '', isPublic: true });
             setShowPlaylistForm(false);
-            loadUserPlaylists();
+            await loadUserPlaylists();
         } catch (err) {
             console.error('Error creating playlist:', err);
             alert('Failed to create playlist: ' + err.message);
+        } finally {
+            setCreatingPlaylist(false);
         }
     };
 
     const handleUpdatePlaylist = async (playlistId, updates) => {
         try {
+            setUpdatingPlaylist(playlistId);
             await playlistsAPI.updatePlaylist(playlistId, updates);
-            loadUserPlaylists();
+            await loadUserPlaylists();
             setEditingPlaylist(null);
         } catch (err) {
             console.error('Error updating playlist:', err);
             alert('Failed to update playlist: ' + err.message);
+        } finally {
+            setUpdatingPlaylist(null);
         }
     };
 
@@ -195,41 +228,53 @@ export const ProfilePage = () => {
             return;
         }
         try {
+            setDeletingPlaylist(playlistId);
             await playlistsAPI.deletePlaylist(playlistId);
-            loadUserPlaylists();
+            await loadUserPlaylists();
         } catch (err) {
             console.error('Error deleting playlist:', err);
             alert('Failed to delete playlist: ' + err.message);
+        } finally {
+            setDeletingPlaylist(null);
         }
     };
 
     const handleAddVideoToPlaylist = async (playlistId, videoId) => {
         try {
+            setAddingToPlaylist(`${playlistId}-${videoId}`);
             await playlistsAPI.addVideoToPlaylist(playlistId, videoId);
-            loadUserPlaylists();
+            await loadUserPlaylists();
         } catch (err) {
             console.error('Error adding video to playlist:', err);
             alert('Failed to add video to playlist: ' + err.message);
+        } finally {
+            setAddingToPlaylist(null);
         }
     };
 
     const handleRemoveVideoFromPlaylist = async (playlistId, videoId) => {
         try {
+            setRemovingFromPlaylist(`${playlistId}-${videoId}`);
             await playlistsAPI.removeVideoFromPlaylist(playlistId, videoId);
-            loadUserPlaylists();
+            await loadUserPlaylists();
         } catch (err) {
             console.error('Error removing video from playlist:', err);
             alert('Failed to remove video from playlist: ' + err.message);
+        } finally {
+            setRemovingFromPlaylist(null);
         }
     };
 
     const handleReorderPlaylist = async (playlistId, orderedVideoIds) => {
         try {
+            setReorderingPlaylist(playlistId);
             await playlistsAPI.reorderPlaylistVideos(playlistId, orderedVideoIds);
-            loadUserPlaylists();
+            await loadUserPlaylists();
         } catch (err) {
             console.error('Error reordering playlist:', err);
             alert('Failed to reorder playlist: ' + err.message);
+        } finally {
+            setReorderingPlaylist(null);
         }
     };
 
@@ -318,6 +363,7 @@ export const ProfilePage = () => {
         }
 
         try {
+            setAddingVideosToPlaylists(true);
             let newPlaylistId = null;
 
             if (showNewPlaylistInput && newPlaylistName.trim()) {
@@ -362,6 +408,8 @@ export const ProfilePage = () => {
         } catch (err) {
             console.error('Error adding videos to playlists:', err);
             alert('Failed to add videos to playlists: ' + err.message);
+        } finally {
+            setAddingVideosToPlaylists(false);
         }
     };
 
@@ -384,49 +432,60 @@ export const ProfilePage = () => {
             {/* Sidebar Navigation */}
             <aside className="studio-sidebar">
                 <div className="studio-sidebar-header">
-                    <h2>Studio</h2>
+                    <Avatar
+                        src={user?.profilePicture}
+                        name={user?.username}
+                        size="large"
+                    />
+                    <div className="studio-sidebar-user-info">
+                        <h3>{user?.username}</h3>
+                        <p>{channel?.name || 'Your Channel'}</p>
+                    </div>
                 </div>
                 <nav className="studio-nav">
-                    <button
-                        className={`studio-nav-item ${activeTab === 'videos' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('videos')}
+                    <Link
+                        to="/profile"
+                        className="studio-nav-item"
+                        activeOptions={{ exact: true }}
+                        activeProps={{ className: 'studio-nav-item active' }}
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                            <line x1="9" y1="3" x2="9" y2="21" />
-                            <line x1="3" y1="9" x2="21" y2="9" />
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M18 4l2 3h-3l-2-3h-2l2 3h-3l-2-3H8l2 3H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z" />
                         </svg>
-                        <span>Videos</span>
-                    </button>
-                    <button
-                        className={`studio-nav-item ${activeTab === 'playlists' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('playlists')}
+                        <span>Content</span>
+                    </Link>
+                    <Link
+                        to="/profile/playlists"
+                        className="studio-nav-item"
+                        activeOptions={{ exact: false }}
+                        activeProps={{ className: 'studio-nav-item active' }}
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zM10 9h8v2h-8zm0 3h4v2h-4zm0-6h8v2h-8z" />
                         </svg>
                         <span>Playlists</span>
-                    </button>
-                    <button
-                        className={`studio-nav-item ${activeTab === 'channel' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('channel')}
+                    </Link>
+                    <Link
+                        to="/profile/channel"
+                        className="studio-nav-item"
+                        activeOptions={{ exact: false }}
+                        activeProps={{ className: 'studio-nav-item active' }}
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                            <circle cx="12" cy="10" r="3" />
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" />
                         </svg>
-                        <span>Channel</span>
-                    </button>
+                        <span>Customization</span>
+                    </Link>
                 </nav>
                 <div className="studio-sidebar-footer">
                     <Button
                         variant="primary"
-                        size="small"
+                        size="medium"
                         onClick={() => navigate({ to: '/upload' })}
-                        style={{ width: '100%' }}
+                        style={{ width: '100%', justifyContent: 'center' }}
                     >
-                        <UploadIcon size={16} />
-                        Upload Video
+                        <UploadIcon size={18} />
+                        Create
                     </Button>
                 </div>
             </aside>
@@ -646,8 +705,9 @@ export const ProfilePage = () => {
                                                 handleCreatePlaylist();
                                             }
                                         }}
+                                        disabled={creatingPlaylist || updatingPlaylist === editingPlaylist?.id}
                                     >
-                                        {editingPlaylist ? 'Save' : 'Create'}
+                                        {(creatingPlaylist || updatingPlaylist === editingPlaylist?.id) ? 'Saving...' : (editingPlaylist ? 'Save' : 'Create')}
                                     </Button>
                                     <Button
                                         variant="secondary"
@@ -656,6 +716,7 @@ export const ProfilePage = () => {
                                             setEditingPlaylist(null);
                                             setPlaylistForm({ title: '', description: '', isPublic: true });
                                         }}
+                                        disabled={creatingPlaylist || updatingPlaylist === editingPlaylist?.id}
                                     >
                                         Cancel
                                     </Button>
@@ -663,7 +724,11 @@ export const ProfilePage = () => {
                             </div>
                         )}
 
-                        {playlists.length === 0 && !showPlaylistForm ? (
+                        {playlistsLoading ? (
+                            <div className="studio-loading">
+                                <Spinner size="large" label="Loading playlists" />
+                            </div>
+                        ) : playlists.length === 0 && !showPlaylistForm ? (
                             <EmptyState
                                 icon={<VideoEmptyIcon />}
                                 title="No playlists yet"
@@ -682,134 +747,191 @@ export const ProfilePage = () => {
                                 }
                             />
                         ) : (
-                            <div className="studio-playlists">
-                                {playlists.map(playlist => (
-                                    <div key={playlist.id} className="studio-playlist-card">
-                                        <div className="playlist-card-header">
-                                            <div className="playlist-header-info">
-                                                <h3>{playlist.title}</h3>
-                                                <p className="playlist-meta">
-                                                    {playlist.videos?.length || 0} videos • {playlist.isPublic ? 'Public' : 'Private'}
-                                                </p>
-                                            </div>
-                                            <div className="playlist-card-actions">
-                                                <Button
-                                                    variant="primary"
-                                                    size="small"
-                                                    onClick={() => navigate({ to: `/playlist/${playlist.id}/manage` })}
-                                                >
-                                                    Manage
-                                                </Button>
-                                                <Button
-                                                    variant="secondary"
-                                                    size="small"
-                                                    onClick={() => {
-                                                        setEditingPlaylist(playlist);
-                                                        setPlaylistForm({
-                                                            title: playlist.title,
-                                                            description: playlist.description || '',
-                                                            isPublic: playlist.isPublic,
-                                                        });
-                                                        setShowPlaylistForm(true);
-                                                    }}
-                                                >
-                                                    <EditIcon size={14} />
-                                                    Edit
-                                                </Button>
-                                                <Button
-                                                    variant="danger"
-                                                    size="small"
-                                                    onClick={() => handleDeletePlaylist(playlist.id)}
-                                                >
-                                                    <DeleteIcon size={14} />
-                                                    Delete
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="small"
-                                                    onClick={() => setExpandedPlaylistId(
-                                                        expandedPlaylistId === playlist.id ? null : playlist.id
-                                                    )}
-                                                >
-                                                    {expandedPlaylistId === playlist.id ? '▼' : '▶'}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                        {playlist.description && (
-                                            <p className="playlist-description">{playlist.description}</p>
-                                        )}
-                                        {expandedPlaylistId === playlist.id && (
-                                            <div className="playlist-videos-manager">
-                                                {playlist.videos && playlist.videos.length > 0 && (
-                                                    <div className="playlist-current-videos">
-                                                        <h5>Videos (drag to reorder)</h5>
-                                                        <div className="playlist-videos-ordered">
-                                                            {playlist.videos
-                                                                .sort((a, b) => (a.position || 0) - (b.position || 0))
-                                                                .map((playlistVideo, index) => {
-                                                                    const video = playlistVideo.video;
-                                                                    const videoId = video?.id || playlistVideo.videoId;
-                                                                    const isDragged = draggedVideoId === videoId;
-                                                                    const isDraggedOver = draggedOverIndex === index;
-
-                                                                    return (
-                                                                        <div
-                                                                            key={playlistVideo.id || videoId}
-                                                                            className={`playlist-video-ordered-item ${isDragged ? 'dragging' : ''} ${isDraggedOver ? 'drag-over' : ''}`}
-                                                                            draggable
-                                                                            onDragStart={(e) => handleDragStart(e, videoId)}
-                                                                            onDragOver={(e) => handleDragOver(e, index)}
-                                                                            onDragLeave={handleDragLeave}
-                                                                            onDrop={(e) => handleDrop(e, playlist.id, playlist.videos, index)}
-                                                                        >
-                                                                            <span className="drag-handle">☰</span>
-                                                                            <span className="video-title">{video?.title || 'Loading...'}</span>
-                                                                            <Button
-                                                                                variant="danger"
-                                                                                size="small"
-                                                                                onClick={() => handleRemoveVideoFromPlaylist(playlist.id, videoId)}
-                                                                            >
-                                                                                Remove
-                                                                            </Button>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                <div className="playlist-add-videos">
-                                                    <h5>Add Videos</h5>
-                                                    <div className="playlist-videos-list">
-                                                        {videos.map(video => {
-                                                            const isInPlaylist = playlist.videos?.some(v =>
-                                                                String(v.video?.id || v.videoId) === String(video.id)
-                                                            );
-                                                            if (isInPlaylist) return null;
-
-                                                            return (
-                                                                <div key={video.id} className="playlist-video-item">
-                                                                    <span>{video.title}</span>
-                                                                    <Button
-                                                                        variant="primary"
-                                                                        size="small"
-                                                                        onClick={() => handleAddVideoToPlaylist(playlist.id, video.id)}
-                                                                    >
-                                                                        Add
-                                                                    </Button>
+                            <div className="studio-table-container">
+                                <table className="studio-table">
+                                    <thead>
+                                        <tr>
+                                            <th className="col-video">Playlist</th>
+                                            <th className="col-visibility">Visibility</th>
+                                            <th className="col-date">Created</th>
+                                            <th className="col-views">Videos</th>
+                                            <th className="col-actions">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {playlists.map(playlist => (
+                                            <React.Fragment key={playlist.id}>
+                                                <tr>
+                                                    <td className="col-video">
+                                                        <div className="video-row">
+                                                            <div className="video-thumbnail-wrapper">
+                                                                <img
+                                                                    src={playlist.videos?.[0]?.video?.thumbnailUrl || '/placeholder-video.png'}
+                                                                    alt={playlist.title}
+                                                                    className="video-thumbnail"
+                                                                />
+                                                                <div className="playlist-overlay">
+                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                                                        <path d="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v16h16V4H4zm2 2h12v2H6V6zm0 4h12v2H6v-2zm0 4h12v2H6v-2z" />
+                                                                    </svg>
+                                                                    <span>{playlist.videos?.length || 0}</span>
                                                                 </div>
-                                                            );
-                                                        })}
-                                                        {videos.filter(v => !playlist.videos?.some(pv =>
-                                                            String(pv.video?.id || pv.videoId) === String(v.id)
-                                                        )).length === 0 && (
-                                                                <div className="playlist-empty-message">All videos are in this playlist</div>
-                                                            )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
+                                                            </div>
+                                                            <div className="video-info">
+                                                                <div className="video-title">{playlist.title}</div>
+                                                                {playlist.description && (
+                                                                    <div className="video-meta">
+                                                                        <span style={{
+                                                                            display: '-webkit-box',
+                                                                            WebkitLineClamp: 1,
+                                                                            WebkitBoxOrient: 'vertical',
+                                                                            overflow: 'hidden',
+                                                                            textOverflow: 'ellipsis'
+                                                                        }}>{playlist.description}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="col-visibility">
+                                                        <span className={`visibility-badge ${playlist.isPublic ? 'public' : 'private'}`}>
+                                                            {playlist.isPublic ? 'Public' : 'Private'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="col-date">
+                                                        {playlist.createdAt ? formatDate(playlist.createdAt) : '-'}
+                                                    </td>
+                                                    <td className="col-views">
+                                                        {playlist.videos?.length || 0}
+                                                    </td>
+                                                    <td className="col-actions">
+                                                        <div className="action-buttons">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="small"
+                                                                onClick={() => setExpandedPlaylistId(
+                                                                    expandedPlaylistId === playlist.id ? null : playlist.id
+                                                                )}
+                                                                title="Manage videos"
+                                                            >
+                                                                {expandedPlaylistId === playlist.id ? (
+                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                        <polyline points="18 15 12 9 6 15" />
+                                                                    </svg>
+                                                                ) : (
+                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                        <polyline points="6 9 12 15 18 9" />
+                                                                    </svg>
+                                                                )}
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="small"
+                                                                onClick={() => {
+                                                                    setEditingPlaylist(playlist);
+                                                                    setPlaylistForm({
+                                                                        title: playlist.title,
+                                                                        description: playlist.description || '',
+                                                                        isPublic: playlist.isPublic,
+                                                                    });
+                                                                    setShowPlaylistForm(true);
+                                                                }}
+                                                                title="Edit"
+                                                            >
+                                                                <EditIcon size={16} />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="small"
+                                                                onClick={() => handleDeletePlaylist(playlist.id)}
+                                                                disabled={deletingPlaylist === playlist.id}
+                                                                title="Delete"
+                                                            >
+                                                                <DeleteIcon size={16} />
+                                                            </Button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {expandedPlaylistId === playlist.id && (
+                                                    <tr className="playlist-details-row">
+                                                        <td colSpan="5">
+                                                            <div className="playlist-videos-manager">
+                                                                {playlist.videos && playlist.videos.length > 0 && (
+                                                                    <div className="playlist-current-videos">
+                                                                        <h5>Videos (drag to reorder){reorderingPlaylist === playlist.id && <span style={{ marginLeft: '8px', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Reordering...</span>}</h5>
+                                                                        <div className="playlist-videos-ordered">
+                                                                            {playlist.videos
+                                                                                .sort((a, b) => (a.position || 0) - (b.position || 0))
+                                                                                .map((playlistVideo, index) => {
+                                                                                    const video = playlistVideo.video;
+                                                                                    const videoId = video?.id || playlistVideo.videoId;
+                                                                                    const isDragged = draggedVideoId === videoId;
+                                                                                    const isDraggedOver = draggedOverIndex === index;
+
+                                                                                    return (
+                                                                                        <div
+                                                                                            key={playlistVideo.id || videoId}
+                                                                                            className={`playlist-video-ordered-item ${isDragged ? 'dragging' : ''} ${isDraggedOver ? 'drag-over' : ''}`}
+                                                                                            draggable
+                                                                                            onDragStart={(e) => handleDragStart(e, videoId)}
+                                                                                            onDragOver={(e) => handleDragOver(e, index)}
+                                                                                            onDragLeave={handleDragLeave}
+                                                                                            onDrop={(e) => handleDrop(e, playlist.id, playlist.videos, index)}
+                                                                                        >
+                                                                                            <span className="drag-handle">☰</span>
+                                                                                            <span className="video-title">{video?.title || 'Loading...'}</span>
+                                                                                            <Button
+                                                                                                variant="danger"
+                                                                                                size="small"
+                                                                                                onClick={() => handleRemoveVideoFromPlaylist(playlist.id, videoId)}
+                                                                                                disabled={removingFromPlaylist === `${playlist.id}-${videoId}`}
+                                                                                            >
+                                                                                                {removingFromPlaylist === `${playlist.id}-${videoId}` ? 'Removing...' : 'Remove'}
+                                                                                            </Button>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                <div className="playlist-add-videos">
+                                                                    <h5>Add Videos</h5>
+                                                                    <div className="playlist-videos-list">
+                                                                        {videos.map(video => {
+                                                                            const isInPlaylist = playlist.videos?.some(v =>
+                                                                                String(v.video?.id || v.videoId) === String(video.id)
+                                                                            );
+                                                                            if (isInPlaylist) return null;
+
+                                                                            return (
+                                                                                <div key={video.id} className="playlist-video-item">
+                                                                                    <span>{video.title}</span>
+                                                                                    <Button
+                                                                                        variant="primary"
+                                                                                        size="small"
+                                                                                        onClick={() => handleAddVideoToPlaylist(playlist.id, video.id)}
+                                                                                        disabled={addingToPlaylist === `${playlist.id}-${video.id}`}
+                                                                                    >
+                                                                                        {addingToPlaylist === `${playlist.id}-${video.id}` ? 'Adding...' : 'Add'}
+                                                                                    </Button>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                        {videos.filter(v => !playlist.videos?.some(pv =>
+                                                                            String(pv.video?.id || pv.videoId) === String(v.id)
+                                                                        )).length === 0 && (
+                                                                                <div className="playlist-empty-message">All videos are in this playlist</div>
+                                                                            )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </div>
@@ -954,8 +1076,11 @@ export const ProfilePage = () => {
                             )}
                         </div>
                         <div className="modal-actions">
-                            <Button onClick={handleAddVideosToPlaylists} disabled={selectedPlaylists.size === 0 && !showNewPlaylistInput}>
-                                Save
+                            <Button
+                                onClick={handleAddVideosToPlaylists}
+                                disabled={addingVideosToPlaylists || (selectedPlaylists.size === 0 && !showNewPlaylistInput)}
+                            >
+                                {addingVideosToPlaylists ? 'Saving...' : 'Save'}
                             </Button>
                             <Button
                                 variant="secondary"
@@ -964,6 +1089,7 @@ export const ProfilePage = () => {
                                     setShowNewPlaylistInput(false);
                                     setNewPlaylistName('');
                                 }}
+                                disabled={addingVideosToPlaylists}
                             >
                                 Cancel
                             </Button>

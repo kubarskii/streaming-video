@@ -40,6 +40,7 @@
   margin: 0 auto;
   aspect-ratio: 16 / 9;
   max-height: calc(100vh - 120px);
+  min-height: 200px;
   background: #000;
   border-radius: 0;
   overflow: visible;
@@ -291,6 +292,167 @@
 
 .btn-share:hover {
   background: var(--bg-hover);
+}
+
+/* Mobile Playlist Button - Hidden on desktop */
+.btn-playlist-mobile {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+}
+
+.btn-playlist-mobile:hover {
+  background: var(--bg-hover);
+}
+
+/* Bottom Sheet Playlist Styles */
+.bottom-sheet-playlist {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.bottom-sheet-playlist-controls {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.bottom-sheet-playlist-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bottom-sheet-playlist-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.bottom-sheet-playlist-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bottom-sheet-playlist-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.bottom-sheet-playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+  margin-bottom: 6px;
+}
+
+.bottom-sheet-playlist-item:hover {
+  background: var(--bg-hover);
+}
+
+.bottom-sheet-playlist-item.active {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+.bottom-sheet-playlist-item.active .bottom-sheet-playlist-meta {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.bottom-sheet-playlist-number {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 500;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.bottom-sheet-playlist-item.active .bottom-sheet-playlist-number {
+  color: #fff;
+}
+
+.bottom-sheet-playlist-thumbnail {
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #121212;
+  flex-shrink: 0;
+}
+
+.bottom-sheet-playlist-thumbnail.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.bottom-sheet-playlist-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bottom-sheet-playlist-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+.bottom-sheet-playlist-item.active .bottom-sheet-playlist-title {
+  color: #fff;
+}
+
+.bottom-sheet-playlist-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .video-playlist {
@@ -566,52 +728,429 @@
 }
 
 /* Responsive */
+@media (max-width: 1024px) {
+  .video-player-wrapper {
+    max-height: calc(100vh - 100px);
+  }
+
+  .video-content {
+    padding: 0 20px 28px;
+  }
+}
+
 @media (max-width: 768px) {
-  .video-title {
-    font-size: 18px;
+  .video-page {
+    padding: 0;
   }
 
-  .video-stats {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+  .video-player-substrate {
+    margin-bottom: 12px;
+    min-height: auto;
   }
 
-  .video-actions {
+  .video-player-wrapper {
     width: 100%;
-    flex-wrap: wrap;
+    max-width: 100vw;
+    aspect-ratio: 16 / 9;
+    max-height: 56.25vw;
+    min-height: auto;
+    height: auto;
   }
 
   .video-content {
     flex-direction: column;
     padding: 0 16px 24px;
+    gap: 20px;
   }
 
-  .video-playlist {
+  /* Mobile layout optimizations */
+  .video-main-column {
     width: 100%;
-    position: static;
+  }
+
+  /* Hide desktop playlist on mobile */
+  .video-playlist {
+    display: none;
+  }
+
+  /* Show mobile playlist button */
+  .btn-playlist-mobile {
+    display: flex;
+  }
+
+  .video-title {
+    font-size: 17px;
+    margin-bottom: 10px;
+    line-height: 1.35;
+  }
+
+  .video-stats {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .video-views {
+    font-size: 13px;
+  }
+
+  .video-actions {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+
+  .video-actions::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  .like-dislike-group,
+  .btn-share,
+  .btn-delete {
+    flex-shrink: 0;
+  }
+
+  .video-channel {
+    padding: 10px 0;
+    margin-bottom: 8px;
+  }
+
+  .video-description {
+    padding: 12px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    max-height: 120px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .video-description.expanded {
     max-height: none;
   }
 
   .playlist-thumbnail {
     width: 96px;
-    height: 56px;
+    height: 54px;
+  }
+
+  .playlist-header {
+    margin-bottom: 12px;
+  }
+
+  .playlist-header h2 {
+    font-size: 15px;
+  }
+
+  .playlist-header span {
+    font-size: 12px;
+  }
+
+  .playlist-items {
+    gap: 6px;
+  }
+
+  .playlist-item {
+    padding: 6px;
+  }
+
+  .next-video-countdown {
+    width: 95%;
+    max-width: 360px;
+    padding: 16px;
+  }
+
+  .countdown-thumbnail-wrapper {
+    width: 120px;
+    height: 68px;
+  }
+
+  .countdown-video-title {
+    font-size: 14px;
+  }
+
+  .countdown-channel-name {
+    font-size: 12px;
   }
 }
 
 @media (max-width: 480px) {
+  .video-player-substrate {
+    margin-bottom: 10px;
+    min-height: auto;
+  }
+
+  .video-player-wrapper {
+    width: 100%;
+    max-width: 100vw;
+    aspect-ratio: 16 / 9;
+    max-height: 56.25vw;
+    min-height: auto;
+    height: auto;
+  }
+
+  .video-content {
+    padding: 0 12px 20px;
+    gap: 14px;
+  }
+
+  /* Bottom Sheet Playlist Mobile Optimizations */
+  .bottom-sheet-playlist-controls {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .bottom-sheet-playlist-button {
+    padding: 10px 12px;
+    font-size: 14px;
+    gap: 6px;
+  }
+
+  .bottom-sheet-playlist-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .bottom-sheet-playlist-item {
+    padding: 8px;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .bottom-sheet-playlist-number {
+    width: 20px;
+    height: 20px;
+    font-size: 13px;
+  }
+
+  .bottom-sheet-playlist-number svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .bottom-sheet-playlist-thumbnail {
+    width: 100px;
+    height: 56px;
+    border-radius: 6px;
+  }
+
+  .bottom-sheet-playlist-title {
+    font-size: 13px;
+  }
+
+  .bottom-sheet-playlist-meta {
+    font-size: 11px;
+  }
+
   .video-title {
-    font-size: 16px;
+    font-size: 15px;
+    line-height: 1.3;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+
+  .video-stats {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .video-views {
+    font-size: 12px;
+  }
+
+  .video-actions {
+    gap: 6px;
+  }
+
+  .btn-like,
+  .btn-dislike,
+  .btn-share,
+  .btn-delete {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-width: 44px;
+    min-height: 36px;
   }
 
   .btn-like span,
+  .btn-dislike span,
   .btn-share span,
   .btn-delete span {
     display: none;
   }
 
-  .playlist-controls {
+  .btn-like,
+  .btn-dislike {
+    gap: 0;
+  }
+
+  .video-channel {
+    padding: 8px 0;
+    margin-bottom: 8px;
+  }
+
+  .channel-link {
+    font-size: 13px;
+    gap: 6px;
+  }
+
+  .video-description {
+    padding: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    max-height: 90px;
+  }
+
+  .video-playlist {
+    padding: 10px;
+    max-height: 350px;
+    margin-bottom: 16px;
+    border-radius: 12px;
+  }
+
+  .playlist-header {
     flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .playlist-controls {
+    width: 100%;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .playlist-controls button {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  .playlist-items {
+    gap: 6px;
+  }
+
+  .playlist-item {
+    padding: 6px;
+    border-radius: 8px;
+  }
+
+  .playlist-thumbnail {
+    width: 84px;
+    height: 48px;
+    border-radius: 6px;
+  }
+
+  .playlist-info {
+    gap: 4px;
+  }
+
+  .playlist-title {
+    font-size: 13px;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .playlist-meta {
+    font-size: 11px;
+  }
+
+  .next-video-countdown {
+    padding: 12px;
+    max-width: 320px;
+  }
+
+  .countdown-header {
+    font-size: 13px;
+  }
+
+  .countdown-thumbnail-wrapper {
+    width: 100px;
+    height: 56px;
+  }
+
+  .countdown-video-title {
+    font-size: 13px;
+  }
+
+  .countdown-channel-name {
+    font-size: 11px;
+  }
+
+  .btn-countdown-cancel,
+  .btn-countdown-play-now {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-width: 70px;
+  }
+}
+
+/* Very small screens */
+@media (max-width: 360px) {
+  .video-content {
+    padding: 0 10px 16px;
+    gap: 12px;
+  }
+
+  .video-title {
+    font-size: 14px;
+  }
+
+  .video-description {
+    padding: 8px;
+    font-size: 11px;
+    max-height: 75px;
+  }
+
+  .video-actions {
+    gap: 4px;
+  }
+
+  .btn-like,
+  .btn-dislike,
+  .btn-share,
+  .btn-delete {
+    padding: 6px 10px;
+  }
+
+  .video-playlist {
+    padding: 8px;
+    max-height: 300px;
+  }
+
+  .playlist-thumbnail {
+    width: 72px;
+    height: 40px;
+  }
+
+  .playlist-title {
+    font-size: 12px;
+  }
+}
+
+/* Landscape mode on mobile */
+@media (max-width: 896px) and (orientation: landscape) and (max-height: 500px) {
+  .video-player-substrate {
+    margin-bottom: 8px;
+  }
+
+  .video-player-wrapper {
+    max-height: calc(100vh - 80px);
+  }
+
+  .video-content {
+    padding: 0 16px 16px;
+  }
+
+  .video-playlist {
+    max-height: 200px;
   }
 }
 

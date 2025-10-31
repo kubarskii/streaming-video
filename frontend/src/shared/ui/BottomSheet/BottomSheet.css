@@ -1,0 +1,147 @@
+/* Shared: Bottom Sheet Component Styles */
+
+.bottom-sheet-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.bottom-sheet {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-primary);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.2);
+    max-height: 90vh;
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(30%);
+    will-change: transform;
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.bottom-sheet-drag-area {
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    flex-shrink: 0;
+    z-index: 10;
+    position: relative;
+}
+
+.bottom-sheet-drag-area:active {
+    cursor: grabbing;
+}
+
+.bottom-sheet-handle {
+    padding: 12px 0 8px;
+    display: flex;
+    justify-content: center;
+}
+
+.bottom-sheet-handle-bar {
+    width: 40px;
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.bottom-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bottom-sheet-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.bottom-sheet-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.15s ease;
+    width: 32px;
+    height: 32px;
+}
+
+.bottom-sheet-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.bottom-sheet-close:active {
+    transform: scale(0.95);
+}
+
+.bottom-sheet-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    min-height: 0;
+}
+
+/* Hide scrollbar but keep functionality */
+.bottom-sheet-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.bottom-sheet-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.bottom-sheet-content::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+.bottom-sheet-content::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+    .bottom-sheet {
+        box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+    }
+}
+
+/* Desktop - hide bottom sheet */
+@media (min-width: 769px) {
+    .bottom-sheet-overlay {
+        display: none;
+    }
+}
+

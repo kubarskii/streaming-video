@@ -7,6 +7,8 @@ import { useAbortController } from '../../shared/lib';
 import { useAuth } from '../../shared/context/AuthContext';
 import { CommentsSection, VideoPlayer } from '../../shared/ui';
 import { formatDuration } from '../../shared/lib';
+import { MobilePlaylistSheet } from './components/MobilePlaylistSheet';
+import { VideoPageSkeleton } from './components/VideoPageSkeleton';
 import './VideoPage.css';
 
 export const VideoPage = () => {
@@ -31,6 +33,7 @@ export const VideoPage = () => {
     const [nextVideoCountdown, setNextVideoCountdown] = useState(null);
     const [currentPlaylistId, setCurrentPlaylistId] = useState(null);
     const countdownIntervalRef = useRef(null);
+    const [isPlaylistBottomSheetOpen, setIsPlaylistBottomSheetOpen] = useState(false);
 
     // Get playlistId from URL search params
     const playlistIdFromUrl = search?.playlistId || null;
@@ -578,11 +581,7 @@ export const VideoPage = () => {
     };
 
     if (loading) {
-        return (
-            <div className="loading-container">
-                <div className="spinner"></div>
-            </div>
-        );
+        return <VideoPageSkeleton />;
     }
 
     if (error || !video) {
@@ -769,6 +768,20 @@ export const VideoPage = () => {
                                     <span>Share</span>
                                 </button>
 
+                                {/* Mobile Playlist Button */}
+                                {playlistIdFromUrl && playlist.length > 0 && (
+                                    <button
+                                        onClick={() => setIsPlaylistBottomSheetOpen(true)}
+                                        className="btn-playlist-mobile"
+                                        aria-label="Open playlist"
+                                    >
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                                        </svg>
+                                        <span>Playlist</span>
+                                    </button>
+                                )}
+
                                 {canDelete && (
                                     <button onClick={handleDelete} className="btn-delete">
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -869,6 +882,22 @@ export const VideoPage = () => {
                     </aside>
                 )}
             </div>
+
+            {/* Mobile Playlist Sheet */}
+            {playlistIdFromUrl && playlist.length > 0 && (
+                <MobilePlaylistSheet
+                    isOpen={isPlaylistBottomSheetOpen}
+                    onClose={() => setIsPlaylistBottomSheetOpen(false)}
+                    playlist={playlist}
+                    currentIndex={currentPlaylistIndex}
+                    playlistLoading={playlistLoading}
+                    onSelectVideo={handlePlaylistSelect}
+                    onNext={handleNextVideo}
+                    onPrevious={handlePreviousVideo}
+                    hasNext={hasNext}
+                    hasPrevious={hasPrevious}
+                />
+            )}
         </div>
     );
 };

@@ -15,7 +15,11 @@
   --bg-secondary: #f9f9f9;
   --bg-hover: #f2f2f2;
   --error-color: #cc0000;
-  --success-color: #00a65a;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --info-color: #3b82f6;
+  --focus-ring: rgba(102, 126, 234, 0.1);
+  --primary-bg-light: rgba(102, 126, 234, 0.1);
 }
 
 /* Dark theme support */
@@ -27,6 +31,11 @@
     --bg-primary: #0f0f0f;
     --bg-secondary: #272727;
     --bg-hover: #3a3a3a;
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --info-color: #3b82f6;
+    --focus-ring: rgba(102, 126, 234, 0.15);
+    --primary-bg-light: rgba(102, 126, 234, 0.15);
   }
   
   .header {
@@ -73,6 +82,22 @@
   .auth-card {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   }
+  
+  /* Adjust studio page shadows for dark mode */
+  .studio-table-container,
+  .studio-form-card,
+  .studio-playlist-card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  
+  .studio-playlist-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  
+  /* Adjust modal shadows for dark mode */
+  .ui-modal__content {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+  }
 }
 
 /* Manual dark theme class */
@@ -83,6 +108,11 @@
   --bg-primary: #0f0f0f;
   --bg-secondary: #272727;
   --bg-hover: #3a3a3a;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --info-color: #3b82f6;
+  --focus-ring: rgba(102, 126, 234, 0.15);
+  --primary-bg-light: rgba(102, 126, 234, 0.15);
 }
 
 .dark-theme .header {
@@ -123,6 +153,20 @@
 
 .dark-theme .auth-card {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.dark-theme .studio-table-container,
+.dark-theme .studio-form-card,
+.dark-theme .studio-playlist-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.dark-theme .studio-playlist-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.dark-theme .ui-modal__content {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
 }
 
 body {

@@ -1,0 +1,131 @@
+/* Playlist View Page - Public Playlist Viewing */
+
+.playlist-view-page {
+    min-height: calc(100vh - 4rem);
+    background: var(--bg-primary);
+    padding: 2rem 0;
+}
+
+.playlist-view-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+}
+
+.playlist-view-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+/* Playlist Header */
+.playlist-view-header {
+    background: var(--bg-secondary);
+    border-radius: 1rem;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border: 1px solid var(--border-color);
+}
+
+.playlist-header-content {
+    max-width: 1000px;
+}
+
+.playlist-title {
+    margin: 0 0 1rem 0;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.playlist-description {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.playlist-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.playlist-meta-item {
+    color: var(--text-secondary);
+}
+
+.playlist-meta-separator {
+    color: var(--text-secondary);
+}
+
+.playlist-visibility {
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.playlist-visibility.public {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success-color, #10b981);
+}
+
+.playlist-visibility.private {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error-color, #ef4444);
+}
+
+.playlist-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+/* Videos Grid */
+.playlist-videos-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .playlist-view-page {
+        padding: 1rem 0;
+    }
+
+    .playlist-view-container {
+        padding: 0 1rem;
+    }
+
+    .playlist-view-header {
+        padding: 1.5rem;
+    }
+
+    .playlist-title {
+    }
+
+    .playlist-meta {
+        font-size: 0.8125rem;
+    }
+
+    .playlist-actions {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .playlist-view-header {
+        padding: 1rem;
+        border-radius: 0.5rem;
+    }
+
+    .playlist-title {
+    }
+}
+

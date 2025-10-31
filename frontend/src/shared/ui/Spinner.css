@@ -45,18 +45,18 @@
 
 /* Variants */
 .ui-spinner--primary {
-  border-color: #e5e7eb;
-  border-top-color: #667eea;
+  border-color: var(--border-color, #e5e7eb);
+  border-top-color: var(--primary-color, #667eea);
 }
 
 .ui-spinner--secondary {
-  border-color: #f3f4f6;
-  border-top-color: #6b7280;
+  border-color: var(--bg-hover, #f3f4f6);
+  border-top-color: var(--text-secondary, #6b7280);
 }
 
 .ui-spinner--white {
   border-color: rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  border-top-color: #fff;
 }
 
 /* Screen reader only text */
