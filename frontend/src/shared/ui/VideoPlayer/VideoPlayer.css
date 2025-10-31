@@ -24,7 +24,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain; /* Maintain aspect ratio */
+  object-fit: cover; /* Fill the space */
   display: block;
   cursor: pointer;
   z-index: 1;
@@ -749,7 +749,7 @@
 
 /* Fullscreen specific styles */
 .youtube-video-player.fullscreen .video-element {
-  object-fit: contain;
+  object-fit: cover;
 }
 
 /* Keyboard shortcuts hint (optional) */

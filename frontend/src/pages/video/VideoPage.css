@@ -36,7 +36,7 @@
 .video-player-wrapper {
   position: relative;
   width: 100%;
-  max-width: 1280px;
+  max-width: 1920px;
   margin: 0 auto;
   aspect-ratio: 16 / 9;
   max-height: calc(100vh - 120px);
@@ -734,7 +734,7 @@
 /* Responsive */
 @media (max-width: 1024px) {
   .video-player-wrapper {
-    max-height: calc(100vh - 100px);
+    max-height: calc(100vh - 80px);
   }
 
   .video-content {

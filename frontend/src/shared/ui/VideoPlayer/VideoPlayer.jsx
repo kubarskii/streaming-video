@@ -1011,7 +1011,12 @@ export const VideoPlayer = React.forwardRef(({
                 ref={containerRef}
                 className={`youtube-video-player ${className} ${isFullscreen ? 'fullscreen' : ''}`}
                 onMouseMove={handleMouseMove}
-                onMouseLeave={() => isPlaying && setShowControls(false)}
+                onMouseLeave={() => {
+                    if (isPlaying) setShowControls(false);
+                    setShowSettings(false);
+                    setShowPlaybackRates(false);
+                    setShowQualities(false);
+                }}
                 onTouchStart={handleMouseMove}
             >
                 <video
