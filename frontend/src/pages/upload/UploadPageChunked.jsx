@@ -1,13 +1,15 @@
-// Pages: Upload Page
+// Pages: Upload Page with Parallel Chunked Upload
+// Optimized for high-speed uploads with progress tracking
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuth } from '../../shared/context/AuthContext';
 import { videosAPI } from '../../shared/api/videos';
 import { channelsAPI } from '../../shared/api/channels';
+import chunkedUploadManagerAdvanced from '../../shared/api/chunked-upload-advanced';
 import { Button, EmptyState } from '../../shared/ui';
 import './UploadPage.css';
 
-export const UploadPage = () => {
+export const UploadPageChunked = () => {
     const { user } = useAuth();
     const [channel, setChannel] = useState(null);
     const [checkingChannel, setCheckingChannel] = useState(true);
@@ -18,11 +20,15 @@ export const UploadPage = () => {
     const [description, setDescription] = useState('');
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [uploadSpeed, setUploadSpeed] = useState('0 MB/s');
+    const [uploadedChunks, setUploadedChunks] = useState(0);
+    const [totalChunks, setTotalChunks] = useState(0);
     const [error, setError] = useState('');
     const [dragActive, setDragActive] = useState(false);
     const fileInputRef = useRef(null);
     const thumbnailInputRef = useRef(null);
     const navigate = useNavigate();
+    const abortControllerRef = useRef(null);
 
     // Check if user has a channel
     useEffect(() => {
@@ -36,7 +42,6 @@ export const UploadPage = () => {
                 const channelData = await channelsAPI.getChannel({ userId: user.id });
                 setChannel(channelData);
             } catch (err) {
-                // User doesn't have a channel
                 setChannel(null);
             } finally {
                 setCheckingChannel(false);
@@ -68,23 +73,20 @@ export const UploadPage = () => {
     };
 
     const handleFileSelect = (selectedFile) => {
-        // Validate file type
         if (!selectedFile.type.startsWith('video/')) {
             setError('Please select a video file');
             return;
         }
 
-        // Validate file size (2GB max)
-        const maxSize = 5 * 1024 * 1024 * 1024;
+        const maxSize = 10 * 1024 * 1024 * 1024; // 10GB
         if (selectedFile.size > maxSize) {
-            setError('File size must be less than 5GB');
+            setError('File size must be less than 10GB');
             return;
         }
 
         setFile(selectedFile);
         setError('');
 
-        // Auto-fill title from filename
         if (!title) {
             const fileName = selectedFile.name.replace(/\.[^/.]+$/, '');
             setTitle(fileName);
@@ -101,13 +103,11 @@ export const UploadPage = () => {
     const handleThumbnailSelect = (e) => {
         const selectedFile = e.target.files?.[0];
         if (selectedFile) {
-            // Validate file type
             if (!selectedFile.type.startsWith('image/')) {
                 setError('Please select an image file for thumbnail');
                 return;
             }
 
-            // Validate file size (10MB max for thumbnail)
             const maxSize = 10 * 1024 * 1024;
             if (selectedFile.size > maxSize) {
                 setError('Thumbnail size must be less than 10MB');
@@ -117,7 +117,6 @@ export const UploadPage = () => {
             setThumbnail(selectedFile);
             setError('');
 
-            // Create preview
             const reader = new FileReader();
             reader.onloadend = () => {
                 setThumbnailPreview(reader.result);
@@ -142,30 +141,80 @@ export const UploadPage = () => {
         setUploading(true);
         setError('');
         setProgress(0);
-
-        const formData = new FormData();
-        formData.append('video', file);
-        formData.append('title', title.trim());
-        formData.append('description', description.trim());
-
-        // Add thumbnail if provided
-        if (thumbnail) {
-            formData.append('thumbnail', thumbnail);
-        }
+        setUploadSpeed('0 MB/s');
+        setUploadedChunks(0);
+        setTotalChunks(0);
 
         try {
-            const data = await videosAPI.uploadVideo(formData, setProgress, file.size);
+            // Use chunked upload for files > 100MB
+            const useChunkedUpload = file.size > 100 * 1024 * 1024;
 
-            // Redirect to the uploaded video
+            let data;
+            if (useChunkedUpload) {
+                console.log('🚀 Using advanced parallel chunked upload (WebWorker + Optimized)');
+
+                data = await chunkedUploadManagerAdvanced.uploadFile(
+                    file,
+                    {
+                        title: title.trim(),
+                        description: description.trim(),
+                        thumbnail: thumbnail
+                    },
+                    {
+                        onProgress: (progressData) => {
+                            setProgress(progressData.progress);
+                            setUploadSpeed(progressData.speed || '0 MB/s');
+                            setUploadedChunks(progressData.uploadedChunks || 0);
+                            setTotalChunks(progressData.totalChunks || 0);
+                        },
+                        onChunkComplete: (chunk) => {
+                            console.log(`Chunk ${chunk.index + 1} completed`);
+                        },
+                        onError: (error) => {
+                            console.error('Upload error:', error);
+                            setError(error.message || 'Upload failed');
+                        }
+                    }
+                );
+            } else {
+                console.log('📦 Using standard upload for small file');
+
+                // Use regular upload for smaller files
+                const formData = new FormData();
+                formData.append('video', file);
+                formData.append('title', title.trim());
+                formData.append('description', description.trim());
+                if (thumbnail) {
+                    formData.append('thumbnail', thumbnail);
+                }
+
+                data = await videosAPI.uploadVideo(formData, setProgress, file.size);
+            }
+
+            console.log('✅ Upload complete:', data);
+
+            // Redirect to uploaded video
             setTimeout(() => {
                 navigate({ to: `/video/${data.video.id}` });
             }, 500);
+
         } catch (err) {
             console.error('Upload error:', err);
-            setError(err.response?.data?.error || 'Upload failed. Please try again.');
+            setError(err.message || err.response?.data?.error || 'Upload failed. Please try again.');
             setUploading(false);
             setProgress(0);
+            setUploadSpeed('0 MB/s');
         }
+    };
+
+    const handleCancel = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        setUploading(false);
+        setProgress(0);
+        setUploadSpeed('0 MB/s');
+        setFile(null);
     };
 
     const formatFileSize = (bytes) => {
@@ -176,7 +225,6 @@ export const UploadPage = () => {
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     };
 
-    // Show loading while checking for channel
     if (checkingChannel) {
         return (
             <div className="upload-page">
@@ -187,7 +235,6 @@ export const UploadPage = () => {
         );
     }
 
-    // Show prompt to create channel if user doesn't have one
     if (!channel) {
         return (
             <div className="upload-page">
@@ -200,7 +247,7 @@ export const UploadPage = () => {
                             </svg>
                         }
                         title="Create Your Channel First"
-                        message="You need to create a channel before you can upload videos. Channels help organize your content and let others discover your videos."
+                        message="You need to create a channel before you can upload videos."
                         action={
                             <Button onClick={() => navigate({ to: '/profile' })}>
                                 Create Channel
@@ -216,7 +263,7 @@ export const UploadPage = () => {
         <div className="upload-page">
             <div className="upload-container">
                 <h1 className="upload-title">Upload Video</h1>
-                <p className="upload-subtitle">Share your video with the world</p>
+                <p className="upload-subtitle">Share your video with the world (up to 10GB)</p>
 
                 <form onSubmit={handleSubmit} className="upload-form">
                     {error && (
@@ -249,7 +296,10 @@ export const UploadPage = () => {
 
                             <h3>Drag and drop video file here</h3>
                             <p>or click to browse</p>
-                            <p className="upload-hint">MP4, WebM, MOV, MKV up to 5GB</p>
+                            <p className="upload-hint">MP4, WebM, MOV, MKV up to 10GB</p>
+                            <p className="upload-hint">
+                                ⚡ Files over 100MB will use high-speed parallel upload
+                            </p>
                         </div>
                     ) : (
                         <div className="file-preview">
@@ -261,6 +311,11 @@ export const UploadPage = () => {
                                 <div className="file-details">
                                     <h4>{file.name}</h4>
                                     <p>{formatFileSize(file.size)}</p>
+                                    {file.size > 100 * 1024 * 1024 && (
+                                        <p className="upload-hint">
+                                            ⚡ Parallel chunked upload enabled
+                                        </p>
+                                    )}
                                 </div>
                                 {!uploading && (
                                     <button
@@ -281,7 +336,17 @@ export const UploadPage = () => {
                                             style={{ width: `${progress}%` }}
                                         />
                                     </div>
-                                    <p className="progress-text">{progress}% uploaded</p>
+                                    <div className="progress-details">
+                                        <p className="progress-text">{progress}% uploaded</p>
+                                        <p className="progress-speed">
+                                            {uploadSpeed}
+                                            {totalChunks > 0 && (
+                                                <span className="progress-chunks">
+                                                    {' '}• {uploadedChunks}/{totalChunks} chunks
+                                                </span>
+                                            )}
+                                        </p>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -327,7 +392,7 @@ export const UploadPage = () => {
                                     Thumbnail (optional)
                                 </label>
                                 <p className="form-hint">
-                                    Upload a custom thumbnail or one will be auto-generated from your video
+                                    Upload a custom thumbnail or one will be auto-generated
                                 </p>
                                 <input
                                     ref={thumbnailInputRef}
@@ -368,11 +433,10 @@ export const UploadPage = () => {
                             <div className="form-actions">
                                 <button
                                     type="button"
-                                    onClick={() => navigate({ to: '/' })}
+                                    onClick={uploading ? handleCancel : () => navigate({ to: '/' })}
                                     className="btn btn-secondary"
-                                    disabled={uploading}
                                 >
-                                    Cancel
+                                    {uploading ? 'Cancel Upload' : 'Cancel'}
                                 </button>
                                 <button
                                     type="submit"
@@ -389,3 +453,4 @@ export const UploadPage = () => {
         </div>
     );
 };
+

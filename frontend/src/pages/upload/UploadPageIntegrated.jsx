@@ -54,6 +54,19 @@ export const UploadPage = () => {
         checkChannel();
     }, [user]);
 
+    // Cleanup uploader on unmount
+    useEffect(() => {
+        return () => {
+            if (uploaderRef.current) {
+                try {
+                    uploaderRef.current.cancel();
+                } catch (e) {
+                    // Ignore cleanup errors
+                }
+            }
+        };
+    }, []);
+
     const handleDrag = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -165,12 +178,32 @@ export const UploadPage = () => {
             }
         } catch (error) {
             console.error('Upload failed:', error);
-            setError(error.message || 'Upload failed. Please try again.');
+
+            // Provide more specific error messages
+            let errorMessage = 'Upload failed. Please try again.';
+            if (error.message === 'Upload cancelled') {
+                errorMessage = 'Upload was cancelled.';
+            } else if (error.message.includes('401') || error.message.includes('Authentication')) {
+                errorMessage = 'Authentication error. Please log in again.';
+            } else if (error.message.includes('Failed to initialize')) {
+                errorMessage = 'Could not start upload. Please check your connection and try again.';
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
+            setError(errorMessage);
             setUploading(false);
+            setProgress(0);
         }
     };
 
     const handleSimpleUpload = async (startTime) => {
+        // Track for speed calculation
+        let lastUpdateTime = startTime;
+        let lastProgress = 0;
+        let speedSamples = [];
+        const MAX_SPEED_SAMPLES = 10;
+
         // Create FormData for simple upload
         const formData = new FormData();
         formData.append('video', file);
@@ -186,15 +219,29 @@ export const UploadPage = () => {
                 // Progress is already calculated by the API (0-100)
                 setProgress(progressPercent);
 
-                // Calculate upload speed using file size
-                const elapsed = (Date.now() - startTime) / 1000;
-                if (elapsed > 0 && file.size) {
-                    // Estimate loaded bytes from progress
-                    const estimatedLoaded = (progressPercent / 100) * file.size;
-                    const speed = estimatedLoaded / elapsed;
-                    setUploadSpeed(speed);
-                } else {
-                    setUploadSpeed(0);
+                // Calculate instantaneous speed with moving average
+                const now = Date.now();
+                const timeDelta = (now - lastUpdateTime) / 1000; // seconds
+                const progressDelta = progressPercent - lastProgress;
+
+                if (timeDelta > 0 && progressDelta > 0 && file.size) {
+                    // Calculate bytes uploaded in this interval
+                    const bytesUploaded = (progressDelta / 100) * file.size;
+                    const currentSpeed = bytesUploaded / timeDelta;
+
+                    // Add to samples for moving average
+                    speedSamples.push(currentSpeed);
+                    if (speedSamples.length > MAX_SPEED_SAMPLES) {
+                        speedSamples.shift();
+                    }
+
+                    // Calculate moving average speed
+                    const avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
+                    setUploadSpeed(avgSpeed);
+
+                    // Update tracking
+                    lastUpdateTime = now;
+                    lastProgress = progressPercent;
                 }
             },
             file.size
@@ -205,18 +252,53 @@ export const UploadPage = () => {
     };
 
     const handleChunkedUpload = async (startTime) => {
-        // Create uploader instance
+        // Cancel any existing upload first
+        if (uploaderRef.current) {
+            try {
+                uploaderRef.current.cancel();
+            } catch (e) {
+                // Ignore errors from cancelling
+            }
+            uploaderRef.current = null;
+        }
+
+        // Track for speed calculation
+        let lastUpdateTime = startTime;
+        let lastUploadedBytes = 0;
+        let speedSamples = [];
+        const MAX_SPEED_SAMPLES = 10; // Moving average window
+
+        // Create uploader instance with optimized settings
         const uploader = new ChunkedUploader({
-            chunkSize: 5 * 1024 * 1024, // 5MB chunks
-            maxConcurrent: 3, // 3 parallel uploads
+            chunkSize: 20 * 1024 * 1024, // 20MB chunks (fewer requests = faster)
+            maxConcurrent: 6, // 6 parallel uploads
             maxRetries: 3,
             onProgress: (progressPercent, uploadedBytes, totalBytes) => {
                 setProgress(Math.round(progressPercent));
 
-                // Calculate upload speed
-                const elapsed = (Date.now() - startTime) / 1000;
-                const speed = uploadedBytes / elapsed;
-                setUploadSpeed(speed);
+                // Calculate instantaneous speed with moving average
+                const now = Date.now();
+                const timeDelta = (now - lastUpdateTime) / 1000; // seconds
+                const bytesDelta = uploadedBytes - lastUploadedBytes;
+
+                if (timeDelta > 0 && bytesDelta > 0) {
+                    // Instantaneous speed
+                    const currentSpeed = bytesDelta / timeDelta;
+
+                    // Add to samples for moving average
+                    speedSamples.push(currentSpeed);
+                    if (speedSamples.length > MAX_SPEED_SAMPLES) {
+                        speedSamples.shift(); // Remove oldest sample
+                    }
+
+                    // Calculate moving average speed
+                    const avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
+                    setUploadSpeed(avgSpeed);
+
+                    // Update tracking
+                    lastUpdateTime = now;
+                    lastUploadedBytes = uploadedBytes;
+                }
             },
             onChunkComplete: (chunkIndex, total) => {
                 setChunksCompleted(chunkIndex + 1);
@@ -230,15 +312,20 @@ export const UploadPage = () => {
 
         uploaderRef.current = uploader;
 
-        // Start upload
-        const result = await uploader.upload(file, {
-            title,
-            description,
-            thumbnail,
-        });
+        try {
+            // Start upload
+            const result = await uploader.upload(file, {
+                title,
+                description,
+                thumbnail,
+            });
 
-        console.log('Chunked upload complete!', result);
-        navigate({ to: `/video/${result.video.id}` });
+            console.log('Chunked upload complete!', result);
+            navigate({ to: `/video/${result.video.id}` });
+        } finally {
+            // Clean up
+            uploaderRef.current = null;
+        }
     };
 
     const handlePauseResume = () => {
@@ -275,8 +362,16 @@ export const UploadPage = () => {
     };
 
     const formatSpeed = (bytesPerSecond) => {
-        if (!bytesPerSecond) return '0 KB/s';
-        return formatFileSize(bytesPerSecond) + '/s';
+        if (!bytesPerSecond || bytesPerSecond < 0) return '0 KB/s';
+
+        const k = 1024;
+        const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+        const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+        const value = bytesPerSecond / Math.pow(k, i);
+
+        // Show 1 decimal place for values >= 10, 2 decimals for < 10
+        const decimals = value >= 10 ? 1 : 2;
+        return value.toFixed(decimals) + ' ' + sizes[i];
     };
 
     if (checkingChannel) {

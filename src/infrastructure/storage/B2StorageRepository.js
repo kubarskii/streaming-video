@@ -31,6 +31,12 @@ class B2StorageRepository extends IStorageRepository {
                 accessKeyId: config.keyId,
                 secretAccessKey: config.keySecret,
             },
+            // Optimize for parallel uploads
+            maxAttempts: 3,
+            requestHandler: {
+                connectionTimeout: 10000, // 10s connection timeout
+                requestTimeout: 120000,   // 2min request timeout (for large chunks)
+            },
         });
     }
 

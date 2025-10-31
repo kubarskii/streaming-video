@@ -121,27 +121,35 @@ export class ChunkedUploader {
      * Initialize upload session on server
      */
     async initializeUpload(file, additionalData = {}) {
-        const response = await fetch('/api/upload/init', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            },
-            body: JSON.stringify({
-                fileName: file.name,
-                fileSize: file.size,
-                mimeType: file.type,
-                totalChunks: Math.ceil(file.size / this.chunkSize),
-                ...additionalData,
-            }),
-            signal: this.abortController.signal,
-        });
+        try {
+            const response = await fetch('/api/upload/init', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({
+                    fileName: file.name,
+                    fileSize: file.size,
+                    mimeType: file.type,
+                    totalChunks: Math.ceil(file.size / this.chunkSize),
+                    ...additionalData,
+                }),
+                signal: this.abortController.signal,
+            });
 
-        if (!response.ok) {
-            throw new Error('Failed to initialize upload');
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to initialize upload (${response.status}): ${errorText}`);
+            }
+
+            return response.json();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error('Upload cancelled');
+            }
+            throw error;
         }
-
-        return response.json();
     }
 
     /**

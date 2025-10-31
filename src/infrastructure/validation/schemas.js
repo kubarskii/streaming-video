@@ -173,7 +173,7 @@ const videoStatusSchema = z.enum(['pending', 'processing', 'ready', 'failed']);
 const videoMimeTypeSchema = z.string()
     .regex(/^video\//, 'Must be a video file')
     .refine(
-        (mime) => ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska'].includes(mime),
+        (mime) => ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska', 'video/mkv'].includes(mime),
         'Unsupported video format. Supported: MP4, MOV, AVI, WebM, MKV'
     );
 

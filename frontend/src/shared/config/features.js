@@ -34,7 +34,7 @@ export const FEATURES = {
      * 
      * @type {number}
      */
-    CHUNKED_UPLOAD_THRESHOLD: 100 * 1024 * 1024, // 100MB
+    CHUNKED_UPLOAD_THRESHOLD: 50 * 1024 * 1024, // 50MB (optimized for speed)
 
     /**
      * Show upload method in UI for debugging
