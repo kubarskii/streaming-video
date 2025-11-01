@@ -1,6 +1,6 @@
-/* Mobile Playlist Bottom Sheet Styles */
+/* Mobile Playlist Bottom Sheet Styles - CSS Module */
 
-.mobile-playlist-overlay {
+.mobilePlaylistOverlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -20,7 +20,7 @@
     }
 }
 
-.mobile-playlist-sheet {
+.mobilePlaylistSheet {
     position: fixed;
     bottom: 0;
     left: 0;
@@ -37,25 +37,25 @@
     will-change: transform;
 }
 
-.mobile-playlist-header {
+.mobilePlaylistHeader {
     flex-shrink: 0;
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
 }
 
-.mobile-playlist-header:hover {
+.mobilePlaylistHeader:hover {
     background: var(--bg-hover);
 }
 
-.mobile-playlist-handle {
+.mobilePlaylistHandle {
     padding: 12px 0 8px;
     display: flex;
     justify-content: center;
     pointer-events: none;
 }
 
-.mobile-playlist-handle-bar {
+.mobilePlaylistHandleBar {
     width: 40px;
     height: 4px;
     background: var(--border-color);
@@ -63,7 +63,7 @@
     opacity: 0.6;
 }
 
-.mobile-playlist-title-row {
+.mobilePlaylistTitleRow {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -72,21 +72,21 @@
     pointer-events: none;
 }
 
-.mobile-playlist-title-row h3 {
+.mobilePlaylistTitleRow h3 {
     margin: 0;
     font-size: 18px;
     font-weight: 600;
     color: var(--text-primary);
 }
 
-.mobile-playlist-header-actions {
+.mobilePlaylistHeaderActions {
     display: flex;
     align-items: center;
     gap: 8px;
     pointer-events: auto;
 }
 
-.mobile-playlist-expand {
+.mobilePlaylistExpand {
     display: none;
     background: transparent;
     border: none;
@@ -102,16 +102,16 @@
     flex-shrink: 0;
 }
 
-.mobile-playlist-expand:hover {
+.mobilePlaylistExpand:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
 
-.mobile-playlist-expand:active {
+.mobilePlaylistExpand:active {
     transform: scale(0.95);
 }
 
-.mobile-playlist-close {
+.mobilePlaylistClose {
     background: transparent;
     border: none;
     color: var(--text-secondary);
@@ -127,16 +127,16 @@
     flex-shrink: 0;
 }
 
-.mobile-playlist-close:hover {
+.mobilePlaylistClose:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
 
-.mobile-playlist-close:active {
+.mobilePlaylistClose:active {
     transform: scale(0.95);
 }
 
-.mobile-playlist-controls {
+.mobilePlaylistControls {
     display: flex;
     gap: 12px;
     padding: 16px;
@@ -144,7 +144,7 @@
     flex-shrink: 0;
 }
 
-.mobile-playlist-nav-button {
+.mobilePlaylistNavButton {
     flex: 1;
     display: flex;
     align-items: center;
@@ -161,16 +161,16 @@
     transition: all 0.15s ease;
 }
 
-.mobile-playlist-nav-button:hover:not(:disabled) {
+.mobilePlaylistNavButton:hover:not(:disabled) {
     background: var(--bg-hover);
 }
 
-.mobile-playlist-nav-button:disabled {
+.mobilePlaylistNavButton:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
 
-.mobile-playlist-content {
+.mobilePlaylistContent {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
@@ -180,27 +180,27 @@
     min-height: 0;
 }
 
-.mobile-playlist-content::-webkit-scrollbar {
+.mobilePlaylistContent::-webkit-scrollbar {
     width: 6px;
 }
 
-.mobile-playlist-content::-webkit-scrollbar-track {
+.mobilePlaylistContent::-webkit-scrollbar-track {
     background: transparent;
 }
 
-.mobile-playlist-content::-webkit-scrollbar-thumb {
+.mobilePlaylistContent::-webkit-scrollbar-thumb {
     background: var(--border-color);
     border-radius: 3px;
 }
 
-.mobile-playlist-empty {
+.mobilePlaylistEmpty {
     padding: 40px 20px;
     text-align: center;
     color: var(--text-secondary);
     font-size: 14px;
 }
 
-.mobile-playlist-item {
+.mobilePlaylistItem {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -216,20 +216,20 @@
     margin-bottom: 6px;
 }
 
-.mobile-playlist-item:hover:not(.active) {
+.mobilePlaylistItem:hover:not(.active) {
     background: var(--bg-hover);
 }
 
-.mobile-playlist-item.active {
+.mobilePlaylistItem.active {
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
 
-.mobile-playlist-item.active .mobile-playlist-meta {
+.mobilePlaylistItem.active .mobilePlaylistMeta {
     color: var(--text-secondary);
 }
 
-.mobile-playlist-number {
+.mobilePlaylistNumber {
     width: 24px;
     height: 24px;
     display: flex;
@@ -241,11 +241,11 @@
     color: var(--text-secondary);
 }
 
-.mobile-playlist-item.active .mobile-playlist-number {
+.mobilePlaylistItem.active .mobilePlaylistNumber {
     color: var(--text-primary);
 }
 
-.mobile-playlist-thumbnail {
+.mobilePlaylistThumbnail {
     width: 120px;
     height: 68px;
     object-fit: cover;
@@ -254,7 +254,7 @@
     flex-shrink: 0;
 }
 
-.mobile-playlist-thumbnail.placeholder {
+.mobilePlaylistThumbnail.placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -262,7 +262,7 @@
     font-size: 12px;
 }
 
-.mobile-playlist-info {
+.mobilePlaylistInfo {
     flex: 1;
     min-width: 0;
     display: flex;
@@ -270,7 +270,7 @@
     gap: 4px;
 }
 
-.mobile-playlist-video-title {
+.mobilePlaylistVideoTitle {
     font-size: 14px;
     font-weight: 500;
     color: var(--text-primary);
@@ -282,11 +282,11 @@
     line-height: 1.4;
 }
 
-.mobile-playlist-item.active .mobile-playlist-video-title {
+.mobilePlaylistItem.active .mobilePlaylistVideoTitle {
     color: var(--text-primary);
 }
 
-.mobile-playlist-meta {
+.mobilePlaylistMeta {
     font-size: 12px;
     color: var(--text-secondary);
     overflow: hidden;
@@ -296,58 +296,58 @@
 
 /* Responsive adjustments */
 @media (max-width: 480px) {
-    .mobile-playlist-controls {
+    .mobilePlaylistControls {
         padding: 12px;
         gap: 8px;
     }
 
-    .mobile-playlist-nav-button {
+    .mobilePlaylistNavButton {
         padding: 10px 12px;
         font-size: 14px;
         gap: 6px;
     }
 
-    .mobile-playlist-nav-button svg {
+    .mobilePlaylistNavButton svg {
         width: 18px;
         height: 18px;
     }
 
-    .mobile-playlist-item {
+    .mobilePlaylistItem {
         padding: 8px;
         gap: 10px;
         margin-bottom: 4px;
     }
 
-    .mobile-playlist-number {
+    .mobilePlaylistNumber {
         width: 20px;
         height: 20px;
         font-size: 13px;
     }
 
-    .mobile-playlist-number svg {
+    .mobilePlaylistNumber svg {
         width: 14px;
         height: 14px;
     }
 
-    .mobile-playlist-thumbnail {
+    .mobilePlaylistThumbnail {
         width: 100px;
         height: 56px;
         border-radius: 6px;
     }
 
-    .mobile-playlist-video-title {
+    .mobilePlaylistVideoTitle {
         font-size: 13px;
     }
 
-    .mobile-playlist-meta {
+    .mobilePlaylistMeta {
         font-size: 11px;
     }
 }
 
 /* Desktop - hide mobile playlist */
 @media (min-width: 769px) {
-    .mobile-playlist-overlay,
-    .mobile-playlist-sheet {
+    .mobilePlaylistOverlay,
+    .mobilePlaylistSheet {
         display: none;
     }
 }

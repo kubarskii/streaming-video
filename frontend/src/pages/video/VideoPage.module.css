@@ -1,0 +1,790 @@
+/* Pages: Video Player Page Styles - CSS Module */
+
+.videoPage {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Full-width black substrate for video player - uses global class for fullscreen CSS */
+:global(.video-player-substrate) {
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  background: transparent;
+  margin-bottom: 24px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:global(:fullscreen) :global(.video-player-substrate) {
+  height: 100vh;
+}
+
+.videoPlayerWrapper {
+  position: relative;
+  width: 100%;
+  margin: 0 auto;
+  aspect-ratio: 16 / 9; /* Maintains 16:9 ratio */
+  max-height: calc(100vh - 120px); /* Leave space for header */
+  min-height: 200px;
+  background: #000;
+  border-radius: 0;
+  overflow: visible; /* Allow overlays to overflow */
+  z-index: 1;
+  flex-shrink: 0;
+  contain: layout; /* Performance optimization */
+}
+
+:global(:fullscreen) .videoPlayerWrapper {
+  max-height: 100vh;
+  height: inherit;
+}
+
+/* Ambient canvas - blurred video backdrop */
+.ambientCanvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1.2);
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(80px) brightness(1.3);
+  opacity: 0.85;
+  transition: opacity 0.3s ease;
+}
+
+/* Smooth canvas rendering */
+@keyframes ambientFade {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.82; }
+}
+
+.videoPlayerWrapper :global(.youtube-video-player) {
+  position: relative;
+  z-index: 1;
+  border-radius: 0;
+}
+
+.videoContent {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px 32px;
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.videoMainColumn {
+  flex: 1;
+  min-width: 0;
+}
+
+.videoDetails {
+  padding: 0;
+  margin: 0;
+}
+
+.videoTitle {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.videoStats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  margin-bottom: 12px;
+  gap: 16px;
+}
+
+.videoViews {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.btnDelete {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+}
+
+.btnDelete:hover {
+  background: var(--bg-hover);
+}
+
+.videoChannel {
+  padding: 16px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.channelLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: opacity 0.15s ease-out;
+}
+
+.channelLink:hover {
+  opacity: 0.7;
+}
+
+.videoDescription {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.videoDescription p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Like/Dislike Buttons */
+.videoActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.likeDislikeGroup {
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.btnLike,
+.btnDislike {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+  position: relative;
+}
+
+.btnLike {
+  padding-right: 12px;
+}
+
+.btnDislike {
+  padding-left: 12px;
+}
+
+/* Separator between like and dislike */
+.likeDislikeSeparator {
+  width: 1px;
+  height: 24px;
+  background: var(--border-color);
+}
+
+/* Hover effect */
+.btnLike:hover:not(:disabled),
+.btnDislike:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+/* Active state */
+.btnLike.active,
+.btnDislike.active {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.btnLike.active:hover,
+.btnDislike.active:hover {
+  background: var(--bg-hover);
+}
+
+/* Disabled state */
+.btnLike:disabled,
+.btnDislike:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Share button */
+.btnShare {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+}
+
+.btnShare:hover {
+  background: var(--bg-hover);
+}
+
+/* Mobile Playlist Button - Hidden on desktop */
+.btnPlaylistMobile {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+}
+
+.btnPlaylistMobile:hover {
+  background: var(--bg-hover);
+}
+
+.videoPlaylist {
+  width: 320px;
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+  position: sticky;
+  top: 100px;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+
+.playlistHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-primary);
+}
+
+.playlistHeader h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.playlistHeader span {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.playlistControls {
+  display: flex;
+  gap: 8px;
+}
+
+.playlistControls button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: none;
+  background: var(--bg-tertiary, var(--bg-hover));
+  color: var(--text-primary);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+}
+
+.playlistControls button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.playlistControls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.playlistItems {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.playlistItem {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 8px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.playlistItem:hover:not(.active) {
+  background: var(--bg-hover);
+}
+
+.playlistItem.active {
+  background: var(--bg-secondary);
+  transform: translateX(4px);
+}
+
+.playlistThumbnail {
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #121212;
+  flex-shrink: 0;
+}
+
+.playlistThumbnail.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.playlistInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.playlistTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.playlistMeta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.playlistEmpty {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .videoPlayerWrapper {
+    max-height: calc(100vh - 80px);
+  }
+
+  .videoContent {
+    padding: 0 20px 28px;
+  }
+}
+
+@media (max-width: 768px) {
+  .videoPage {
+    padding: 0;
+  }
+
+  :global(.video-player-substrate) {
+    margin-bottom: 12px;
+    min-height: auto;
+  }
+
+  .videoPlayerWrapper {
+    width: 100%;
+    max-width: 100vw;
+    aspect-ratio: 16 / 9;
+    max-height: 56.25vw;
+    min-height: auto;
+    height: auto;
+  }
+
+  .videoContent {
+    flex-direction: column;
+    padding: 0 16px 24px;
+    gap: 20px;
+  }
+
+  /* Mobile layout optimizations */
+  .videoMainColumn {
+    width: 100%;
+  }
+
+  /* Hide desktop playlist on mobile */
+  .videoPlaylist {
+    display: none;
+  }
+
+  /* Show mobile playlist button */
+  .btnPlaylistMobile {
+    display: flex;
+  }
+
+  .videoTitle {
+    font-size: 17px;
+    margin-bottom: 10px;
+    line-height: 1.35;
+  }
+
+  .videoStats {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .videoViews {
+    font-size: 13px;
+  }
+
+  .videoActions {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+
+  .videoActions::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  .likeDislikeGroup,
+  .btnShare,
+  .btnDelete {
+    flex-shrink: 0;
+  }
+
+  .videoChannel {
+    padding: 10px 0;
+    margin-bottom: 8px;
+  }
+
+  .videoDescription {
+    padding: 12px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    max-height: 120px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .videoDescription.expanded {
+    max-height: none;
+  }
+
+  .playlistThumbnail {
+    width: 96px;
+    height: 54px;
+  }
+
+  .playlistHeader {
+    margin-bottom: 12px;
+  }
+
+  .playlistHeader h2 {
+    font-size: 15px;
+  }
+
+  .playlistHeader span {
+    font-size: 12px;
+  }
+
+  .playlistItems {
+    gap: 6px;
+  }
+
+  .playlistItem {
+    padding: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  :global(.video-player-substrate) {
+    margin-bottom: 10px;
+    min-height: auto;
+  }
+
+  .videoPlayerWrapper {
+    width: 100%;
+    max-width: 100vw;
+    aspect-ratio: 16 / 9;
+    max-height: 56.25vw;
+    min-height: auto;
+    height: auto;
+  }
+
+  .videoContent {
+    padding: 0 12px 20px;
+    gap: 14px;
+  }
+
+  .videoTitle {
+    font-size: 15px;
+    line-height: 1.3;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+
+  .videoStats {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .videoViews {
+    font-size: 12px;
+  }
+
+  .videoActions {
+    gap: 6px;
+  }
+
+  .btnLike,
+  .btnDislike,
+  .btnShare,
+  .btnDelete {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-width: 44px;
+    min-height: 36px;
+  }
+
+  .btnLike span,
+  .btnDislike span,
+  .btnShare span,
+  .btnDelete span {
+    display: none;
+  }
+
+  .btnLike,
+  .btnDislike {
+    gap: 0;
+  }
+
+  .videoChannel {
+    padding: 8px 0;
+    margin-bottom: 8px;
+  }
+
+  .channelLink {
+    font-size: 13px;
+    gap: 6px;
+  }
+
+  .videoDescription {
+    padding: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    max-height: 90px;
+  }
+
+  .videoPlaylist {
+    padding: 10px;
+    max-height: 350px;
+    margin-bottom: 16px;
+    border-radius: 12px;
+  }
+
+  .playlistHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .playlistControls {
+    width: 100%;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .playlistControls button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  .playlistControls button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .playlistItems {
+    gap: 6px;
+  }
+
+  .playlistItem {
+    padding: 6px;
+    border-radius: 8px;
+  }
+
+  .playlistThumbnail {
+    width: 84px;
+    height: 48px;
+    border-radius: 6px;
+  }
+
+  .playlistInfo {
+    gap: 4px;
+  }
+
+  .playlistTitle {
+    font-size: 13px;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .playlistMeta {
+    font-size: 11px;
+  }
+}
+
+/* Very small screens */
+@media (max-width: 360px) {
+  .videoContent {
+    padding: 0 10px 16px;
+    gap: 12px;
+  }
+
+  .videoTitle {
+    font-size: 14px;
+  }
+
+  .videoDescription {
+    padding: 8px;
+    font-size: 11px;
+    max-height: 75px;
+  }
+
+  .videoActions {
+    gap: 4px;
+  }
+
+  .btnLike,
+  .btnDislike,
+  .btnShare,
+  .btnDelete {
+    padding: 6px 10px;
+  }
+
+  .videoPlaylist {
+    padding: 8px;
+    max-height: 300px;
+  }
+
+  .playlistThumbnail {
+    width: 72px;
+    height: 40px;
+  }
+
+  .playlistTitle {
+    font-size: 12px;
+  }
+}
+
+/* Landscape mode on mobile */
+@media (max-width: 896px) and (orientation: landscape) and (max-height: 500px) {
+  :global(.video-player-substrate) {
+    margin-bottom: 8px;
+  }
+
+  .videoPlayerWrapper {
+    max-height: calc(100vh - 80px);
+  }
+
+  .videoContent {
+    padding: 0 16px 16px;
+  }
+
+  .videoPlaylist {
+    max-height: 200px;
+  }
+}
+

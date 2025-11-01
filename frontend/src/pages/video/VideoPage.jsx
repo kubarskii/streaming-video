@@ -9,7 +9,7 @@ import { CommentsSection, VideoPlayer } from '../../shared/ui';
 import { formatDuration } from '../../shared/lib';
 import { MobilePlaylistSheet } from './components/MobilePlaylistSheet';
 import { VideoPageSkeleton } from './components/VideoPageSkeleton';
-import './VideoPage.css';
+import styles from './VideoPage.module.css';
 
 export const VideoPage = () => {
     const { id } = useParams({ from: '/video/$id' });
@@ -98,7 +98,6 @@ export const VideoPage = () => {
                 // Fetch available quality variants
                 try {
                     const qualitiesData = await videosAPI.getVideoQualities(id, signal);
-                    console.log('Qualities data received:', qualitiesData);
 
                     if (qualitiesData.qualities && qualitiesData.qualities.length > 0) {
                         setQualities(qualitiesData.qualities);
@@ -112,9 +111,9 @@ export const VideoPage = () => {
                         setQualities([]);
                     }
                 } catch (qualErr) {
-                    // Ignore abort errors
+                    // Ignore abort errors and quality fetch failures (non-critical)
                     if (qualErr.name !== 'AbortError' && qualErr.name !== 'CanceledError') {
-                        console.log('No quality variants available:', qualErr);
+                        console.error('No quality variants available:', qualErr);
                     }
                     setQualities([]);
                 }
@@ -124,9 +123,9 @@ export const VideoPage = () => {
                     const stats = await videosAPI.getLikeStats(id, signal);
                     setLikeStats(stats);
                 } catch (statsErr) {
-                    // Ignore abort errors
+                    // Ignore abort errors and stats fetch failures (non-critical)
                     if (statsErr.name !== 'AbortError' && statsErr.name !== 'CanceledError') {
-                        console.log('Error fetching like stats:', statsErr);
+                        console.error('Error fetching like stats:', statsErr);
                     }
                 }
 
@@ -468,7 +467,7 @@ export const VideoPage = () => {
                 });
             } catch (qualErr) {
                 if (qualErr.name !== 'AbortError' && qualErr.name !== 'CanceledError') {
-                    console.log('No quality variants available:', qualErr);
+                    console.error('No quality variants available:', qualErr);
                 }
                 startTransition(() => setQualities([]));
             }
@@ -479,7 +478,7 @@ export const VideoPage = () => {
                 startTransition(() => setLikeStats(stats));
             } catch (statsErr) {
                 if (statsErr.name !== 'AbortError' && statsErr.name !== 'CanceledError') {
-                    console.log('Error fetching like stats:', statsErr);
+                    console.error('Error fetching like stats:', statsErr);
                 }
             }
 
@@ -633,7 +632,6 @@ export const VideoPage = () => {
     }, [id]);
 
     const handleQualityChange = (quality) => {
-        console.log('Quality changed to:', quality);
         if (quality && quality.playbackUrl) {
             setCurrentVideoUrl(quality.playbackUrl);
         }
@@ -744,14 +742,14 @@ export const VideoPage = () => {
     };
 
     return (
-        <div className="video-page">
+        <div className={styles.videoPage}>
             <div
                 className="video-player-substrate"
                 onMouseMove={handleSubstrateMouseMove}
                 onMouseEnter={handleSubstrateMouseEnter}
             >
-                <div className="video-player-wrapper">
-                    <canvas ref={ambientCanvasRef} className="ambient-canvas" />
+                <div className={styles.videoPlayerWrapper}>
+                    <canvas ref={ambientCanvasRef} className={styles.ambientCanvas} />
                     {nextVideoCountdown !== null && hasNext && playlist[currentPlaylistIndex + 1] && (
                         <div className="next-video-countdown">
                             <div className="countdown-content">
@@ -837,26 +835,32 @@ export const VideoPage = () => {
                         onPrevious={playlist.length > 1 ? handlePreviousVideo : undefined}
                         canPlayNext={hasNext}
                         canPlayPrevious={hasPrevious}
+                        nextVideo={hasNext && playlist[currentPlaylistIndex + 1] ? {
+                            title: playlist[currentPlaylistIndex + 1].title,
+                            thumbnailUrl: playlist[currentPlaylistIndex + 1].thumbnailUrl,
+                            durationMs: playlist[currentPlaylistIndex + 1].durationMs,
+                            channelName: channelInfo?.name || video.user?.username || 'Channel',
+                        } : null}
                     />
                 </div>
             </div>
 
-            <div className="video-content">
-                <div className="video-main-column">
-                    <div className="video-details">
-                        <h1 className="video-title">{video.title}</h1>
+            <div className={styles.videoContent}>
+                <div className={styles.videoMainColumn}>
+                    <div className={styles.videoDetails}>
+                        <h1 className={styles.videoTitle}>{video.title}</h1>
 
-                        <div className="video-stats">
-                            <div className="video-views">
+                        <div className={styles.videoStats}>
+                            <div className={styles.videoViews}>
                                 {formatViews(video.views)} views • {formatDate(video.uploadedAt)}
                             </div>
-                            <div className="video-actions">
+                            <div className={styles.videoActions}>
                                 {/* Like/Dislike buttons with separator */}
-                                <div className="like-dislike-group">
+                                <div className={styles.likeDislikeGroup}>
                                     <button
                                         onClick={handleLike}
                                         disabled={likingInProgress}
-                                        className={`btn-like ${likeStats.userLike === true ? 'active' : ''}`}
+                                        className={`${styles.btnLike} ${likeStats.userLike === true ? 'active' : ''}`}
                                         aria-label="Like this video"
                                         title={`${likeStats.likes} likes`}
                                     >
@@ -865,11 +869,11 @@ export const VideoPage = () => {
                                         </svg>
                                         <span>{likeStats.likes}</span>
                                     </button>
-                                    <div className="like-dislike-separator"></div>
+                                    <div className={styles.likeDislikeSeparator}></div>
                                     <button
                                         onClick={handleDislike}
                                         disabled={likingInProgress}
-                                        className={`btn-dislike ${likeStats.userLike === false ? 'active' : ''}`}
+                                        className={`${styles.btnDislike} ${likeStats.userLike === false ? 'active' : ''}`}
                                         aria-label="Dislike this video"
                                         title="Dislike"
                                     >
@@ -891,7 +895,7 @@ export const VideoPage = () => {
                                             alert('Link copied to clipboard!');
                                         }
                                     }}
-                                    className="btn-share"
+                                    className={styles.btnShare}
                                     aria-label="Share this video"
                                 >
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -906,7 +910,7 @@ export const VideoPage = () => {
                                 {playlistIdFromUrl && playlist.length > 0 && (
                                     <button
                                         onClick={() => setIsPlaylistBottomSheetOpen(true)}
-                                        className="btn-playlist-mobile"
+                                        className={styles.btnPlaylistMobile}
                                         aria-label="Open playlist"
                                     >
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -917,7 +921,7 @@ export const VideoPage = () => {
                                 )}
 
                                 {canDelete && (
-                                    <button onClick={handleDelete} className="btn-delete">
+                                    <button onClick={handleDelete} className={styles.btnDelete}>
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <polyline points="3 6 5 6 21 6" />
                                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -929,15 +933,15 @@ export const VideoPage = () => {
                         </div>
 
                         {video.userId && (
-                            <div className="video-channel">
-                                <Link to={`/channel/${video.userId}`} className="channel-link">
+                            <div className={styles.videoChannel}>
+                                <Link to={`/channel/${video.userId}`} className={styles.channelLink}>
                                     View Channel
                                 </Link>
                             </div>
                         )}
 
                         {video.description && (
-                            <div className="video-description">
+                            <div className={styles.videoDescription}>
                                 <p>{video.description}</p>
                             </div>
                         )}
@@ -948,13 +952,13 @@ export const VideoPage = () => {
                 </div>
                 {/* Show playlist section only if playlistId is in URL query params */}
                 {playlistIdFromUrl && playlist.length > 0 && (
-                    <aside className="video-playlist" aria-label="Playlist">
-                        <div className="playlist-header">
+                    <aside className={styles.videoPlaylist} aria-label="Playlist">
+                        <div className={styles.playlistHeader}>
                             <div>
                                 <h2>Playlist</h2>
                                 <span>{playlist.length} video{playlist.length === 1 ? '' : 's'}</span>
                             </div>
-                            <div className="playlist-controls">
+                            <div className={styles.playlistControls}>
                                 <button
                                     type="button"
                                     onClick={handlePreviousVideo}
@@ -978,13 +982,13 @@ export const VideoPage = () => {
                             </div>
                         </div>
 
-                        <div className="playlist-items">
+                        <div className={styles.playlistItems}>
                             {playlistLoading && (
-                                <div className="playlist-empty">Loading playlist…</div>
+                                <div className={styles.playlistEmpty}>Loading playlist…</div>
                             )}
 
                             {!playlistLoading && playlist.length === 0 && (
-                                <div className="playlist-empty">No videos available</div>
+                                <div className={styles.playlistEmpty}>No videos available</div>
                             )}
 
                             {!playlistLoading && playlist.map((item, index) => {
@@ -1003,17 +1007,17 @@ export const VideoPage = () => {
                                     <button
                                         key={item.id}
                                         type="button"
-                                        className={`playlist-item ${isActive ? 'active' : ''}`}
+                                        className={`${styles.playlistItem} ${isActive ? 'active' : ''}`}
                                         onClick={() => handlePlaylistSelect(index)}
                                     >
                                         {item.thumbnailUrl ? (
-                                            <img src={item.thumbnailUrl} alt="" className="playlist-thumbnail" />
+                                            <img src={item.thumbnailUrl} alt="" className={styles.playlistThumbnail} />
                                         ) : (
-                                            <div className="playlist-thumbnail placeholder">No thumbnail</div>
+                                            <div className={`${styles.playlistThumbnail} placeholder`}>No thumbnail</div>
                                         )}
-                                        <div className="playlist-info">
-                                            <span className="playlist-title">{item.title}</span>
-                                            <span className="playlist-meta">{metaParts.join(' • ')}</span>
+                                        <div className={styles.playlistInfo}>
+                                            <span className={styles.playlistTitle}>{item.title}</span>
+                                            <span className={styles.playlistMeta}>{metaParts.join(' • ')}</span>
                                         </div>
                                     </button>
                                 );

@@ -1,0 +1,39 @@
+/**
+ * Tooltip Component Styles
+ */
+
+.tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tooltip__arrow {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(0, 0, 0, 0.9);
+}
+
+@media (max-width: 768px) {
+  .tooltip {
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+  
+  .tooltip__arrow {
+    border-width: 4px;
+  }
+}
+

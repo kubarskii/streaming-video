@@ -31,11 +31,17 @@ class B2StorageRepository extends IStorageRepository {
                 accessKeyId: config.keyId,
                 secretAccessKey: config.keySecret,
             },
-            // Optimize for parallel uploads
-            maxAttempts: 3,
+            // Optimize for parallel uploads and video streaming
+            maxAttempts: 5, // Increased from 3 to 5
+            retryMode: 'adaptive', // Use adaptive retry mode for better handling
             requestHandler: {
-                connectionTimeout: 10000, // 10s connection timeout
-                requestTimeout: 120000,   // 2min request timeout (for large chunks)
+                connectionTimeout: 60000,  // 60s connection timeout (was 10s)
+                requestTimeout: 300000,    // 5min request timeout (was 2min) for large video files
+                socketTimeout: 60000,      // 60s socket timeout
+                // Keep-alive settings for better connection reuse
+                keepAlive: true,
+                keepAliveMsecs: 30000,     // 30s keep-alive
+                maxSockets: 50,            // Allow up to 50 concurrent connections
             },
         });
     }
@@ -402,30 +408,57 @@ class B2StorageRepository extends IStorageRepository {
 
     /**
      * Get object stream with authentication (for private buckets)
-     * Supports range requests for video streaming
+     * Supports range requests for video streaming with retry logic
      */
-    async getObjectStream(storageKey, range = null) {
-        const commandParams = {
-            Bucket: this.bucket,
-            Key: storageKey,
-        };
+    async getObjectStream(storageKey, range = null, retryCount = 0) {
+        const maxRetries = 3;
 
-        // Add range header if provided
-        if (range) {
-            commandParams.Range = range;
+        try {
+            const commandParams = {
+                Bucket: this.bucket,
+                Key: storageKey,
+            };
+
+            // Add range header if provided
+            if (range) {
+                commandParams.Range = range;
+            }
+
+            const command = new GetObjectCommand(commandParams);
+            const response = await this.client.send(command);
+
+            return {
+                stream: response.Body,
+                contentType: response.ContentType,
+                contentLength: response.ContentLength,
+                contentRange: response.ContentRange,
+                acceptRanges: response.AcceptRanges,
+                statusCode: range ? 206 : 200,
+            };
+        } catch (error) {
+            // Log the error for debugging
+            console.error(`Error streaming from B2 (attempt ${retryCount + 1}/${maxRetries + 1}):`, error.message);
+
+            // Check if error is retryable (timeout, connection errors)
+            const isRetryable =
+                error.name === 'TimeoutError' ||
+                error.name === 'NetworkingError' ||
+                error.$metadata?.httpStatusCode >= 500 ||
+                error.code === 'ECONNRESET' ||
+                error.code === 'ETIMEDOUT' ||
+                error.code === 'ENOTFOUND';
+
+            // Retry with exponential backoff if retryable
+            if (isRetryable && retryCount < maxRetries) {
+                const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Max 10s delay
+                console.log(`Retrying B2 stream in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return this.getObjectStream(storageKey, range, retryCount + 1);
+            }
+
+            // If not retryable or max retries reached, throw
+            throw new Error(`Failed to stream from B2 after ${retryCount + 1} attempts: ${error.message}`);
         }
-
-        const command = new GetObjectCommand(commandParams);
-        const response = await this.client.send(command);
-
-        return {
-            stream: response.Body,
-            contentType: response.ContentType,
-            contentLength: response.ContentLength,
-            contentRange: response.ContentRange,
-            acceptRanges: response.AcceptRanges,
-            statusCode: range ? 206 : 200,
-        };
     }
 }
 

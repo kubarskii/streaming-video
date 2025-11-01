@@ -1,14 +1,15 @@
 // Video Page: Skeleton Loading Component
-import './VideoPageSkeleton.css';
+import pageStyles from '../VideoPage.module.css';
+import styles from './VideoPageSkeleton.module.css';
 
 export const VideoPageSkeleton = () => {
     return (
-        <div className="video-page">
+        <div className={pageStyles.videoPage}>
             {/* Video Player Skeleton */}
             <div className="video-player-substrate">
-                <div className="video-player-wrapper">
-                    <div className="video-skeleton-player">
-                        <div className="skeleton-play-icon">
+                <div className={pageStyles.videoPlayerWrapper}>
+                    <div className={styles.videoSkeletonPlayer}>
+                        <div className={styles.skeletonPlayIcon}>
                             <svg width="80" height="80" viewBox="0 0 24 24" fill="rgba(255,255,255,0.3)">
                                 <path d="M8 5v14l11-7z" />
                             </svg>
@@ -17,47 +18,47 @@ export const VideoPageSkeleton = () => {
                 </div>
             </div>
 
-            <div className="video-content">
-                <div className="video-main-column">
-                    <div className="video-details">
+            <div className={pageStyles.videoContent}>
+                <div className={pageStyles.videoMainColumn}>
+                    <div className={pageStyles.videoDetails}>
                         {/* Title Skeleton */}
-                        <div className="skeleton skeleton-title"></div>
-                        <div className="skeleton skeleton-title-short"></div>
+                        <div className={`${styles.skeleton} ${styles.skeletonTitle}`}></div>
+                        <div className={`${styles.skeleton} ${styles.skeletonTitleShort}`}></div>
 
                         {/* Stats and Actions Skeleton */}
-                        <div className="video-stats">
-                            <div className="skeleton skeleton-text"></div>
-                            <div className="video-actions">
-                                <div className="skeleton skeleton-button"></div>
-                                <div className="skeleton skeleton-button"></div>
-                                <div className="skeleton skeleton-button"></div>
+                        <div className={pageStyles.videoStats}>
+                            <div className={`${styles.skeleton} ${styles.skeletonText}`}></div>
+                            <div className={pageStyles.videoActions}>
+                                <div className={`${styles.skeleton} ${styles.skeletonButton}`}></div>
+                                <div className={`${styles.skeleton} ${styles.skeletonButton}`}></div>
+                                <div className={`${styles.skeleton} ${styles.skeletonButton}`}></div>
                             </div>
                         </div>
 
                         {/* Channel Skeleton */}
-                        <div className="video-channel">
-                            <div className="skeleton skeleton-text"></div>
+                        <div className={pageStyles.videoChannel}>
+                            <div className={`${styles.skeleton} ${styles.skeletonText}`}></div>
                         </div>
 
                         {/* Description Skeleton */}
-                        <div className="video-description">
-                            <div className="skeleton skeleton-text"></div>
-                            <div className="skeleton skeleton-text"></div>
-                            <div className="skeleton skeleton-text-short"></div>
+                        <div className={pageStyles.videoDescription}>
+                            <div className={`${styles.skeleton} ${styles.skeletonText}`}></div>
+                            <div className={`${styles.skeleton} ${styles.skeletonText}`}></div>
+                            <div className={`${styles.skeleton} ${styles.skeletonTextShort}`}></div>
                         </div>
 
                         {/* Comments Skeleton */}
-                        <div className="skeleton-comments-section">
-                            <div className="skeleton skeleton-text"></div>
-                            <div className="skeleton-comment-form"></div>
+                        <div className={styles.skeletonCommentsSection}>
+                            <div className={`${styles.skeleton} ${styles.skeletonText}`}></div>
+                            <div className={styles.skeletonCommentForm}></div>
 
                             {[1, 2, 3].map((i) => (
-                                <div key={i} className="skeleton-comment">
-                                    <div className="skeleton skeleton-avatar"></div>
-                                    <div className="skeleton-comment-content">
-                                        <div className="skeleton skeleton-text-short"></div>
-                                        <div className="skeleton skeleton-text"></div>
-                                        <div className="skeleton skeleton-text"></div>
+                                <div key={i} className={styles.skeletonComment}>
+                                    <div className={`${styles.skeleton} ${styles.skeletonAvatar}`}></div>
+                                    <div className={styles.skeletonCommentContent}>
+                                        <div className={`${styles.skeleton} ${styles.skeletonTextShort}`}></div>
+                                        <div className={`${styles.skeleton} ${styles.skeletonText}`}></div>
+                                        <div className={`${styles.skeleton} ${styles.skeletonText}`}></div>
                                     </div>
                                 </div>
                             ))}

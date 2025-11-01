@@ -1,0 +1,2 @@
+export { VolumeIndicator } from './VolumeIndicator';
+

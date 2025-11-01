@@ -1,21 +1,56 @@
-// Shared UI: Video Player Component
-import React, { useEffect, useState, useRef, useImperativeHandle } from 'react';
-import {
-    FaPlay,
-    FaPause,
-    FaVolumeUp,
-    FaVolumeDown,
-    FaVolumeMute,
-    FaExpand,
-    FaCompress,
-    FaCog,
-    FaCheck,
-    FaStepBackward,
-    FaStepForward,
-} from 'react-icons/fa';
-import { KeyboardShortcuts } from './KeyboardShortcuts';
-import './VideoPlayer.css';
+/**
+ * Video Player Component (FSD Architecture)
+ * Complete YouTube-like video player with Feature-Sliced Design
+ */
+import React, { useEffect, useState, useRef, useImperativeHandle, useCallback } from 'react';
+import { FaCog, FaCheck } from 'react-icons/fa';
 
+// FSD Imports
+import { PLAYER_CONSTANTS, PLAYER_STATES, PLAYER_EVENTS, MIME_TYPES } from '../../../shared/config/videoPlayer.constants';
+import { useStateMachine } from '../../../shared/lib/fsm';
+import { videoPlayerFSMConfig, isPlayingState } from '../../../entities/video/model';
+import {
+    useFullscreen,
+    useVideoEvents,
+    useKeyboardShortcuts
+} from '../../../shared/lib/hooks';
+import { useFullscreenHeader } from '../../../features/video-player/hooks';
+import {
+    formatTime,
+    getStorageNumber,
+    setStorageItem,
+    removeStorageItem,
+    updateProgressBarHover,
+    getProgressBarPosition
+} from '../../../shared/lib/utils';
+
+// Feature Components
+import {
+    PlayPauseButton,
+    VolumeControl,
+    TimeDisplay,
+    FullscreenButton,
+    PlaylistNavigation,
+} from '../../../features/video-player/controls';
+import {
+    SeekOverlay,
+    BufferingOverlay,
+    VolumeIndicator,
+    UpNextOverlay,
+    TapZones,
+} from '../../../features/video-player/overlays';
+
+// Shared Components
+import { Spinner } from '../../../shared/ui/Spinner';
+import { Tooltip } from '../../../shared/ui/Tooltip';
+
+// Styles
+import styles from './VideoPlayer.module.css';
+import { KeyboardShortcuts } from './KeyboardShortcuts';
+
+/**
+ * Video Player Component
+ */
 export const VideoPlayer = React.forwardRef(({
     src,
     poster,
@@ -25,7 +60,7 @@ export const VideoPlayer = React.forwardRef(({
     onTimeUpdate,
     onEnded,
     onError,
-    primaryColor = '#ff0000',
+    primaryColor = PLAYER_CONSTANTS.COLORS.PRIMARY,
     qualities = [],
     onQualityChange,
     className = '',
@@ -35,93 +70,103 @@ export const VideoPlayer = React.forwardRef(({
     onPrevious,
     canPlayNext = true,
     canPlayPrevious = true,
+    nextVideo = null, // { title, thumbnailUrl, durationMs, channelName }
 }, ref) => {
+    // Refs
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const controlsTimeoutRef = useRef(null);
     const progressBarRef = useRef(null);
     const ambientIntervalRef = useRef(null);
+    const saveIntervalRef = useRef(null);
     const lastSavedTimeRef = useRef(0);
     const hasRestoredPositionRef = useRef(false);
-    const saveIntervalRef = useRef(null);
     const pendingRestorePositionRef = useRef(null);
-    const tapTimeoutRef = useRef(null);
-    const lastTouchTimeRef = useRef(0);
-    const lastTapTimeRef = useRef(0);
+    const isDraggingRef = useRef(false);
 
-    // Constants
-    const DOUBLE_CLICK_DELAY = 50; // ms to wait for double-click/tap detection
-    const DOUBLE_TAP_THRESHOLD = 300; // ms window for detecting second tap
-    const GHOST_CLICK_THRESHOLD = 300; // ms to ignore click after touch
+    // State Machine
+    const [playerState, sendPlayerEvent] = useStateMachine(videoPlayerFSMConfig);
+    const isPlaying = isPlayingState(playerState);
 
-    const [isPlaying, setIsPlaying] = useState(autoPlay);
+    // Native video state tracking (directly from video element)
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+    const [isVideoBuffering, setIsVideoBuffering] = useState(false);
+    const [isVideoLoading, setIsVideoLoading] = useState(true);
+
+    // State
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [volume, setVolume] = useState(100);
+    const [volume, setVolume] = useState(getStorageNumber(PLAYER_CONSTANTS.STORAGE_KEYS.VOLUME, PLAYER_CONSTANTS.VOLUME_DEFAULT));
     const [isMuted, setIsMuted] = useState(false);
-    const [isFullscreen, setIsFullscreen] = useState(false);
-    const [showControls, setShowControls] = useState(true);
-    const [isBuffering, setIsBuffering] = useState(false);
+    // Initially hide controls if autoPlay is true to prevent overlay conflicts on initial render
+    const [showControls, setShowControls] = useState(!autoPlay);
     const [showSettings, setShowSettings] = useState(false);
-    const [playbackRate, setPlaybackRate] = useState(1);
+    const [playbackRate, setPlaybackRate] = useState(PLAYER_CONSTANTS.PLAYBACK_RATE_DEFAULT);
     const [showPlaybackRates, setShowPlaybackRates] = useState(false);
     const [showQualities, setShowQualities] = useState(false);
     const [selectedQuality, setSelectedQuality] = useState(null);
-    const [isReady, setIsReady] = useState(false);
     const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [hoverTime, setHoverTime] = useState(null);
     const [hoverPosition, setHoverPosition] = useState(0);
     const [wasPlayingBeforeDrag, setWasPlayingBeforeDrag] = useState(false);
 
-    const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+    // Seek overlay state
+    const [seekOverlayState, setSeekOverlayState] = useState({
+        visible: false,
+        direction: 'forward',
+        count: 1,
+        x: 0,
+        y: 0,
+    });
 
-    // Debug: Log videoId changes
-    useEffect(() => {
-        console.log('[VideoPlayer] videoId changed to:', videoId);
+    // Volume indicator state
+    const [volumeIndicatorVisible, setVolumeIndicatorVisible] = useState(false);
+
+    // Volume slider expand state (for mobile)
+    const [volumeSliderExpanded, setVolumeSliderExpanded] = useState(false);
+
+    // Up Next overlay state
+    const [showUpNext, setShowUpNext] = useState(false);
+    const [upNextCountdown, setUpNextCountdown] = useState(null);
+    const countdownIntervalRef = useRef(null);
+
+    // Native fullscreen API (like F11)
+    const { isFullscreen, toggleFullscreen: toggleFullscreenNative } = useFullscreen(containerRef);
+
+    // Automatically hide/show header based on fullscreen state
+    useFullscreenHeader({
+        isFullscreen,
+        autoHide: true,
+        restoreOnExit: true,
+    });
+
+    // Storage key helper
+    const getStorageKey = useCallback(() => {
+        return videoId ? PLAYER_CONSTANTS.STORAGE_KEYS.POSITION(videoId) : null;
     }, [videoId]);
 
-    // Save/restore video position functions
-    const getStorageKey = () => videoId ? `video_position_${videoId}` : null;
-
-    const saveVideoPosition = (time) => {
+    // Save/restore position functions
+    const saveVideoPosition = useCallback((time) => {
         const key = getStorageKey();
-        // if (!key || !time || time < 5) return; // Don't save if less than 5 seconds
+        if (!key) return;
 
-        // Only save if at least 1 second has passed since last save (throttle)
         if (Math.abs(time - lastSavedTimeRef.current) < 1) return;
 
         lastSavedTimeRef.current = time;
-        try {
-            localStorage.setItem(key, time.toString());
-        } catch (err) {
-            console.error('Failed to save video position:', err);
-        }
-    };
+        setStorageItem(key, time);
+    }, [getStorageKey]);
 
-    const restoreVideoPosition = () => {
+    const restoreVideoPosition = useCallback(() => {
         const key = getStorageKey();
-        console.log('[VideoPlayer] Attempting to restore position, key:', key, 'hasRestored:', hasRestoredPositionRef.current);
-
-        if (!key) {
-            console.log('[VideoPlayer] No storage key - videoId missing?');
-            return null;
-        }
-
-        if (hasRestoredPositionRef.current) {
-            console.log('[VideoPlayer] Already restored, skipping');
-            return null;
-        }
+        if (!key || hasRestoredPositionRef.current) return null;
 
         try {
             const savedPosition = localStorage.getItem(key);
-            console.log('[VideoPlayer] Saved position from storage:', savedPosition);
-
             if (savedPosition) {
                 const position = parseFloat(savedPosition);
                 if (!isNaN(position) && position > 0) {
                     hasRestoredPositionRef.current = true;
-                    console.log('[VideoPlayer] Will restore position:', position);
                     return position;
                 }
             }
@@ -129,36 +174,382 @@ export const VideoPlayer = React.forwardRef(({
             console.error('Failed to restore video position:', err);
         }
 
-        console.log('[VideoPlayer] No valid position to restore');
         return null;
-    };
+    }, [getStorageKey]);
 
-    const clearVideoPosition = () => {
+    const clearVideoPosition = useCallback(() => {
         const key = getStorageKey();
-        if (!key) return;
-
-        try {
-            localStorage.removeItem(key);
-        } catch (err) {
-            console.error('Failed to clear video position:', err);
+        if (key) {
+            removeStorageItem(key);
         }
+    }, [getStorageKey]);
+
+    // Detect MIME type
+    const detectMimeType = (url) => {
+        if (!url) return MIME_TYPES.mp4;
+        const ext = url.split('.').pop()?.toLowerCase();
+        return MIME_TYPES[ext] || MIME_TYPES.mp4;
     };
+
+    const videoMimeType = mimeType || detectMimeType(src);
+
+    // Controls visibility
+    const showControlsTemporarily = useCallback(() => {
+        setShowControls(true);
+        if (controlsTimeoutRef.current) {
+            clearTimeout(controlsTimeoutRef.current);
+        }
+        controlsTimeoutRef.current = setTimeout(() => {
+            if (isPlaying) {
+                setShowControls(false);
+            }
+        }, PLAYER_CONSTANTS.CONTROLS_AUTO_HIDE_DELAY);
+    }, [isPlaying]);
+
+    const handleMouseMove = useCallback(() => {
+        showControlsTemporarily();
+    }, [showControlsTemporarily]);
+
+    // Toggle native fullscreen (F11-like behavior)
+    const toggleFullscreen = useCallback(() => {
+        toggleFullscreenNative();
+        showControlsTemporarily();
+    }, [toggleFullscreenNative, showControlsTemporarily]);
+
+    // Playback controls
+    const togglePlayPause = useCallback(() => {
+        if (!videoRef.current) return;
+
+        if (videoRef.current.paused) {
+            // Don't send PLAY event here - let the video element's 'play' event handler do it
+            // This ensures state updates only when video actually starts playing
+            videoRef.current.play().catch((error) => {
+                console.error('Error playing video:', error);
+                sendPlayerEvent(PLAYER_EVENTS.ERROR);
+            });
+        } else {
+            if (videoId) {
+                saveVideoPosition(videoRef.current.currentTime);
+            }
+            // Don't send PAUSE event here - let the video element's 'pause' event handler do it
+            // This ensures state stays in sync with actual playback state
+            videoRef.current.pause();
+        }
+        showControlsTemporarily();
+    }, [videoId, sendPlayerEvent, saveVideoPosition, showControlsTemporarily]);
+
+    // Seek functions
+    const seekTo = useCallback((time) => {
+        if (!videoRef.current) return;
+        videoRef.current.currentTime = time;
+        setCurrentTime(time);
+    }, []);
+
+    const seekForward = useCallback((seconds = PLAYER_CONSTANTS.SEEK_SHORT) => {
+        if (!videoRef.current) return;
+        const newTime = Math.min(videoRef.current.currentTime + seconds, duration);
+        seekTo(newTime);
+        showControlsTemporarily();
+    }, [duration, seekTo, showControlsTemporarily]);
+
+    const seekBackward = useCallback((seconds = PLAYER_CONSTANTS.SEEK_SHORT) => {
+        if (!videoRef.current) return;
+        const newTime = Math.max(videoRef.current.currentTime - seconds, 0);
+        seekTo(newTime);
+        showControlsTemporarily();
+    }, [seekTo, showControlsTemporarily]);
+
+    // Volume controls
+    const handleVolumeChange = useCallback((newVolume) => {
+        if (!videoRef.current) return;
+        const vol = Math.max(PLAYER_CONSTANTS.VOLUME_MIN, Math.min(PLAYER_CONSTANTS.VOLUME_MAX, newVolume));
+
+        // Update volume immediately with no debounce
+        setVolume(vol);
+        videoRef.current.volume = vol / 100;
+        setStorageItem(PLAYER_CONSTANTS.STORAGE_KEYS.VOLUME, vol);
+
+        if (vol > 0 && isMuted) {
+            setIsMuted(false);
+            videoRef.current.muted = false;
+        }
+
+        // Show indicator immediately - the indicator will handle its own hide timer
+        setVolumeIndicatorVisible(true);
+    }, [isMuted]);
+
+    const increaseVolume = useCallback(() => {
+        handleVolumeChange(volume + PLAYER_CONSTANTS.VOLUME_STEP);
+    }, [volume, handleVolumeChange]);
+
+    const decreaseVolume = useCallback(() => {
+        handleVolumeChange(volume - PLAYER_CONSTANTS.VOLUME_STEP);
+    }, [volume, handleVolumeChange]);
+
+    const toggleMute = useCallback(() => {
+        if (!videoRef.current) return;
+        const newMuted = !isMuted;
+        setIsMuted(newMuted);
+        videoRef.current.muted = newMuted;
+        showControlsTemporarily();
+        setVolumeIndicatorVisible(true);
+    }, [isMuted, showControlsTemporarily]);
+
+    // Playback rate
+    const handlePlaybackRateChange = useCallback((rate) => {
+        if (!videoRef.current) return;
+        videoRef.current.playbackRate = rate;
+        setPlaybackRate(rate);
+        setShowPlaybackRates(false);
+        setShowSettings(false);
+    }, []);
+
+    // Quality switching
+    const handleQualityChange = useCallback((quality) => {
+        if (!videoRef.current) return;
+
+        const currentTimeBeforeSwitch = videoRef.current.currentTime;
+        const wasPlaying = !videoRef.current.paused;
+
+        setSelectedQuality(quality);
+        setShowQualities(false);
+        setShowSettings(false);
+
+        if (onQualityChange) {
+            const handleLoadedData = () => {
+                if (videoRef.current) {
+                    videoRef.current.currentTime = currentTimeBeforeSwitch;
+                    if (wasPlaying) {
+                        videoRef.current.play().catch(() => { });
+                    }
+                }
+                videoRef.current?.removeEventListener('loadeddata', handleLoadedData);
+            };
+
+            videoRef.current.addEventListener('loadeddata', handleLoadedData);
+            onQualityChange(quality);
+        }
+    }, [onQualityChange]);
+
+    // Progress bar handlers
+    const handleProgressMouseMove = useCallback((e) => {
+        if (!progressBarRef.current || !duration) return;
+        const rect = progressBarRef.current.getBoundingClientRect();
+        updateProgressBarHover(e, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, setHoverTime, setHoverPosition);
+    }, [duration]);
+
+    const handleProgressMouseLeave = useCallback(() => {
+        if (!isDragging) {
+            setHoverTime(null);
+            setHoverPosition(0);
+        }
+    }, [isDragging]);
+
+    const handleProgressMouseDown = useCallback((e) => {
+        if (!videoRef.current || !duration || !progressBarRef.current) return;
+        e.preventDefault();
+        setIsDragging(true);
+        isDraggingRef.current = true;
+        setWasPlayingBeforeDrag(!videoRef.current.paused);
+
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const { time } = getProgressBarPosition(e, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
+        seekTo(time);
+    }, [duration, seekTo]);
+
+    const handleProgressChange = useCallback((e) => {
+        if (isDragging || !progressBarRef.current) return;
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const { time } = getProgressBarPosition(e, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
+        seekTo(time);
+    }, [isDragging, duration, seekTo]);
+
+    // Touch handlers for progress bar (mobile support)
+    const handleProgressTouchStart = useCallback((e) => {
+        if (!videoRef.current || !duration || !progressBarRef.current) return;
+        // Note: Don't preventDefault here - React's onTouchStart is passive
+        setIsDragging(true);
+        isDraggingRef.current = true;
+        setWasPlayingBeforeDrag(!videoRef.current.paused);
+
+        const touch = e.touches[0];
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const touchEvent = { clientX: touch.clientX, clientY: touch.clientY };
+        const { time } = getProgressBarPosition(touchEvent, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
+        seekTo(time);
+    }, [duration, seekTo]);
+
+    const handleProgressTouchMove = useCallback((e) => {
+        if (!isDragging || !progressBarRef.current || !duration) return;
+        e.preventDefault();
+
+        const touch = e.touches[0];
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const touchEvent = { clientX: touch.clientX, clientY: touch.clientY };
+        const time = updateProgressBarHover(touchEvent, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, setHoverTime, setHoverPosition);
+
+        if (videoRef.current) {
+            seekTo(time);
+        }
+    }, [isDragging, duration, seekTo]);
+
+    const handleProgressTouchEnd = useCallback(() => {
+        if (!isDragging) return;
+        setIsDragging(false);
+        isDraggingRef.current = false;
+        setHoverTime(null);
+        setHoverPosition(0);
+    }, [isDragging]);
+
+
+    // Handle seek overlay animation end
+    const handleSeekOverlayEnd = useCallback(() => {
+        setSeekOverlayState(prev => ({ ...prev, visible: false }));
+    }, []);
+
+    // Handle volume indicator hide
+    const handleVolumeIndicatorHide = useCallback(() => {
+        setVolumeIndicatorVisible(false);
+    }, []);
+
+
+    // Keyboard shortcuts
+    useKeyboardShortcuts({
+        onPlayPause: togglePlayPause,
+        onSeekForward: () => seekForward(),
+        onSeekBackward: () => seekBackward(),
+        onSeekForwardLong: () => seekForward(PLAYER_CONSTANTS.SEEK_LONG),
+        onSeekBackwardLong: () => seekBackward(PLAYER_CONSTANTS.SEEK_LONG),
+        onVolumeUp: increaseVolume,
+        onVolumeDown: decreaseVolume,
+        onMute: toggleMute,
+        onFullscreen: toggleFullscreen,
+        onNextVideo: onNext,
+        onPreviousVideo: onPrevious,
+        onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
+        onEscape: () => setShowKeyboardShortcuts(false),
+    }, true);
+
+    // Video events
+    useVideoEvents(videoRef, {
+        onLoadedMetadata: () => {
+            const video = videoRef.current;
+            if (!video) return;
+
+            setDuration(video.duration);
+            setIsVideoLoading(false);
+            sendPlayerEvent(PLAYER_EVENTS.LOADED_METADATA);
+
+            // Show controls once metadata is loaded (only if NOT autoPlay)
+            // If autoPlay, controls will show on mouse move or when user interacts
+            if (!autoPlay) {
+                setShowControls(true);
+            }
+
+            // Restore position
+            const pendingPosition = pendingRestorePositionRef.current;
+            if (pendingPosition && video.duration && pendingPosition < video.duration - 5 && !hasRestoredPositionRef.current) {
+                video.currentTime = pendingPosition;
+                hasRestoredPositionRef.current = true;
+                pendingRestorePositionRef.current = null;
+            }
+        },
+        onLoadedData: () => {
+            setIsVideoLoading(false);
+            setIsVideoBuffering(false);
+        },
+        onTimeUpdate: () => {
+            const video = videoRef.current;
+            if (!video) return;
+
+            const time = video.currentTime;
+            setCurrentTime(time);
+
+            // Don't save position while dragging - only during normal playback
+            // Use ref to avoid recreating this callback on every drag state change
+            if (!isDraggingRef.current) {
+                saveVideoPosition(time);
+            }
+
+            // If we're getting time updates, we're not buffering
+            if (isVideoBuffering) {
+                setIsVideoBuffering(false);
+            }
+
+            if (onTimeUpdate) {
+                onTimeUpdate(time);
+            }
+        },
+        onPlay: () => {
+            setIsVideoPlaying(true);
+            setIsVideoBuffering(false);
+            sendPlayerEvent(PLAYER_EVENTS.PLAY);
+        },
+        onPause: () => {
+            setIsVideoPlaying(false);
+            sendPlayerEvent(PLAYER_EVENTS.PAUSE);
+        },
+        onWaiting: () => {
+            setIsVideoBuffering(true);
+            sendPlayerEvent(PLAYER_EVENTS.WAITING);
+        },
+        onCanPlay: () => {
+            setIsVideoBuffering(false);
+            setIsVideoLoading(false);
+            sendPlayerEvent(PLAYER_EVENTS.CAN_PLAY);
+        },
+        onCanPlayThrough: () => {
+            setIsVideoBuffering(false);
+            setIsVideoLoading(false);
+        },
+        onSeeking: () => {
+            setIsVideoBuffering(true);
+            sendPlayerEvent(PLAYER_EVENTS.SEEK);
+        },
+        onSeeked: () => {
+            setIsVideoBuffering(false);
+            sendPlayerEvent(PLAYER_EVENTS.SEEKED);
+        },
+        onEnded: () => {
+            setIsVideoPlaying(false);
+            clearVideoPosition();
+            sendPlayerEvent(PLAYER_EVENTS.ENDED);
+
+            // Check if we'll handle the countdown internally (fullscreen with next video)
+            const willHandleInternally = nextVideo && onNext && isFullscreen && canPlayNext;
+
+            // Show Up Next countdown in fullscreen
+            handleVideoEnded();
+
+            // Only call external onEnded if we're not handling it internally
+            // This prevents duplicate countdowns
+            if (onEnded && !willHandleInternally) {
+                onEnded();
+            }
+        },
+        onError: () => {
+            setIsVideoLoading(false);
+            setIsVideoBuffering(false);
+            sendPlayerEvent(PLAYER_EVENTS.ERROR);
+            if (onError) {
+                onError();
+            }
+        },
+    });
 
     // Load saved position when videoId changes
     useEffect(() => {
-        console.log('[VideoPlayer] videoId changed, loading saved position for:', videoId);
         hasRestoredPositionRef.current = false;
         pendingRestorePositionRef.current = null;
 
         if (videoId) {
-            const key = `video_position_${videoId}`;
+            const key = PLAYER_CONSTANTS.STORAGE_KEYS.POSITION(videoId);
             try {
                 const savedPosition = localStorage.getItem(key);
                 if (savedPosition) {
                     const position = parseFloat(savedPosition);
                     if (!isNaN(position) && position > 5) {
                         pendingRestorePositionRef.current = position;
-                        console.log('[VideoPlayer] Pending restore position:', position);
                     }
                 }
             } catch (err) {
@@ -167,35 +558,23 @@ export const VideoPlayer = React.forwardRef(({
         }
     }, [videoId]);
 
-    // Aggressive position saving - update every second while playing
+    // Auto-save position while playing
     useEffect(() => {
         if (!videoId) return;
 
-        // Clear any existing interval
         if (saveIntervalRef.current) {
             clearInterval(saveIntervalRef.current);
             saveIntervalRef.current = null;
         }
 
-        // Start interval if playing
         if (isPlaying && videoRef.current) {
-            console.log('[VideoPlayer] Starting save interval');
             saveIntervalRef.current = setInterval(() => {
                 if (videoRef.current && videoId) {
                     const time = videoRef.current.currentTime;
-                    // if (time > 5) {
-                    const key = `video_position_${videoId}`;
-                    try {
-                        localStorage.setItem(key, time.toString());
-                        console.log(`[VideoPlayer] Auto-saved position: ${time.toFixed(1)}s`);
-                    } catch (err) {
-                        console.error('Failed to save position:', err);
-                    }
-                    // }
+                    const key = PLAYER_CONSTANTS.STORAGE_KEYS.POSITION(videoId);
+                    setStorageItem(key, time);
                 }
-            }, 1000); // Save every second
-        } else if (!isPlaying) {
-            console.log('[VideoPlayer] Stopped save interval (paused)');
+            }, PLAYER_CONSTANTS.POSITION_SAVE_INTERVAL);
         }
 
         return () => {
@@ -206,35 +585,24 @@ export const VideoPlayer = React.forwardRef(({
         };
     }, [isPlaying, videoId]);
 
-    // Save position on page unload (refresh/close) or component unmount
+    // Save on unload
     useEffect(() => {
         if (!videoId) return;
 
-        const storageKey = `video_position_${videoId}`;
+        const storageKey = PLAYER_CONSTANTS.STORAGE_KEYS.POSITION(videoId);
 
         const saveOnUnload = () => {
             const video = videoRef.current;
             if (video) {
-                const time = video.currentTime;
-                // if (time > 5) {
-                try {
-                    localStorage.setItem(storageKey, time.toString());
-                } catch (err) {
-                    // Silent fail on unload to not block
-                }
-                // }
+                setStorageItem(storageKey, video.currentTime);
             }
         };
 
-        // beforeunload for desktop browsers
         window.addEventListener('beforeunload', saveOnUnload);
-        // pagehide for mobile browsers (more reliable on iOS/Safari)
         window.addEventListener('pagehide', saveOnUnload);
-        // visibilitychange as backup
         document.addEventListener('visibilitychange', saveOnUnload);
 
         return () => {
-            // Save on unmount (when navigating away within the app)
             saveOnUnload();
             window.removeEventListener('beforeunload', saveOnUnload);
             window.removeEventListener('pagehide', saveOnUnload);
@@ -242,626 +610,99 @@ export const VideoPlayer = React.forwardRef(({
         };
     }, [videoId]);
 
+    // Autoplay
     useEffect(() => {
         if (videoRef.current && autoPlay) {
-            videoRef.current.play().catch(err => {
-                console.log('Autoplay prevented:', err);
-                setIsPlaying(false);
-            });
+            const playPromise = videoRef.current.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(() => {
+                    // Autoplay was prevented
+                });
+            }
         }
     }, [autoPlay]);
 
-    // Handle src changes (for quality switching)
+    // Source changes
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
 
-        console.log('[VideoPlayer] Source changed, reloading video');
-        // When src changes, reload the video and optionally auto-play
+        // Reset loading states when source changes
+        setIsVideoLoading(true);
+        setIsVideoBuffering(false);
+        setIsVideoPlaying(false);
+
         video.load();
 
         if (autoPlay) {
-            const playPromise = video.play();
-            if (playPromise && typeof playPromise.then === 'function') {
-                playPromise
-                    .then(() => {
-                        setIsPlaying(true);
-                    })
-                    .catch(err => {
-                        console.log('Autoplay prevented after source change:', err);
-                        setIsPlaying(false);
+            // Use a small delay to ensure video is ready
+            const playTimeout = setTimeout(() => {
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(() => {
+                        // Autoplay was prevented
                     });
-            }
-        } else {
-            setIsPlaying(false);
+                }
+            }, 10);
+
+            return () => clearTimeout(playTimeout);
         }
     }, [src, autoPlay]);
 
+    // Drag handling (mouse and touch)
     useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
+        if (!isDragging) return;
 
-        const handleLoadedMetadata = () => {
-            console.log('[VideoPlayer] Loaded metadata, duration:', video.duration, 'videoId:', videoId);
-            setDuration(video.duration);
-            setIsReady(true);
-
-            // Try to restore position
-            tryRestorePosition();
-        };
-
-        const tryRestorePosition = () => {
-            // Restore pending position if available
-            const pendingPosition = pendingRestorePositionRef.current;
-            console.log('[VideoPlayer] tryRestorePosition - pending:', pendingPosition, 'duration:', video.duration, 'hasRestored:', hasRestoredPositionRef.current);
-
-            if (pendingPosition && video.duration && pendingPosition < video.duration - 5 && !hasRestoredPositionRef.current) {
-                console.log(`[VideoPlayer] Restoring to ${pendingPosition.toFixed(1)}s`);
-                video.currentTime = pendingPosition;
-                hasRestoredPositionRef.current = true;
-                pendingRestorePositionRef.current = null;
-                console.log(`[VideoPlayer] ✅ Successfully restored to ${pendingPosition.toFixed(1)}s`);
-            } else if (pendingPosition) {
-                console.log('[VideoPlayer] ❌ Cannot restore - duration:', video.duration, 'tooCloseToEnd:', pendingPosition >= video.duration - 5, 'alreadyRestored:', hasRestoredPositionRef.current);
-            } else {
-                console.log('[VideoPlayer] ℹ️ No pending position to restore');
-            }
-        };
-
-        const handleLoadedData = () => {
-            console.log('[VideoPlayer] Loaded data (backup restore attempt)');
-            // Backup: try to restore again if it didn't work in loadedmetadata
-            if (pendingRestorePositionRef.current && !hasRestoredPositionRef.current) {
-                console.log('[VideoPlayer] Metadata restore missed, trying again in loadeddata');
-                tryRestorePosition();
-            }
-        };
-
-        const handleTimeUpdate = () => {
-            const time = video.currentTime;
-            setCurrentTime(time);
-            setIsBuffering(false);
-
-            // Try to restore position on first timeupdate if not done yet
-            if (pendingRestorePositionRef.current && !hasRestoredPositionRef.current && video.duration) {
-                const pendingPosition = pendingRestorePositionRef.current;
-                if (pendingPosition < video.duration - 5) {
-                    console.log('[VideoPlayer] Restoring on timeupdate:', pendingPosition);
-                    video.currentTime = pendingPosition;
-                    hasRestoredPositionRef.current = true;
-                    pendingRestorePositionRef.current = null;
-                }
-            }
-
-            // Save position periodically
-            saveVideoPosition(time);
-
-            if (onTimeUpdate) {
-                onTimeUpdate(time);
-            }
-        };
-
-        const handleWaiting = () => {
-            setIsBuffering(true);
-        };
-
-        const handlePlaying = () => {
-            setIsBuffering(false);
-        };
-
-        const handleEnded = () => {
-            setIsPlaying(false);
-            // Clear saved position when video completes
-            clearVideoPosition();
-            if (onEnded) {
-                onEnded();
-            }
-        };
-
-        const handleError = () => {
-            if (onError) {
-                onError();
-            }
-        };
-
-        video.addEventListener('loadedmetadata', handleLoadedMetadata);
-        video.addEventListener('loadeddata', handleLoadedData);
-        video.addEventListener('timeupdate', handleTimeUpdate);
-        video.addEventListener('waiting', handleWaiting);
-        video.addEventListener('playing', handlePlaying);
-        video.addEventListener('ended', handleEnded);
-        video.addEventListener('error', handleError);
-
-        return () => {
-            video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-            video.removeEventListener('loadeddata', handleLoadedData);
-            video.removeEventListener('timeupdate', handleTimeUpdate);
-            video.removeEventListener('waiting', handleWaiting);
-            video.removeEventListener('playing', handlePlaying);
-            video.removeEventListener('ended', handleEnded);
-            video.removeEventListener('error', handleError);
-        };
-    }, [onTimeUpdate, onEnded, onError, videoId]);
-
-    useEffect(() => {
-        const handleFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement);
-        };
-
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        return () => {
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            // Cleanup tap timeout on unmount
-            if (tapTimeoutRef.current) {
-                clearTimeout(tapTimeoutRef.current);
-            }
-        };
-    }, []);
-
-    const togglePlayPause = () => {
-        if (!videoRef.current) return;
-
-        if (videoRef.current.paused) {
-            videoRef.current.play();
-            setIsPlaying(true);
-        } else {
-            // Save position immediately when pausing
-            if (videoId) {
-                const key = `video_position_${videoId}`;
-                try {
-                    localStorage.setItem(key, videoRef.current.currentTime.toString());
-                } catch (err) {
-                    console.error('Failed to save on pause:', err);
-                }
-            }
-            videoRef.current.pause();
-            setIsPlaying(false);
-        }
-        showControlsTemporarily();
-    };
-
-    const handleVideoTouch = (e) => {
-        const now = Date.now();
-        const timeSinceLastTap = now - lastTapTimeRef.current;
-
-        // Set timestamp for ghost click prevention
-        lastTouchTimeRef.current = now;
-
-        // Check for double-tap (within 300ms window)
-        if (timeSinceLastTap < DOUBLE_TAP_THRESHOLD && timeSinceLastTap > 0) {
-            // Double-tap detected → go fullscreen immediately
-            if (tapTimeoutRef.current) {
-                clearTimeout(tapTimeoutRef.current);
-                tapTimeoutRef.current = null;
-            }
-            toggleFullscreen();
-            lastTapTimeRef.current = 0; // Reset to prevent triple-tap issues
-            return;
-        }
-
-        // Single tap → wait briefly (50ms) to see if a second tap is coming
-        lastTapTimeRef.current = now;
-
-        if (tapTimeoutRef.current) {
-            clearTimeout(tapTimeoutRef.current);
-        }
-
-        tapTimeoutRef.current = setTimeout(() => {
-            // Single tap confirmed → show controls (if hidden)
-            // If controls are visible, do nothing (they'll auto-hide)
-            if (!showControls) {
-                showControlsTemporarily();
-            }
-            tapTimeoutRef.current = null;
-        }, DOUBLE_CLICK_DELAY); // Use 50ms delay for execution
-    };
-
-    const handleVideoClick = (e) => {
-        // Prevent ghost clicks from touch events
-        const timeSinceTouch = Date.now() - lastTouchTimeRef.current;
-        if (timeSinceTouch < GHOST_CLICK_THRESHOLD) {
-            return;
-        }
-
-        // Mouse click: wait briefly to detect double-click
-        if (tapTimeoutRef.current) {
-            clearTimeout(tapTimeoutRef.current);
-            tapTimeoutRef.current = null;
-        }
-
-        tapTimeoutRef.current = setTimeout(() => {
-            togglePlayPause();
-            tapTimeoutRef.current = null;
-        }, DOUBLE_CLICK_DELAY);
-    };
-
-    const handleVideoDoubleClick = (e) => {
-        // Cancel pending single-click action
-        if (tapTimeoutRef.current) {
-            clearTimeout(tapTimeoutRef.current);
-            tapTimeoutRef.current = null;
-        }
-        // Toggle fullscreen immediately
-        toggleFullscreen();
-    };
-
-    const handleNextVideo = () => {
-        if (onNext && canPlayNext) {
-            onNext();
-            showControlsTemporarily();
-        }
-    };
-
-    const handlePreviousVideo = () => {
-        if (onPrevious && canPlayPrevious) {
-            onPrevious();
-            showControlsTemporarily();
-        }
-    };
-
-    const seekTo = (time) => {
-        if (!videoRef.current) return;
-        videoRef.current.currentTime = time;
-        setCurrentTime(time);
-    };
-
-    const seekForward = (seconds = 5) => {
-        if (!videoRef.current) return;
-        const newTime = Math.min(videoRef.current.currentTime + seconds, duration);
-        seekTo(newTime);
-        showControlsTemporarily();
-    };
-
-    const seekBackward = (seconds = 5) => {
-        if (!videoRef.current) return;
-        const newTime = Math.max(videoRef.current.currentTime - seconds, 0);
-        seekTo(newTime);
-        showControlsTemporarily();
-    };
-
-    const calculateTimeFromPosition = (clientX) => {
-        if (!progressBarRef.current || !duration) return 0;
-        const rect = progressBarRef.current.getBoundingClientRect();
-        const padding = 12; // padding from CSS
-        const effectiveWidth = rect.width - (padding * 2);
-        const pos = Math.max(0, Math.min(1, (clientX - rect.left - padding) / effectiveWidth));
-        return pos * duration;
-    };
-
-    const handleProgressMouseMove = (e) => {
-        if (!progressBarRef.current || !duration) return;
-        const time = calculateTimeFromPosition(e.clientX);
-        setHoverTime(time);
-
-        const rect = progressBarRef.current.getBoundingClientRect();
-        const padding = 12; // padding from CSS
-        // Calculate position relative to container (raw mouse position)
-        // debugger
-        const pixelPos = Math.max(padding, Math.min(rect.width - padding, e.clientX - rect.left - padding));
-        setHoverPosition(pixelPos);
-    };
-
-    const handleProgressMouseLeave = () => {
-        if (!isDragging) {
-            setHoverTime(null);
-            setHoverPosition(0);
-        }
-    };
-
-    const handleProgressMouseDown = (e) => {
-        if (!videoRef.current || !duration) return;
-        e.preventDefault();
-        setIsDragging(true);
-        setWasPlayingBeforeDrag(!videoRef.current.paused);
-
-        const time = calculateTimeFromPosition(e.clientX);
-        setHoverTime(time);
-
-        const rect = progressBarRef.current.getBoundingClientRect();
-        const padding = 12; // padding from CSS
-        const pixelPos = Math.max(padding, Math.min(rect.width - padding, e.clientX - rect.left - padding));
-        setHoverPosition(pixelPos);
-
-        // Update video time immediately
-        seekTo(time);
-    };
-
-    useEffect(() => {
         const handleMouseMove = (e) => {
-            if (!isDragging || !progressBarRef.current || !duration) return;
-
-            const time = calculateTimeFromPosition(e.clientX);
-            setHoverTime(time);
+            if (!progressBarRef.current || !duration) return;
 
             const rect = progressBarRef.current.getBoundingClientRect();
-            const padding = 12; // padding from CSS
-            const pixelPos = Math.max(padding, Math.min(rect.width - padding, e.clientX - rect.left - padding));
-            setHoverPosition(pixelPos);
+            const time = updateProgressBarHover(e, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, setHoverTime, setHoverPosition);
 
-            // Update video time while dragging
             if (videoRef.current) {
-                const wasPlaying = !videoRef.current.paused;
                 seekTo(time);
+            }
+        };
 
-                // Resume playback if it was playing before (video continues during drag)
-                if (wasPlaying && videoRef.current.paused) {
-                    videoRef.current.play().catch(() => {
-                        setIsPlaying(false);
-                    });
-                }
+        const handleTouchMove = (e) => {
+            if (!progressBarRef.current || !duration) return;
+
+            const touch = e.touches[0];
+            const rect = progressBarRef.current.getBoundingClientRect();
+            const touchEvent = { clientX: touch.clientX, clientY: touch.clientY };
+            const time = updateProgressBarHover(touchEvent, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, setHoverTime, setHoverPosition);
+
+            if (videoRef.current) {
+                seekTo(time);
             }
         };
 
         const handleMouseUp = () => {
-            if (!isDragging) return;
-
             setIsDragging(false);
-
-            // Keep video playing if it was playing before drag (video continues during drag)
-
-            // Clear hover immediately
+            isDraggingRef.current = false;
             setHoverTime(null);
             setHoverPosition(0);
         };
 
-        if (isDragging) {
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-
-            return () => {
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-            };
-        }
-    }, [isDragging, duration, wasPlayingBeforeDrag]);
-
-    const handleProgressChange = (e) => {
-        // Only handle click if not dragging
-        if (isDragging) return;
-
-        const time = calculateTimeFromPosition(e.clientX);
-        seekTo(time);
-    };
-
-    const handleVolumeChange = (newVolume) => {
-        if (!videoRef.current) return;
-        const vol = Math.max(0, Math.min(100, newVolume));
-        setVolume(vol);
-        videoRef.current.volume = vol / 100;
-        if (vol > 0 && isMuted) {
-            setIsMuted(false);
-            videoRef.current.muted = false;
-        }
-    };
-
-    const increaseVolume = () => {
-        handleVolumeChange(volume + 5);
-    };
-
-    const decreaseVolume = () => {
-        handleVolumeChange(volume - 5);
-    };
-
-    const toggleMute = () => {
-        if (!videoRef.current) return;
-        const newMuted = !isMuted;
-        setIsMuted(newMuted);
-        videoRef.current.muted = newMuted;
-        showControlsTemporarily();
-    };
-
-    const toggleFullscreen = () => {
-        if (!containerRef.current) return;
-
-        if (!document.fullscreenElement) {
-            containerRef.current.requestFullscreen();
-        } else {
-            document.exitFullscreen();
-        }
-        showControlsTemporarily();
-    };
-
-    const handlePlaybackRateChange = (rate) => {
-        if (!videoRef.current) return;
-        videoRef.current.playbackRate = rate;
-        setPlaybackRate(rate);
-        setShowPlaybackRates(false);
-        setShowSettings(false);
-    };
-
-    const handleQualityChange = (quality) => {
-        if (!videoRef.current) return;
-
-        // Store current playback state
-        const currentTimeBeforeSwitch = videoRef.current.currentTime;
-        const wasPlaying = !videoRef.current.paused;
-
-        setSelectedQuality(quality);
-        setShowQualities(false);
-        setShowSettings(false);
-
-        if (onQualityChange) {
-            // Set up one-time event listener for when new quality loads
-            const handleLoadedData = () => {
-                if (videoRef.current) {
-                    // Seek to the same position
-                    videoRef.current.currentTime = currentTimeBeforeSwitch;
-
-                    // Resume playback if it was playing
-                    if (wasPlaying) {
-                        videoRef.current.play().catch(err => {
-                            console.log('Failed to resume playback:', err);
-                            setIsPlaying(false);
-                        });
-                    } else {
-                        setIsPlaying(false);
-                    }
-                }
-                videoRef.current?.removeEventListener('loadeddata', handleLoadedData);
-            };
-
-            videoRef.current.addEventListener('loadeddata', handleLoadedData);
-
-            // Trigger the quality change (which will update src and reload video)
-            onQualityChange(quality);
-        }
-    };
-
-    const showControlsTemporarily = () => {
-        setShowControls(true);
-        if (controlsTimeoutRef.current) {
-            clearTimeout(controlsTimeoutRef.current);
-        }
-        controlsTimeoutRef.current = setTimeout(() => {
-            if (isPlaying) {
-                setShowControls(false);
-            }
-        }, 3000);
-    };
-
-    const handleMouseMove = () => {
-        showControlsTemporarily();
-    };
-
-    // Expose methods to parent via ref
-    useImperativeHandle(ref, () => ({
-        showControls: showControlsTemporarily,
-    }));
-
-    // Keyboard shortcuts handler
-    useEffect(() => {
-        const handleKeyPress = (e) => {
-            if (!videoRef.current) return;
-
-            // Don't handle keyboard shortcuts when typing in input fields or when dragging
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-                return;
-            }
-
-            // Don't handle shortcuts while dragging
-            if (isDragging) {
-                return;
-            }
-
-            const key = e.key.toLowerCase();
-            const code = e.code.toLowerCase();
-
-            // Handle arrow keys by code (more reliable)
-            if (code === 'arrowleft' || key === 'arrowleft') {
-                e.preventDefault();
-                seekBackward();
-                return;
-            }
-            if (code === 'arrowright' || key === 'arrowright') {
-                e.preventDefault();
-                seekForward();
-                return;
-            }
-            if (code === 'arrowup' || key === 'arrowup') {
-                e.preventDefault();
-                increaseVolume();
-                return;
-            }
-            if (code === 'arrowdown' || key === 'arrowdown') {
-                e.preventDefault();
-                decreaseVolume();
-                return;
-            }
-
-            switch (key) {
-                case ' ':
-                    e.preventDefault();
-                    togglePlayPause();
-                    break;
-                case 'k':
-                    e.preventDefault();
-                    togglePlayPause();
-                    break;
-                case 'f':
-                    e.preventDefault();
-                    toggleFullscreen();
-                    break;
-                case 'm':
-                    e.preventDefault();
-                    toggleMute();
-                    break;
-                case 'j':
-                    e.preventDefault();
-                    seekBackward(10);
-                    break;
-                case 'l':
-                    e.preventDefault();
-                    seekForward(10);
-                    break;
-                case 'n':
-                    if (onNext && canPlayNext) {
-                        e.preventDefault();
-                        handleNextVideo();
-                    }
-                    break;
-                case 'p':
-                    if (onPrevious && canPlayPrevious) {
-                        e.preventDefault();
-                        handlePreviousVideo();
-                    }
-                    break;
-                case '?':
-                    e.preventDefault();
-                    setShowKeyboardShortcuts(!showKeyboardShortcuts);
-                    break;
-                case 'escape':
-                    if (showKeyboardShortcuts) {
-                        e.preventDefault();
-                        setShowKeyboardShortcuts(false);
-                    }
-                    break;
-                default:
-                    break;
-            }
+        const handleTouchEnd = () => {
+            setIsDragging(false);
+            isDraggingRef.current = false;
+            setHoverTime(null);
+            setHoverPosition(0);
         };
 
-        window.addEventListener('keydown', handleKeyPress);
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', handleTouchEnd);
+
         return () => {
-            window.removeEventListener('keydown', handleKeyPress);
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleTouchEnd);
         };
-    }, [showKeyboardShortcuts, onNext, onPrevious, canPlayNext, canPlayPrevious, isDragging, togglePlayPause, seekBackward, seekForward, increaseVolume, decreaseVolume, toggleMute, toggleFullscreen, handleNextVideo, handlePreviousVideo]);
-
-    const formatTime = (seconds) => {
-        if (isNaN(seconds)) return '0:00';
-        const hours = Math.floor(seconds / 3600);
-        const mins = Math.floor((seconds % 3600) / 60);
-        const secs = Math.floor(seconds % 60);
-
-        if (hours > 0) {
-            return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        }
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const getVolumeIcon = () => {
-        if (isMuted || volume === 0) return <FaVolumeMute />;
-        if (volume < 50) return <FaVolumeDown />;
-        return <FaVolumeUp />;
-    };
-
-    const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-    // Detect MIME type from file extension if not provided
-    const detectMimeType = (url) => {
-        if (!url) return 'video/mp4';
-        const ext = url.split('.').pop()?.toLowerCase();
-        const mimeTypes = {
-            'mp4': 'video/mp4',
-            'webm': 'video/webm',
-            'ogg': 'video/ogg',
-            'mov': 'video/quicktime',
-            'avi': 'video/x-msvideo',
-            'mkv': 'video/x-matroska',
-        };
-        return mimeTypes[ext] || 'video/mp4';
-    };
-
-    const videoMimeType = mimeType || detectMimeType(src);
+    }, [isDragging, duration, seekTo]);
 
     // Ambient light effect
     useEffect(() => {
@@ -874,16 +715,24 @@ export const VideoPlayer = React.forwardRef(({
 
         const updateAmbient = () => {
             try {
-                // Check if video is ready and playing
                 if (video.readyState >= 2 && !video.paused && !video.ended) {
                     onAmbientUpdate(video);
                     return true;
                 }
                 return false;
             } catch (err) {
-                // Silent fail for CORS or other errors
-                console.debug('Ambient update error:', err);
                 return false;
+            }
+        };
+
+        // Update once immediately when video is ready (even if paused)
+        const updateAmbientOnce = () => {
+            try {
+                if (video.readyState >= 2) {
+                    onAmbientUpdate(video);
+                }
+            } catch (err) {
+                // Silent fail
             }
         };
 
@@ -891,7 +740,6 @@ export const VideoPlayer = React.forwardRef(({
             if (isRunning) return;
             isRunning = true;
 
-            // Use requestAnimationFrame for smooth updates
             const frameUpdate = () => {
                 if (!video || video.paused || video.ended) {
                     isRunning = false;
@@ -902,7 +750,6 @@ export const VideoPlayer = React.forwardRef(({
                     return;
                 }
 
-                // Update if video is ready
                 if (video.readyState >= 2) {
                     updateAmbient();
                 }
@@ -910,36 +757,12 @@ export const VideoPlayer = React.forwardRef(({
                 animationFrameId = requestAnimationFrame(frameUpdate);
             };
 
-            // Also use interval as fallback to ensure it keeps running
-            // This monitors and restarts the animation frame loop if it stops
             intervalId = setInterval(() => {
                 if (video && !video.paused && !video.ended && video.readyState >= 2) {
-                    // Force update in case animation frame stopped
                     updateAmbient();
-
-                    // If animation frame stopped but video is playing, restart it
-                    if (animationFrameId === null && isRunning) {
-                        // Animation frame loop somehow stopped, restart it
-                        const restartFrameUpdate = () => {
-                            if (!video || video.paused || video.ended) {
-                                isRunning = false;
-                                if (animationFrameId) {
-                                    cancelAnimationFrame(animationFrameId);
-                                    animationFrameId = null;
-                                }
-                                return;
-                            }
-                            if (video.readyState >= 2) {
-                                updateAmbient();
-                            }
-                            animationFrameId = requestAnimationFrame(restartFrameUpdate);
-                        };
-                        animationFrameId = requestAnimationFrame(restartFrameUpdate);
-                    }
                 }
-            }, 100);
+            }, PLAYER_CONSTANTS.AMBIENT_UPDATE_INTERVAL);
 
-            // Start animation frame loop
             animationFrameId = requestAnimationFrame(frameUpdate);
             ambientIntervalRef.current = intervalId;
         };
@@ -958,41 +781,31 @@ export const VideoPlayer = React.forwardRef(({
         };
 
         const handlePlay = () => {
+            // Update once immediately when starting to play
+            updateAmbientOnce();
             startAmbientUpdates();
         };
-
-        const handlePause = () => {
-            stopAmbientUpdates();
-        };
-
-        const handleEnded = () => {
-            stopAmbientUpdates();
-        };
-
+        const handlePause = () => stopAmbientUpdates();
+        const handleEnded = () => stopAmbientUpdates();
         const handleLoadedData = () => {
-            // Restart updates when new data loads (e.g., quality change)
+            // Update once when data loads, but only start continuous updates if playing
+            updateAmbientOnce();
             if (!video.paused && !video.ended) {
                 startAmbientUpdates();
             }
         };
 
-        const handleTimeUpdate = () => {
-            // Ensure updates are running during playback
-            if (!video.paused && !video.ended && !isRunning && video.readyState >= 2) {
-                startAmbientUpdates();
-            }
-        };
-
-        // Add event listeners
         video.addEventListener('play', handlePlay);
         video.addEventListener('pause', handlePause);
         video.addEventListener('ended', handleEnded);
         video.addEventListener('loadeddata', handleLoadedData);
-        video.addEventListener('timeupdate', handleTimeUpdate);
 
-        // Start if already playing
-        if (!video.paused && !video.ended && video.readyState >= 2) {
-            startAmbientUpdates();
+        // Initial setup: update once if ready, start continuous updates if playing
+        if (video.readyState >= 2) {
+            updateAmbientOnce();
+            if (!video.paused && !video.ended) {
+                startAmbientUpdates();
+            }
         }
 
         return () => {
@@ -1001,15 +814,87 @@ export const VideoPlayer = React.forwardRef(({
             video.removeEventListener('pause', handlePause);
             video.removeEventListener('ended', handleEnded);
             video.removeEventListener('loadeddata', handleLoadedData);
-            video.removeEventListener('timeupdate', handleTimeUpdate);
         };
     }, [src, onAmbientUpdate]);
+
+    // Handle video ended - show Up Next countdown in fullscreen
+    const handleVideoEnded = useCallback(() => {
+        // Start countdown if next video available and in fullscreen
+        if (nextVideo && onNext && isFullscreen && canPlayNext) {
+            let countdown = PLAYER_CONSTANTS.UP_NEXT_AUTOPLAY_COUNTDOWN; // 5 seconds
+            setShowUpNext(true);
+            setUpNextCountdown(countdown);
+
+            // Clear any existing interval
+            if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+            }
+
+            // Countdown timer
+            countdownIntervalRef.current = setInterval(() => {
+                countdown -= 1;
+                if (countdown <= 0) {
+                    if (countdownIntervalRef.current) {
+                        clearInterval(countdownIntervalRef.current);
+                        countdownIntervalRef.current = null;
+                    }
+                    setShowUpNext(false);
+                    setUpNextCountdown(null);
+                    if (onNext) {
+                        onNext();
+                    }
+                } else {
+                    setUpNextCountdown(countdown);
+                }
+            }, 1000);
+        }
+    }, [nextVideo, onNext, isFullscreen, canPlayNext]);
+
+    // Handle Up Next actions
+    const handleUpNextPlayNow = useCallback(() => {
+        if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+        }
+        setShowUpNext(false);
+        setUpNextCountdown(null);
+        if (onNext) {
+            onNext();
+        }
+    }, [onNext]);
+
+    const handleUpNextCancel = useCallback(() => {
+        if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+        }
+        setShowUpNext(false);
+        setUpNextCountdown(null);
+    }, []);
+
+    // Cleanup countdown interval on unmount
+    useEffect(() => {
+        return () => {
+            if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+            }
+        };
+    }, []);
+
+    // Expose methods to parent
+    useImperativeHandle(ref, () => ({
+        showControls: showControlsTemporarily,
+    }));
+
+    // Calculate progress percentage
+    const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+
 
     return (
         <>
             <div
                 ref={containerRef}
-                className={`youtube-video-player ${className} ${isFullscreen ? 'fullscreen' : ''}`}
+                className={`${styles.player} video-player-substrate ${isFullscreen ? 'fullscreen' : ''} ${className}`}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => {
                     if (isPlaying) setShowControls(false);
@@ -1021,11 +906,8 @@ export const VideoPlayer = React.forwardRef(({
             >
                 <video
                     ref={videoRef}
-                    className="video-element"
+                    className={styles.videoElement}
                     poster={poster}
-                    onTouchEnd={handleVideoTouch}
-                    onClick={handleVideoClick}
-                    onDoubleClick={handleVideoDoubleClick}
                     preload="metadata"
                     playsInline
                     webkit-playsinline="true"
@@ -1037,66 +919,107 @@ export const VideoPlayer = React.forwardRef(({
                     </p>
                 </video>
 
-                {isBuffering && (
-                    <div className="buffering-indicator">
-                        <div className="spinner"></div>
-                    </div>
+                {/* Tap Zones Overlay - Three-zone tap interface */}
+                <TapZones
+                    onSeekBackward={() => seekBackward(PLAYER_CONSTANTS.SEEK_LONG)}
+                    onSeekForward={() => seekForward(PLAYER_CONSTANTS.SEEK_LONG)}
+                    onTogglePlay={togglePlayPause}
+                    onToggleFullscreen={toggleFullscreen}
+                    showControls={showControls}
+                    onShowControls={showControlsTemporarily}
+                    onSeekFeedback={(direction, count, x, y) => {
+                        setSeekOverlayState({
+                            visible: true,
+                            direction,
+                            count,
+                            x,
+                            y,
+                        });
+                    }}
+                />
+
+                {/* Seek Overlay */}
+                <SeekOverlay
+                    direction={seekOverlayState.direction}
+                    amount={PLAYER_CONSTANTS.SEEK_LONG}
+                    count={seekOverlayState.count}
+                    visible={seekOverlayState.visible}
+                    x={seekOverlayState.x}
+                    y={seekOverlayState.y}
+                    onAnimationEnd={handleSeekOverlayEnd}
+                />
+
+                {/* Buffering Overlay */}
+                <BufferingOverlay visible={isVideoBuffering} />
+
+                {/* Volume Indicator */}
+                <VolumeIndicator
+                    volume={volume}
+                    muted={isMuted}
+                    visible={volumeIndicatorVisible}
+                    onHide={handleVolumeIndicatorHide}
+                />
+
+                {/* Up Next Overlay (only in fullscreen with countdown) */}
+                {upNextCountdown !== null && showUpNext && isFullscreen && (
+                    <UpNextOverlay
+                        visible={true}
+                        countdown={upNextCountdown}
+                        nextVideo={nextVideo}
+                        onCancel={handleUpNextCancel}
+                        onPlayNow={handleUpNextPlayNow}
+                    />
                 )}
 
-                {!isPlaying && !isBuffering && isReady && (
-                    <div
-                        className="play-overlay"
-                        onTouchEnd={(e) => {
-                            e.stopPropagation();
-                            lastTouchTimeRef.current = Date.now();
-                            togglePlayPause();
-                        }}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            // Prevent ghost clicks
-                            const timeSinceTouch = Date.now() - lastTouchTimeRef.current;
-                            if (timeSinceTouch < GHOST_CLICK_THRESHOLD) {
-                                return;
-                            }
-                            togglePlayPause();
-                        }}
-                    >
-                        <div className="play-button-large">
-                            <FaPlay />
+                {/* Large Play Button Overlay - Show when paused and not buffering/loading */}
+                {!isVideoPlaying && !isVideoBuffering && !isVideoLoading && (
+                    <div className={styles.playOverlay}>
+                        <div className={styles.playButtonLarge}>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8 5v14l11-7z" />
+                            </svg>
                         </div>
                     </div>
                 )}
 
-                <div className={`video-controls ${showControls ? 'show' : ''}`}>
+                {/* Loading Indicator - Show only during initial load */}
+                {isVideoLoading && (
+                    <div className={styles.loadingIndicator}>
+                        <Spinner />
+                    </div>
+                )}
+
+                {/* Controls */}
+                <div className={`${styles.videoControls} ${showControls ? styles.show : ''}`}>
+                    {/* Progress Bar */}
                     <div
-                        className={`progress-bar-container ${isDragging ? 'dragging' : ''}`}
+                        className={`${styles.progressBarContainer} ${isDragging ? styles.dragging : ''}`}
                         ref={progressBarRef}
                         onClick={handleProgressChange}
                         onMouseMove={handleProgressMouseMove}
                         onMouseLeave={handleProgressMouseLeave}
                         onMouseDown={handleProgressMouseDown}
+                        onTouchStart={handleProgressTouchStart}
+                        onTouchEnd={handleProgressTouchEnd}
                     >
                         {/* Time preview tooltip */}
                         {(hoverTime !== null || isDragging) && (
-                            <div
-                                className="progress-bar-tooltip"
-                                style={{ left: `${hoverPosition}px` }}
-                            >
+                            <Tooltip x={hoverPosition} y={32} visible={true}>
                                 {formatTime(hoverTime || 0)}
-                            </div>
+                            </Tooltip>
                         )}
-                        <div className="progress-bar-background">
+                        <div className={styles.progressBarBackground}>
                             <div
-                                className="progress-bar-fill"
+                                className={styles.progressBarFill}
                                 style={{
                                     width: `${progressPercentage}%`,
                                     backgroundColor: primaryColor,
                                 }}
                             />
-                            {/* Preview indicator while hovering/dragging */}
+                            {/* Preview indicator */}
                             {(hoverTime !== null || isDragging) && (
                                 <div
-                                    className="progress-bar-preview"
+                                    className={styles.progressBarPreview}
                                     style={{
                                         left: `${hoverPosition}px`,
                                         backgroundColor: primaryColor,
@@ -1106,77 +1029,60 @@ export const VideoPlayer = React.forwardRef(({
                         </div>
                     </div>
 
-                    <div className="controls-row">
-                        <div className="controls-left">
-                            {onPrevious && (
-                                <button
-                                    className="control-button"
-                                    onClick={handlePreviousVideo}
-                                    disabled={!canPlayPrevious}
-                                    title="Previous video (p)"
-                                    type="button"
-                                >
-                                    <FaStepBackward />
-                                </button>
-                            )}
+                    {/* Controls Row */}
+                    <div className={styles.controlsRow}>
+                        <div className={styles.controlsLeft}>
+                            {/* Playlist Navigation */}
+                            <PlaylistNavigation
+                                onPrevious={onPrevious}
+                                onNext={onNext}
+                                canPlayPrevious={canPlayPrevious}
+                                canPlayNext={canPlayNext}
+                            />
 
-                            <button className="control-button" onClick={togglePlayPause} title="Play/Pause (k)">
-                                {isPlaying ? <FaPause /> : <FaPlay />}
-                            </button>
+                            {/* Play/Pause Button */}
+                            <PlayPauseButton
+                                playerState={playerState}
+                                onToggle={togglePlayPause}
+                            />
 
-                            {onNext && (
-                                <button
-                                    className="control-button"
-                                    onClick={handleNextVideo}
-                                    disabled={!canPlayNext}
-                                    title="Next video (n)"
-                                    type="button"
-                                >
-                                    <FaStepForward />
-                                </button>
-                            )}
+                            {/* Volume Control */}
+                            <VolumeControl
+                                volume={volume}
+                                muted={isMuted}
+                                onVolumeChange={handleVolumeChange}
+                                onMuteToggle={toggleMute}
+                                onExpandChange={setVolumeSliderExpanded}
+                            />
 
-                            <div className="volume-control">
-                                <button className="control-button" onClick={toggleMute} title="Mute (m)">
-                                    {getVolumeIcon()}
-                                </button>
-                                <div className="volume-slider-container">
-                                    <input
-                                        type="range"
-                                        className="volume-slider"
-                                        min="0"
-                                        max="100"
-                                        value={volume}
-                                        onChange={(e) => handleVolumeChange(Number(e.target.value))}
-                                        style={{
-                                            '--volume-width': `${volume}%`
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="time-display">
-                                {formatTime(currentTime)} / {formatTime(duration)}
-                            </div>
+                            {/* Time Display */}
+                            <TimeDisplay
+                                currentTime={currentTime}
+                                duration={duration}
+                                collapsed={volumeSliderExpanded}
+                            />
                         </div>
 
-                        <div className="controls-right">
-                            {title && <div className="video-title-overlay">{title}</div>}
+                        <div className={styles.controlsRight}>
+                            {/* Video Title */}
+                            {title && <div className={styles.videoTitleOverlay}>{title}</div>}
 
-                            <div className="settings-menu">
+                            {/* Settings Menu */}
+                            <div className={styles.settingsMenu}>
                                 <button
-                                    className="control-button"
+                                    className={styles.controlButton}
                                     onClick={() => setShowSettings(!showSettings)}
+                                    type="button"
                                 >
                                     <FaCog />
                                 </button>
 
                                 {showSettings && (
-                                    <div className="settings-dropdown">
+                                    <div className={styles.settingsDropdown}>
                                         {!showPlaybackRates && !showQualities && (
                                             <>
                                                 <div
-                                                    className="settings-item"
+                                                    className={styles.settingsItem}
                                                     onClick={() => setShowPlaybackRates(true)}
                                                 >
                                                     <span>Playback speed</span>
@@ -1184,7 +1090,7 @@ export const VideoPlayer = React.forwardRef(({
                                                 </div>
                                                 {qualities && qualities.length > 0 && (
                                                     <div
-                                                        className="settings-item"
+                                                        className={styles.settingsItem}
                                                         onClick={() => setShowQualities(true)}
                                                     >
                                                         <span>Quality</span>
@@ -1195,17 +1101,17 @@ export const VideoPlayer = React.forwardRef(({
                                         )}
 
                                         {showPlaybackRates && (
-                                            <div className="settings-submenu">
+                                            <div className={styles.settingsSubmenu}>
                                                 <div
-                                                    className="settings-back"
+                                                    className={styles.settingsBack}
                                                     onClick={() => setShowPlaybackRates(false)}
                                                 >
                                                     ← Playback speed
                                                 </div>
-                                                {playbackRates.map((rate) => (
+                                                {PLAYER_CONSTANTS.PLAYBACK_RATES.map((rate) => (
                                                     <div
                                                         key={rate}
-                                                        className="settings-item"
+                                                        className={styles.settingsItem}
                                                         onClick={() => handlePlaybackRateChange(rate)}
                                                     >
                                                         <span>{rate === 1 ? 'Normal' : `${rate}x`}</span>
@@ -1216,9 +1122,9 @@ export const VideoPlayer = React.forwardRef(({
                                         )}
 
                                         {showQualities && (
-                                            <div className="settings-submenu">
+                                            <div className={styles.settingsSubmenu}>
                                                 <div
-                                                    className="settings-back"
+                                                    className={styles.settingsBack}
                                                     onClick={() => setShowQualities(false)}
                                                 >
                                                     ← Quality
@@ -1226,7 +1132,7 @@ export const VideoPlayer = React.forwardRef(({
                                                 {qualities.map((quality) => (
                                                     <div
                                                         key={quality.id}
-                                                        className="settings-item"
+                                                        className={styles.settingsItem}
                                                         onClick={() => handleQualityChange(quality)}
                                                     >
                                                         <span>{quality.label}</span>
@@ -1239,20 +1145,17 @@ export const VideoPlayer = React.forwardRef(({
                                 )}
                             </div>
 
-                            <button className="control-button" onClick={toggleFullscreen}>
-                                {isFullscreen ? <FaCompress /> : <FaExpand />}
-                            </button>
+                            {/* Fullscreen Button */}
+                            <FullscreenButton
+                                isFullscreen={isFullscreen}
+                                onToggle={toggleFullscreen}
+                            />
                         </div>
                     </div>
                 </div>
-
-                {!isReady && (
-                    <div className="loading-indicator">
-                        <div className="spinner"></div>
-                    </div>
-                )}
             </div>
 
+            {/* Keyboard Shortcuts Help */}
             <KeyboardShortcuts
                 show={showKeyboardShortcuts}
                 onClose={() => setShowKeyboardShortcuts(false)}

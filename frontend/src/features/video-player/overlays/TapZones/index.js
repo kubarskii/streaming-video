@@ -1,0 +1,2 @@
+export { TapZones } from './TapZones';
+

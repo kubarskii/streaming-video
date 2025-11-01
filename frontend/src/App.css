@@ -40,3 +40,12 @@
 .read-the-docs {
   color: #888;
 }
+
+
+/* Hide scrollbars by default, except in fullscreen */
+body:not(:has(:fullscreen))::-webkit-scrollbar,
+body:not(:has(:-webkit-full-screen))::-webkit-scrollbar,
+html:not(:has(:fullscreen))::-webkit-scrollbar,
+html:not(:has(:-webkit-full-screen))::-webkit-scrollbar {
+  display: none !important;
+}

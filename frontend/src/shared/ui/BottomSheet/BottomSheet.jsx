@@ -23,7 +23,6 @@ export const BottomSheet = ({ isOpen, onClose, title, children, snapPoints = [0.
     }, [isOpen, snapPoints]);
 
     const handleTouchStart = (e) => {
-        console.log('Touch start', e.touches[0].clientY);
         setIsDragging(true);
         dragStartY.current = e.touches[0].clientY;
         dragStartPosition.current = position;
@@ -36,7 +35,6 @@ export const BottomSheet = ({ isOpen, onClose, title, children, snapPoints = [0.
 
     const handleTouchMove = (e) => {
         if (!isDragging) {
-            console.log('Touch move but not dragging');
             return;
         }
         e.preventDefault();
@@ -45,8 +43,6 @@ export const BottomSheet = ({ isOpen, onClose, title, children, snapPoints = [0.
         const currentY = e.touches[0].clientY;
         const deltaY = currentY - dragStartY.current;
         const viewportHeight = window.innerHeight;
-
-        console.log('Touch move', { currentY, deltaY, position });
 
         // Convert pixel movement to position (negative because dragging up increases position)
         const deltaPosition = -(deltaY / viewportHeight);
@@ -69,7 +65,6 @@ export const BottomSheet = ({ isOpen, onClose, title, children, snapPoints = [0.
     };
 
     const handleTouchEnd = (e) => {
-        console.log('Touch end', isDragging);
         if (!isDragging) return;
         setIsDragging(false);
 
@@ -88,11 +83,8 @@ export const BottomSheet = ({ isOpen, onClose, title, children, snapPoints = [0.
             return Math.abs(curr - newPosition) < Math.abs(prev - newPosition) ? curr : prev;
         });
 
-        console.log('Snap to', nearest, 'from', newPosition);
-
         // If dragging down significantly at lowest snap point, close
         if (deltaY > 100 && nearest === snapPoints[0]) {
-            console.log('Closing');
             onClose();
             return;
         }

@@ -1,7 +1,7 @@
 // Video Page: Mobile Playlist Bottom Sheet Component
 import { useRef, useEffect, useState } from 'react';
 import { formatDuration, formatViews, formatDate } from '../../../shared/lib';
-import './MobilePlaylistSheet.css';
+import styles from './MobilePlaylistSheet.module.css';
 
 export const MobilePlaylistSheet = ({
     isOpen,
@@ -96,27 +96,27 @@ export const MobilePlaylistSheet = ({
 
     return (
         <>
-            <div className="mobile-playlist-overlay" onClick={onClose} />
+            <div className={styles.mobilePlaylistOverlay} onClick={onClose} />
             <div
                 ref={sheetRef}
-                className="mobile-playlist-sheet"
+                className={styles.mobilePlaylistSheet}
                 style={{ transform: `translateY(${height}%)` }}
             >
                 <div
-                    className="mobile-playlist-header"
+                    className={styles.mobilePlaylistHeader}
                     onTouchStart={handleDragStart}
                     onTouchMove={handleDragMove}
                     onTouchEnd={handleDragEnd}
                     onClick={handleExpand}
                 >
-                    <div className="mobile-playlist-handle">
-                        <div className="mobile-playlist-handle-bar" />
+                    <div className={styles.mobilePlaylistHandle}>
+                        <div className={styles.mobilePlaylistHandleBar} />
                     </div>
-                    <div className="mobile-playlist-title-row">
+                    <div className={styles.mobilePlaylistTitleRow}>
                         <h3>Playlist ({currentIndex + 1}/{playlist.length})</h3>
-                        <div className="mobile-playlist-header-actions">
+                        <div className={styles.mobilePlaylistHeaderActions}>
                             <button
-                                className="mobile-playlist-expand"
+                                className={styles.mobilePlaylistExpand}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     handleExpand();
@@ -132,7 +132,7 @@ export const MobilePlaylistSheet = ({
                                 </svg>
                             </button>
                             <button
-                                className="mobile-playlist-close"
+                                className={styles.mobilePlaylistClose}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onClose();
@@ -148,12 +148,12 @@ export const MobilePlaylistSheet = ({
                     </div>
                 </div>
 
-                <div className="mobile-playlist-controls">
+                <div className={styles.mobilePlaylistControls}>
                     <button
                         type="button"
                         onClick={onPrevious}
                         disabled={!hasPrevious}
-                        className="mobile-playlist-nav-button"
+                        className={styles.mobilePlaylistNavButton}
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -164,7 +164,7 @@ export const MobilePlaylistSheet = ({
                         type="button"
                         onClick={onNext}
                         disabled={!hasNext}
-                        className="mobile-playlist-nav-button"
+                        className={styles.mobilePlaylistNavButton}
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M16 6h2v12h-2zM6 18V6l8.5 6z" />
@@ -173,13 +173,13 @@ export const MobilePlaylistSheet = ({
                     </button>
                 </div>
 
-                <div className="mobile-playlist-content">
+                <div className={styles.mobilePlaylistContent}>
                     {playlistLoading && (
-                        <div className="mobile-playlist-empty">Loading playlist…</div>
+                        <div className={styles.mobilePlaylistEmpty}>Loading playlist…</div>
                     )}
 
                     {!playlistLoading && playlist.length === 0 && (
-                        <div className="mobile-playlist-empty">No videos available</div>
+                        <div className={styles.mobilePlaylistEmpty}>No videos available</div>
                     )}
 
                     {!playlistLoading && playlist.map((item, index) => {
@@ -198,12 +198,12 @@ export const MobilePlaylistSheet = ({
                             <button
                                 key={item.id}
                                 type="button"
-                                className={`mobile-playlist-item ${isActive ? 'active' : ''}`}
+                                className={`${styles.mobilePlaylistItem} ${isActive ? 'active' : ''}`}
                                 onClick={() => {
                                     onSelectVideo(index);
                                 }}
                             >
-                                <div className="mobile-playlist-number">
+                                <div className={styles.mobilePlaylistNumber}>
                                     {isActive ? (
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                             <path d="M8 5v14l11-7z" />
@@ -213,13 +213,13 @@ export const MobilePlaylistSheet = ({
                                     )}
                                 </div>
                                 {item.thumbnailUrl ? (
-                                    <img src={item.thumbnailUrl} alt="" className="mobile-playlist-thumbnail" />
+                                    <img src={item.thumbnailUrl} alt="" className={styles.mobilePlaylistThumbnail} />
                                 ) : (
-                                    <div className="mobile-playlist-thumbnail placeholder">No thumbnail</div>
+                                    <div className={`${styles.mobilePlaylistThumbnail} placeholder`}>No thumbnail</div>
                                 )}
-                                <div className="mobile-playlist-info">
-                                    <div className="mobile-playlist-video-title">{item.title}</div>
-                                    <div className="mobile-playlist-meta">{metaParts.join(' • ')}</div>
+                                <div className={styles.mobilePlaylistInfo}>
+                                    <div className={styles.mobilePlaylistVideoTitle}>{item.title}</div>
+                                    <div className={styles.mobilePlaylistMeta}>{metaParts.join(' • ')}</div>
                                 </div>
                             </button>
                         );

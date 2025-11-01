@@ -14,7 +14,7 @@ export { Input } from './Input';
 export { Textarea } from './Textarea';
 
 // Feedback Components
-export { Spinner, FullPageSpinner } from './Spinner';
+export { Spinner } from './Spinner';
 export { EmptyState, VideoEmptyIcon, SearchEmptyIcon } from './EmptyState';
 export { ErrorState } from './ErrorState';
 

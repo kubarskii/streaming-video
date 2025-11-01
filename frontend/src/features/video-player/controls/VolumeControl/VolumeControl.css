@@ -1,0 +1,262 @@
+/**
+ * VolumeControl Component Styles
+ */
+
+.volume-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0; /* Don't shrink the control itself */
+  min-width: 0; /* Allow flex to handle sizing */
+  max-width: 150px; /* Prevent overflow */
+  overflow: visible; /* Allow slider to expand */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.volume-slider-container {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  margin-left: 0;
+  opacity: 0;
+  width: 0;
+  height: 48px;
+  max-width: 86px; /* Prevent expansion beyond this */
+  transition: opacity 0.2s ease, width 0.2s ease, padding 0.2s ease;
+  flex-shrink: 0; /* Don't shrink when expanding */
+  pointer-events: none; /* Ignore when collapsed */
+}
+
+/* Hover behavior only on devices that support hover (desktop) */
+@media (hover: hover) and (pointer: fine) {
+  .volume-control:hover .volume-slider-container,
+  .volume-slider-container:hover {
+    opacity: 1;
+    width: 86px;
+    padding: 0 8px;
+    pointer-events: auto;
+  }
+}
+
+/* Expanded state for touch/mobile and when explicitly expanded */
+.volume-slider-container.expanded {
+  opacity: 1 !important;
+  width: 86px !important;
+  padding: 0 8px !important;
+  pointer-events: auto !important;
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
+  height: 48px;
+  outline: none;
+  cursor: pointer;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Webkit (Chrome, Safari, Edge) */
+.volume-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  border: none;
+}
+
+/* Create custom filled track effect */
+.volume-slider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 4px;
+  width: var(--volume-width, 100%);
+  background: #fff;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Thumb indicator - always visible */
+.volume-slider::after {
+  content: '';
+  position: absolute;
+  left: var(--volume-width, 100%);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+  z-index: 2;
+}
+
+/* Firefox */
+.volume-slider::-moz-range-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+  border: none;
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  opacity: 0;
+  transition: opacity 0.1s ease, transform 0.1s ease;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+}
+
+.volume-slider:hover::-moz-range-thumb,
+.volume-slider:active::-moz-range-thumb {
+  opacity: 1;
+}
+
+.volume-slider:hover::-moz-range-thumb {
+  transform: scale(1);
+}
+
+.volume-slider::-moz-range-progress {
+  background-color: #fff;
+  height: 4px;
+  border-radius: 2px;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .volume-control {
+    flex-shrink: 0;
+    max-width: 100px; /* Smaller max width on tablets */
+  }
+  
+  .volume-slider-container {
+    width: 0 !important;
+    opacity: 0 !important;
+    max-width: 60px;
+    padding: 0 !important;
+  }
+  
+  .volume-slider-container.expanded {
+    width: 60px !important;
+    opacity: 1 !important;
+    padding: 0 5px !important;
+  }
+  
+  .volume-slider {
+    height: 48px; /* Larger touch target */
+    width: 50px;
+    min-width: 50px;
+    max-width: 50px;
+  }
+}
+
+@media (max-width: 480px) {
+  .volume-control {
+    max-width: 80px; /* Even smaller on phones */
+  }
+  
+  .volume-slider-container {
+    max-width: 50px;
+  }
+  
+  .volume-slider-container.expanded {
+    width: 50px !important;
+    padding: 0 5px !important;
+  }
+  
+  .volume-slider {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+  }
+}
+
+/* Very small screens */
+@media (max-width: 360px) {
+  .volume-control {
+    max-width: 70px;
+  }
+  
+  .volume-slider-container {
+    max-width: 40px;
+  }
+  
+  .volume-slider-container.expanded {
+    width: 40px !important;
+    padding: 0 5px !important;
+  }
+  
+  .volume-slider {
+    width: 30px;
+    min-width: 30px;
+    max-width: 30px;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .volume-control {
+    max-width: 100px;
+  }
+  
+  /* Hide by default on touch devices */
+  .volume-slider-container {
+    opacity: 0 !important;
+    width: 0 !important;
+    max-width: 60px;
+    padding: 0 !important;
+  }
+  
+  /* Show when expanded */
+  .volume-slider-container.expanded {
+    opacity: 1 !important;
+    width: 60px !important;
+    padding: 0 5px !important;
+  }
+  
+  /* Always show volume thumb when visible */
+  .volume-slider-container.expanded .volume-slider::-webkit-slider-thumb {
+    opacity: 1;
+  }
+  
+  .volume-slider-container.expanded .volume-slider::-moz-range-thumb {
+    opacity: 1;
+  }
+  
+  /* Larger touch target */
+  .volume-slider {
+    height: 48px;
+    width: 50px;
+    min-width: 50px;
+    max-width: 50px;
+  }
+}
+

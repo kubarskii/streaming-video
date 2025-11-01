@@ -1,0 +1,21 @@
+/**
+ * PlaylistNavigation Component Styles
+ */
+
+.playlist-navigation {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.playlist-nav-btn {
+  /* Inherits styles from IconButton */
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .playlist-navigation {
+    gap: 0;
+  }
+}
+

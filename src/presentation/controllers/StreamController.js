@@ -297,9 +297,33 @@ class StreamController {
 
         } catch (error) {
             console.error('Error streaming from B2:', error);
+
+            // Provide more specific error messages based on error type
             if (!res.headersSent) {
-                res.writeHead(500, { 'Content-Type': 'text/plain' });
-                res.end('Internal server error');
+                let statusCode = 500;
+                let errorMessage = 'Internal server error';
+
+                if (error.name === 'TimeoutError') {
+                    statusCode = 504; // Gateway Timeout
+                    errorMessage = 'Video streaming timeout - please try again';
+                } else if (error.name === 'NetworkingError' || error.code === 'ENOTFOUND') {
+                    statusCode = 503; // Service Unavailable
+                    errorMessage = 'Storage service temporarily unavailable';
+                } else if (error.message?.includes('NoSuchKey') || error.$metadata?.httpStatusCode === 404) {
+                    statusCode = 404;
+                    errorMessage = 'Video file not found in storage';
+                }
+
+                res.writeHead(statusCode, {
+                    'Content-Type': 'text/plain',
+                    'Retry-After': statusCode >= 500 ? '60' : undefined // Suggest retry after 60s for server errors
+                });
+                res.end(errorMessage);
+            } else {
+                // Headers already sent, just destroy the stream
+                if (res.destroy) {
+                    res.destroy();
+                }
             }
         }
     }
