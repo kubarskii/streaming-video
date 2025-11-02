@@ -280,6 +280,7 @@ class PrismaPlaylistRepository extends IPlaylistRepository {
      */
     async listPlaylists(filters = {}, pagination = {}) {
         const { limit = 20, offset = 0 } = pagination;
+        const includeVideos = filters.includeVideos !== undefined ? filters.includeVideos : false;
         const where = {};
 
         if (filters.userId) {
@@ -301,14 +302,14 @@ class PrismaPlaylistRepository extends IPlaylistRepository {
                 take: limit,
                 skip: offset,
                 orderBy: { createdAt: 'desc' },
-                include: this._buildInclude({ includeVideos: true, includeUser: true })
+                include: this._buildInclude({ includeVideos, includeUser: true })
             }),
             this.prisma.playlist.count({ where })
         ]);
 
         return {
             playlists: items.map(item => {
-                const mapped = this._mapPlaylist(item, { includeVideos: true, includeUser: true });
+                const mapped = this._mapPlaylist(item, { includeVideos, includeUser: true });
                 // Ensure videos is always an array, even when not included
                 if (mapped && !Array.isArray(mapped.videos)) {
                     mapped.videos = [];

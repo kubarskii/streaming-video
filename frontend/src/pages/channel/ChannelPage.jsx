@@ -100,23 +100,13 @@ export const ChannelPage = () => {
     const loadPlaylists = async () => {
         setPlaylistsLoading(true);
         try {
-            const data = await playlistsAPI.getPlaylists({ userId, isPublic: true }, signal);
-            const playlists = data.playlists || [];
-
-            // Load full playlist data with videos for each playlist
-            const playlistsWithVideos = await Promise.all(
-                playlists.map(async (playlist) => {
-                    try {
-                        const fullPlaylist = await playlistsAPI.getPlaylist(playlist.id, signal);
-                        return fullPlaylist.playlist || playlist;
-                    } catch (err) {
-                        // If we can't load full playlist, use the basic data
-                        return playlist;
-                    }
-                })
-            );
-
-            setPlaylists(playlistsWithVideos);
+            // Fetch playlists with videos in a single request (no N+1 queries!)
+            const data = await playlistsAPI.getPlaylists({ 
+                userId, 
+                isPublic: true, 
+                includeVideos: true 
+            }, signal);
+            setPlaylists(data.playlists || []);
         } catch (err) {
             if (err.name === 'AbortError' || err.name === 'CanceledError') {
                 return;

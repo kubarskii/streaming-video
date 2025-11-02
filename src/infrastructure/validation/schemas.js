@@ -333,7 +333,8 @@ const updatePlaylistSchema = z.object({
 const listPlaylistsQuerySchema = paginationSchema.extend({
     userId: uuidSchema.optional(),
     isPublic: z.coerce.boolean().optional(),
-    search: z.string().max(200, 'Search must be at most 200 characters').optional()
+    search: z.string().max(200, 'Search must be at most 200 characters').optional(),
+    includeVideos: z.coerce.boolean().optional()
 });
 
 const addVideoToPlaylistSchema = z.object({

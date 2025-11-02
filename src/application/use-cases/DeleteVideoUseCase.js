@@ -5,10 +5,11 @@
 const path = require('path');
 
 class DeleteVideoUseCase {
-    constructor(videoRepository, storageRepository, channelRepository) {
+    constructor(videoRepository, storageRepository, channelRepository, videoQualityRepository = null) {
         this.videoRepository = videoRepository;
         this.storageRepository = storageRepository;
         this.channelRepository = channelRepository;
+        this.videoQualityRepository = videoQualityRepository;
     }
 
     /**
@@ -31,7 +32,30 @@ class DeleteVideoUseCase {
         // Track deletion errors but don't fail the entire operation
         const errors = [];
 
-        // 1. Delete video file from storage FIRST
+        // 1. Delete all video quality files from storage (if videoQualityRepository is available)
+        if (this.videoQualityRepository) {
+            try {
+                const qualities = await this.videoQualityRepository.findByVideoId(videoId);
+                console.log(`Found ${qualities.length} video quality files to delete`);
+
+                for (const quality of qualities) {
+                    try {
+                        console.log(`Deleting ${quality.quality} quality file from storage: ${quality.storageKey}`);
+                        await this.storageRepository.delete(quality.storageKey);
+                    } catch (error) {
+                        console.error(`Failed to delete ${quality.quality} quality file ${quality.storageKey}:`, error.message);
+                        errors.push(`Quality ${quality.quality}: ${error.message}`);
+                        // Don't throw - continue with other deletions
+                    }
+                }
+            } catch (error) {
+                console.error(`Failed to fetch video qualities for deletion:`, error.message);
+                errors.push(`Fetch qualities: ${error.message}`);
+                // Don't throw - continue with other deletions
+            }
+        }
+
+        // 2. Delete main video file from storage
         try {
             console.log(`Deleting video file from storage: ${video.storageKey}`);
             await this.storageRepository.delete(video.storageKey);
@@ -41,7 +65,7 @@ class DeleteVideoUseCase {
             // Don't throw - continue with database deletion even if storage fails
         }
 
-        // 2. Delete thumbnail from storage (if exists)
+        // 3. Delete thumbnail from storage (if exists)
         if (video.thumbnailUrl) {
             // Extract thumbnail key from URL
             const thumbnailKey = this.extractThumbnailKey(video.thumbnailUrl, videoId);
@@ -60,7 +84,7 @@ class DeleteVideoUseCase {
             }
         }
 
-        // 3. Delete from database (always attempt this)
+        // 4. Delete from database (always attempt this)
         try {
             const deleted = await this.videoRepository.deleteById(videoId);
 
@@ -68,7 +92,7 @@ class DeleteVideoUseCase {
                 throw new Error('Failed to delete video from database');
             }
 
-            // 4. Decrement channel video count
+            // 5. Decrement channel video count
             if (video.userId && this.channelRepository) {
                 try {
                     const channel = await this.channelRepository.findByUserId(video.userId);

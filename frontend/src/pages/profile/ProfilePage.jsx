@@ -115,22 +115,12 @@ export const ProfilePage = () => {
     const loadUserPlaylists = async () => {
         try {
             setPlaylistsLoading(true);
-            const data = await playlistsAPI.getPlaylists({ userId: user.id }, signal);
-            const playlists = data.playlists || [];
-
-            // Load full playlist data with videos for each playlist
-            const playlistsWithVideos = await Promise.all(
-                playlists.map(async (playlist) => {
-                    try {
-                        const fullPlaylist = await playlistsAPI.getPlaylist(playlist.id, signal);
-                        return fullPlaylist.playlist || playlist;
-                    } catch (err) {
-                        return playlist;
-                    }
-                })
-            );
-
-            setPlaylists(playlistsWithVideos);
+            // Fetch playlists with videos in a single request (no N+1 queries!)
+            const data = await playlistsAPI.getPlaylists({ 
+                userId: user.id, 
+                includeVideos: true 
+            }, signal);
+            setPlaylists(data.playlists || []);
         } catch (err) {
             if (err.name !== 'AbortError' && err.name !== 'CanceledError') {
                 console.error('Error loading playlists:', err);

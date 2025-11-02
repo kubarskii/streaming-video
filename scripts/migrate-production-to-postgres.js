@@ -4,24 +4,24 @@
  * This script should be run on Railway with access to both databases
  * 
  * Usage:
- *   Set SQLITE_URL and POSTGRES_URL environment variables
+ *   Set SQLITE_DB_PATH and POSTGRES_URL environment variables
  *   node scripts/migrate-production-to-postgres.js
  */
 
 require('dotenv').config();
-const { PrismaClient } = require('@prisma/client');
+const sqlite3 = require('sqlite3').verbose();
 const { Client } = require('pg');
+const { promisify } = require('util');
 
 async function migrateData() {
     console.log('🔄 Starting production data migration...\n');
 
     // SQLite source (current production database)
-    const sqliteUrl = process.env.SQLITE_URL || process.env.DATABASE_URL;
-    console.log('📂 Source (SQLite):', sqliteUrl);
-
-    const prismaSqlite = new PrismaClient({
-        datasources: { db: { url: sqliteUrl } }
-    });
+    const sqlitePath = process.env.SQLITE_DB_PATH || '/app/data/dev.db';
+    console.log('📂 Source (SQLite):', sqlitePath);
+    
+    const sqliteDb = new sqlite3.Database(sqlitePath, sqlite3.OPEN_READONLY);
+    const sqliteAll = promisify(sqliteDb.all.bind(sqliteDb));
 
     // PostgreSQL target
     const postgresUrl = process.env.POSTGRES_URL;
@@ -45,7 +45,7 @@ async function migrateData() {
 
         // Migrate Users
         console.log('📦 Migrating Users...');
-        const users = await prismaSqlite.user.findMany();
+        const users = await sqliteAll('SELECT * FROM User');
         console.log(`   Found ${users.length} users`);
         for (const user of users) {
             await pgClient.query(
@@ -57,7 +57,7 @@ async function migrateData() {
 
         // Migrate Channels
         console.log('📦 Migrating Channels...');
-        const channels = await prismaSqlite.channel.findMany();
+        const channels = await sqliteAll('SELECT * FROM Channel');
         console.log(`   Found ${channels.length} channels`);
         for (const channel of channels) {
             await pgClient.query(

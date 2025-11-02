@@ -197,6 +197,9 @@ class ChunkedUploadManagerAdvanced {
             } else {
                 console.log(`🚀 Starting parallel upload of ${uploadQueue.length} chunks (${this.maxConcurrent} concurrent)`);
 
+                // Track current upload speed from active chunks
+                let currentUploadSpeed = 0;
+
                 await this.uploadChunksParallel(
                     uploadQueue,
                     session.uploadId,
@@ -213,12 +216,33 @@ class ChunkedUploadManagerAdvanced {
                                 totalChunks,
                                 uploadedBytes,
                                 totalBytes: file.size,
-                                speed: this.calculateSpeed(uploadedBytes)
+                                speed: this.formatSpeed(currentUploadSpeed),
+                                speedBytes: currentUploadSpeed
                             });
                         }
 
                         if (onChunkComplete) {
                             onChunkComplete(chunk);
+                        }
+                    },
+                    (progressUpdate) => {
+                        // Real-time speed update from active chunk uploads (XMLHttpRequest)
+                        currentUploadSpeed = progressUpdate.totalSpeed;
+
+                        // Update progress with real-time speed
+                        if (onProgress) {
+                            const progress = (uploadedBytes / file.size) * 100;
+                            onProgress({
+                                progress: Math.min(99, Math.round(progress)),
+                                uploadedChunks,
+                                totalChunks,
+                                uploadedBytes,
+                                totalBytes: file.size,
+                                speed: progressUpdate.totalSpeedFormatted,
+                                speedBytes: progressUpdate.totalSpeed,
+                                activeChunks: progressUpdate.activeChunks,
+                                chunkDetails: progressUpdate.chunkDetails
+                            });
                         }
                     }
                 );
@@ -257,23 +281,57 @@ class ChunkedUploadManagerAdvanced {
     /**
      * Upload chunks in parallel with concurrency control
      */
-    async uploadChunksParallel(chunks, uploadId, totalChunks, onChunkComplete) {
+    async uploadChunksParallel(chunks, uploadId, totalChunks, onChunkComplete, onProgressUpdate) {
         const activeUploads = new Set();
         const results = [];
         let chunkIndex = 0;
+
+        // Track per-chunk progress for accurate speed calculation
+        const chunkProgressMap = new Map();
+
+        const onChunkProgress = (progressData) => {
+            // Store current chunk progress
+            chunkProgressMap.set(progressData.chunkIndex, progressData);
+
+            // Calculate aggregate upload speed from all active chunks
+            let totalSpeed = 0;
+            chunkProgressMap.forEach((progress) => {
+                if (progress.speed > 0) {
+                    totalSpeed += progress.speed;
+                }
+            });
+
+            // Notify parent with aggregated speed
+            if (onProgressUpdate) {
+                onProgressUpdate({
+                    activeChunks: chunkProgressMap.size,
+                    totalSpeed,
+                    totalSpeedFormatted: this.formatSpeed(totalSpeed),
+                    chunkDetails: Array.from(chunkProgressMap.values())
+                });
+            }
+        };
 
         const uploadNext = async () => {
             if (chunkIndex >= chunks.length) return;
 
             const chunk = chunks[chunkIndex++];
-            const uploadPromise = this.uploadChunkWithRetry(chunk, uploadId, totalChunks)
+            const uploadPromise = this.uploadChunkWithRetry(
+                chunk,
+                uploadId,
+                totalChunks,
+                onChunkProgress
+            )
                 .then(result => {
                     results.push(result);
+                    // Remove from progress tracking when complete
+                    chunkProgressMap.delete(chunk.index);
                     onChunkComplete(chunk);
                     activeUploads.delete(uploadPromise);
                 })
                 .catch(error => {
                     console.error(`❌ Chunk ${chunk.index} failed permanently:`, error.message);
+                    chunkProgressMap.delete(chunk.index);
                     activeUploads.delete(uploadPromise);
                     throw error;
                 });
@@ -299,8 +357,9 @@ class ChunkedUploadManagerAdvanced {
 
     /**
      * Upload single chunk with retry logic (advanced)
+     * Uses XMLHttpRequest for accurate progress tracking
      */
-    async uploadChunkWithRetry(chunk, uploadId, totalChunks) {
+    async uploadChunkWithRetry(chunk, uploadId, totalChunks, onChunkProgress) {
         let lastError;
 
         for (let attempt = 0; attempt < this.retryAttempts; attempt++) {
@@ -322,14 +381,17 @@ class ChunkedUploadManagerAdvanced {
                     formData.append('compressed', 'true');
                 }
 
-                // Upload chunk
-                const response = await api.post('/upload/chunk', formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
-                    timeout: 120000 // 120 second timeout
-                });
+                // Upload chunk using XMLHttpRequest for accurate progress tracking
+                const response = await this.uploadChunkWithXHR(
+                    formData,
+                    chunk.index,
+                    totalChunks,
+                    compressed,
+                    onChunkProgress
+                );
 
                 console.log(`  ✓ Chunk ${chunk.index + 1}/${totalChunks} uploaded${compressed ? ' (compressed)' : ''}`);
-                return response.data;
+                return response;
 
             } catch (error) {
                 lastError = error;
@@ -344,6 +406,117 @@ class ChunkedUploadManagerAdvanced {
         }
 
         throw new Error(`Chunk ${chunk.index} failed after ${this.retryAttempts} attempts: ${lastError.message}`);
+    }
+
+    /**
+     * Upload chunk using XMLHttpRequest with progress tracking
+     * Returns a promise that resolves with the server response
+     */
+    async uploadChunkWithXHR(formData, chunkIndex, totalChunks, compressed, onChunkProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            let uploadStartTime = Date.now();
+            let lastLoadedBytes = 0;
+            let lastUpdateTime = uploadStartTime;
+
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const now = Date.now();
+                    const timeDelta = (now - lastUpdateTime) / 1000; // seconds
+                    const bytesDelta = event.loaded - lastLoadedBytes;
+
+                    // Calculate instantaneous upload speed for this chunk
+                    let chunkSpeed = 0;
+                    if (timeDelta > 0 && bytesDelta > 0) {
+                        chunkSpeed = bytesDelta / timeDelta; // bytes per second
+                    }
+
+                    const chunkProgress = {
+                        chunkIndex,
+                        loaded: event.loaded,
+                        total: event.total,
+                        percentage: Math.round((event.loaded / event.total) * 100),
+                        speed: chunkSpeed,
+                        speedFormatted: this.formatSpeed(chunkSpeed)
+                    };
+
+                    if (onChunkProgress) {
+                        onChunkProgress(chunkProgress);
+                    }
+
+                    lastLoadedBytes = event.loaded;
+                    lastUpdateTime = now;
+                }
+            });
+
+            // Handle successful response
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        resolve(response);
+                    } catch (parseError) {
+                        reject(new Error('Failed to parse server response'));
+                    }
+                } else {
+                    try {
+                        const errorResponse = JSON.parse(xhr.responseText);
+                        reject(new Error(errorResponse.error || `Upload failed with status ${xhr.status}`));
+                    } catch {
+                        reject(new Error(`Upload failed with status ${xhr.status}`));
+                    }
+                }
+            });
+
+            // Handle network errors
+            xhr.addEventListener('error', () => {
+                reject(new Error('Network error during chunk upload'));
+            });
+
+            // Handle timeout
+            xhr.addEventListener('timeout', () => {
+                reject(new Error('Upload timeout'));
+            });
+
+            // Handle abort
+            xhr.addEventListener('abort', () => {
+                reject(new Error('Upload aborted'));
+            });
+
+            // Get auth token from localStorage or session
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+
+            // Get base URL from axios instance
+            const baseURL = api.defaults?.baseURL || '/api';
+
+            // Configure request
+            xhr.open('POST', `${baseURL}/upload/chunk`, true);
+            xhr.timeout = 120000; // 120 second timeout
+
+            if (token) {
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+            }
+
+            // Send request
+            xhr.send(formData);
+        });
+    }
+
+    /**
+     * Format bytes per second to human-readable speed
+     */
+    formatSpeed(bytesPerSecond) {
+        if (!bytesPerSecond || bytesPerSecond <= 0) {
+            return '0 B/s';
+        }
+
+        const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+        const k = 1024;
+        const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+        const value = (bytesPerSecond / Math.pow(k, i)).toFixed(2);
+
+        return `${value} ${units[i]}`;
     }
 
     /**

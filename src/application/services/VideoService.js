@@ -17,7 +17,7 @@ class VideoService {
         this.uploadVideoUseCase = new UploadVideoUseCase(videoRepository, storageRepository, thumbnailGenerator, channelRepository);
         this.getVideoUseCase = new GetVideoUseCase(videoRepository);
         this.listVideosUseCase = new ListVideosUseCase(videoRepository);
-        this.deleteVideoUseCase = new DeleteVideoUseCase(videoRepository, storageRepository, channelRepository);
+        this.deleteVideoUseCase = new DeleteVideoUseCase(videoRepository, storageRepository, channelRepository, videoQualityRepository);
         this.updateVideoMetadataUseCase = new UpdateVideoMetadataUseCase(videoRepository);
         this.updateVideoThumbnailUseCase = new UpdateVideoThumbnailUseCase(videoRepository, storageRepository);
         this.incrementVideoViewsUseCase = new IncrementVideoViewsUseCase(videoRepository);

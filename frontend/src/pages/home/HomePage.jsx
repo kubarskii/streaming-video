@@ -55,7 +55,8 @@ export const HomePage = () => {
         setError(null);
         setHasMore(true);
         fetchVideos(0, searchQuery, signal);
-    }, [searchQuery, signal, fetchVideos]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchQuery]); // Only re-fetch when searchQuery changes, not on every signal change
 
     const fetchMoreVideos = () => {
         if (!loading) {

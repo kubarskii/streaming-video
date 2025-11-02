@@ -6,6 +6,7 @@ export const playlistsAPI = {
         const queryParams = new URLSearchParams();
         if (params.userId) queryParams.append('userId', params.userId);
         if (params.isPublic !== undefined) queryParams.append('isPublic', params.isPublic);
+        if (params.includeVideos !== undefined) queryParams.append('includeVideos', params.includeVideos);
         if (params.limit) queryParams.append('limit', params.limit);
         if (params.offset) queryParams.append('offset', params.offset);
 

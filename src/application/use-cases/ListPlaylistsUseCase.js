@@ -19,6 +19,7 @@ class ListPlaylistsUseCase {
      * @param {boolean} [input.isPublic]
      * @param {string} [input.search]
      * @param {string} [input.requestingUserId]
+     * @param {boolean} [input.includeVideos]
      */
     async execute(input = {}) {
         const {
@@ -27,7 +28,8 @@ class ListPlaylistsUseCase {
             userId,
             isPublic,
             search,
-            requestingUserId
+            requestingUserId,
+            includeVideos
         } = input;
 
         const filters = { userId, search };
@@ -37,6 +39,10 @@ class ListPlaylistsUseCase {
         } else if (!requestingUserId || requestingUserId !== userId) {
             // Default to public playlists when requesting someone else's playlists
             filters.isPublic = true;
+        }
+
+        if (includeVideos !== undefined) {
+            filters.includeVideos = Boolean(includeVideos);
         }
 
         const result = await this.playlistRepository.listPlaylists(filters, { limit, offset });

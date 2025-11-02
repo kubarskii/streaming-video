@@ -286,26 +286,23 @@ export const VideoPage = () => {
                 // Priority 2: Try to find a playlist that contains this video
                 let playlistData = null;
 
-                // Try to get user's playlists and find one containing this video
+                // Try to get user's playlists (with videos) and find one containing this video
                 if (video.userId) {
                     try {
-                        const playlistsResponse = await playlistsAPI.getPlaylists({ userId: video.userId }, signal);
+                        // Fetch playlists with videos in a single request (no N+1 queries!)
+                        const playlistsResponse = await playlistsAPI.getPlaylists({
+                            userId: video.userId,
+                            includeVideos: true
+                        }, signal);
                         const playlists = playlistsResponse.playlists || [];
 
-                        // Find the first playlist that contains this video
-                        for (const pl of playlists) {
-                            try {
-                                const response = await playlistsAPI.getPlaylist(pl.id, signal);
-                                // Backend returns playlist directly (not wrapped), but handle both cases
-                                const fullPlaylist = response.playlist || response;
-                                if (fullPlaylist.videos?.some(v => String(v.video?.id || v.videoId) === String(video.id))) {
-                                    playlistData = fullPlaylist;
-                                    setCurrentPlaylistId(pl.id);
-                                    break;
-                                }
-                            } catch (err) {
-                                // Continue searching
-                            }
+                        // Find the first playlist that contains this video (all in memory now)
+                        playlistData = playlists.find(playlist =>
+                            playlist.videos?.some(v => String(v.video?.id || v.videoId) === String(video.id))
+                        );
+
+                        if (playlistData) {
+                            setCurrentPlaylistId(playlistData.id);
                         }
                     } catch (err) {
                         // If we can't load playlists, fall back to default behavior
