@@ -41,6 +41,16 @@ class VideoTranscoder {
                 height: 1080,
                 bitrate: '5000k',
                 audioBitrate: '192k'
+            },
+            '1440p': {
+                height: 1440,
+                bitrate: '8000k',
+                audioBitrate: '192k'
+            },
+            '2160p': {
+                height: 2160,
+                bitrate: '14000k',
+                audioBitrate: '256k'
             }
         };
     }
@@ -80,13 +90,11 @@ class VideoTranscoder {
     determineQualitiesToGenerate(sourceHeight) {
         const qualities = [];
 
-        // Only generate qualities that are smaller than source (not equal)
-        // We save the original separately, so no need to transcode to same quality
-        if (sourceHeight > 240) qualities.push('240p');
-        if (sourceHeight > 360) qualities.push('360p');
-        if (sourceHeight > 480) qualities.push('480p');
-        if (sourceHeight > 720) qualities.push('720p');
-        if (sourceHeight > 1080) qualities.push('1080p');
+        for (const [quality, preset] of Object.entries(this.qualityPresets)) {
+            if (sourceHeight >= preset.height) {
+                qualities.push(quality);
+            }
+        }
 
         return qualities;
     }
