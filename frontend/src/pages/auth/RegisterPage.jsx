@@ -53,7 +53,7 @@ export const RegisterPage = () => {
                     </div>
 
                     <h1 className="auth-title">Create your account</h1>
-                    <p className="auth-subtitle">Join VideoTube to start uploading and watching videos</p>
+                    <p className="auth-subtitle">Join ВидеоТрубка to start uploading and watching videos</p>
 
                     <form onSubmit={handleSubmit} className="auth-form">
                         {error && (

@@ -38,7 +38,7 @@ export const LoginPage = () => {
                         </svg>
                     </div>
 
-                    <h1 className="auth-title">Sign in to VideoTube</h1>
+                    <h1 className="auth-title">Sign in to ВидеоТрубка</h1>
                     <p className="auth-subtitle">Continue watching and uploading videos</p>
 
                     <form onSubmit={handleSubmit} className="auth-form">

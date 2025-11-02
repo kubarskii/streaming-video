@@ -7,7 +7,7 @@ export const Logo = () => {
                 <circle cx="24" cy="24" r="22" fill="#ff0000" />
                 <path d="M18 15l16 9-16 9V15z" fill="white" />
             </svg>
-            <span className="header-logo-text">VideoTube</span>
+            <span className="header-logo-text">ВидеоТрубка</span>
         </Link>
     );
 };
