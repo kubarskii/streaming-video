@@ -13,6 +13,7 @@ const {
     CompleteMultipartUploadCommand,
     AbortMultipartUploadCommand
 } = require('@aws-sdk/client-s3');
+const { NodeHttpHandler } = require('@smithy/node-http-handler');
 const fs = require('fs');
 const path = require('path');
 const IStorageRepository = require('../../domain/repositories/IStorageRepository');
@@ -34,15 +35,22 @@ class B2StorageRepository extends IStorageRepository {
             // Optimize for parallel uploads and video streaming
             maxAttempts: 5, // Increased from 3 to 5
             retryMode: 'adaptive', // Use adaptive retry mode for better handling
-            requestHandler: {
-                connectionTimeout: 60000,  // 60s connection timeout (was 10s)
-                requestTimeout: 300000,    // 5min request timeout (was 2min) for large video files
-                socketTimeout: 60000,      // 60s socket timeout
-                // Keep-alive settings for better connection reuse
-                keepAlive: true,
-                keepAliveMsecs: 30000,     // 30s keep-alive
-                maxSockets: 50,            // Allow up to 50 concurrent connections
-            },
+            requestHandler: new NodeHttpHandler({
+                connectionTimeout: 120000, // Allow up to 2 minutes to establish the connection
+                requestTimeout: 300000,     // 5min request timeout for large video files
+                socketTimeout: 300000,      // Keep sockets open while streaming
+                socketAcquisitionWarningTimeout: 120000,
+                httpAgent: {
+                    keepAlive: true,
+                    keepAliveMsecs: 30000,
+                    maxSockets: 50,
+                },
+                httpsAgent: {
+                    keepAlive: true,
+                    keepAliveMsecs: 30000,
+                    maxSockets: 50,
+                },
+            }),
         });
     }
 
