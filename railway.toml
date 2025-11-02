@@ -5,15 +5,11 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "mkdir -p /app/data && chmod 777 /app/data && ls -la /app/data && npx prisma db push --skip-generate && npm start"
+startCommand = "npx prisma migrate deploy && npm start"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 # Health check configuration
 healthcheckPath = "/api/videos"
 healthcheckTimeout = 100
-
-# Volume configuration for SQLite database
-[[volumes]]
-mountPath = "/app/data"
 
