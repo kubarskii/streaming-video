@@ -270,6 +270,45 @@ class VideoTranscoder {
                 .on('error', (err) => reject(err));
         });
     }
+
+    /**
+     * Convert a video file to WebM format using VP9 video and Vorbis audio codecs
+     * @param {string} inputPath - Source video path
+     * @param {string} outputPath - Output WebM path
+     * @param {{crf?: number, audioBitrate?: string}} [options]
+     * @returns {Promise<string>} Resolves with output path when conversion completes
+     */
+    async convertToWebm(inputPath, outputPath, options = {}) {
+        const {
+            crf = 32,
+            audioBitrate = '128k'
+        } = options;
+
+        return new Promise((resolve, reject) => {
+            const command = ffmpeg(inputPath)
+                .outputOptions([
+                    '-c:v libvpx-vp9',
+                    '-b:v 0',
+                    `-crf ${crf}`,
+                    '-pix_fmt yuv420p',
+                    '-row-mt 1',
+                    '-tile-columns 1',
+                    '-frame-parallel 1',
+                    '-auto-alt-ref 1',
+                    '-lag-in-frames 25',
+                    '-c:a libvorbis',
+                    `-b:a ${audioBitrate}`,
+                    '-deadline good'
+                ])
+                .format('webm')
+                .on('end', () => resolve(outputPath))
+                .on('error', (err) => {
+                    reject(new Error(`WebM conversion failed: ${err.message}`));
+                });
+
+            command.save(outputPath);
+        });
+    }
 }
 
 module.exports = VideoTranscoder;

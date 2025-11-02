@@ -14,7 +14,7 @@ const TranscodeVideoUseCase = require('../use-cases/TranscodeVideoUseCase');
 
 class VideoService {
     constructor(videoRepository, storageRepository, thumbnailGenerator, channelRepository, videoQualityRepository = null, videoTranscoder = null) {
-        this.uploadVideoUseCase = new UploadVideoUseCase(videoRepository, storageRepository, thumbnailGenerator, channelRepository);
+        this.uploadVideoUseCase = new UploadVideoUseCase(videoRepository, storageRepository, thumbnailGenerator, channelRepository, videoTranscoder);
         this.getVideoUseCase = new GetVideoUseCase(videoRepository);
         this.listVideosUseCase = new ListVideosUseCase(videoRepository);
         this.deleteVideoUseCase = new DeleteVideoUseCase(videoRepository, storageRepository, channelRepository, videoQualityRepository);
