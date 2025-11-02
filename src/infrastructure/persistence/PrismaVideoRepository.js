@@ -124,8 +124,10 @@ class PrismaVideoRepository extends IVideoRepository {
         const data = {
             title: video.title,
             description: video.description,
+            storageKey: video.storageKey,
             storageUrl: video.storageUrl,
             cdnUrl: video.cdnUrl,
+            mimeType: video.mimeType,
             durationMs: video.durationMs,
             width: video.width,
             height: video.height,
@@ -133,6 +135,10 @@ class PrismaVideoRepository extends IVideoRepository {
             updatedAt: video.updatedAt,
             thumbnailUrl: video.thumbnailUrl,
         };
+
+        if (video.sizeBytes !== undefined && video.sizeBytes !== null) {
+            data.sizeBytes = BigInt(video.sizeBytes);
+        }
 
         const updated = await this.prisma.video.update({
             where: { id: video.id },

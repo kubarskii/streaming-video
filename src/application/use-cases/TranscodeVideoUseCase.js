@@ -34,6 +34,7 @@ class TranscodeVideoUseCase {
             throw new Error('Video not found');
         }
 
+
         // Delete existing quality variants if any (to avoid unique constraint errors on re-transcode)
         const existingCount = await this.videoQualityRepository.deleteByVideoId(videoId);
         if (existingCount > 0) {
@@ -181,38 +182,86 @@ class TranscodeVideoUseCase {
                 }
             }
 
-            // Save the original video as a quality variant with its actual resolution
-            const originalHeight = sourceMetadata.height;
-            let originalQualityLabel = `${originalHeight}p`;
+            const sourceFileExt = path.extname(video.storageKey || '').toLowerCase();
+            const sourceIsMp4 = (video.mimeType || '').toLowerCase() === 'video/mp4'
+                || sourceFileExt === '.mp4';
 
-            // If original matches a standard quality, use that label
-            if (originalHeight === 240) originalQualityLabel = '240p';
-            else if (originalHeight === 360) originalQualityLabel = '360p';
-            else if (originalHeight === 480) originalQualityLabel = '480p';
-            else if (originalHeight === 720) originalQualityLabel = '720p';
-            else if (originalHeight === 1080) originalQualityLabel = '1080p';
-            else if (originalHeight === 2160) originalQualityLabel = '2160p'; // 4K
+            if (sourceIsMp4) {
+                // Save the original video as a quality variant with its actual resolution
+                const originalHeight = sourceMetadata.height;
+                let originalQualityLabel = `${originalHeight}p`;
 
-            const originalQuality = {
-                id: uuidv4(),
-                videoId: videoId,
-                quality: originalQualityLabel,
-                storageKey: video.storageKey,
-                storageUrl: video.storageUrl,
-                cdnUrl: video.cdnUrl,
-                width: sourceMetadata.width,
-                height: sourceMetadata.height,
-                sizeBytes: video.sizeBytes,
-                bitrate: sourceMetadata.bitrate,
-                status: 'ready',
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
+                // If original matches a standard quality, use that label
+                if (originalHeight === 240) originalQualityLabel = '240p';
+                else if (originalHeight === 360) originalQualityLabel = '360p';
+                else if (originalHeight === 480) originalQualityLabel = '480p';
+                else if (originalHeight === 720) originalQualityLabel = '720p';
+                else if (originalHeight === 1080) originalQualityLabel = '1080p';
+                else if (originalHeight === 1440) originalQualityLabel = '1440p';
+                else if (originalHeight === 2160) originalQualityLabel = '2160p'; // 4K
 
-            const savedOriginal = await this.videoQualityRepository.save(originalQuality);
-            qualityVariants.push(savedOriginal);
+                const originalQuality = {
+                    id: uuidv4(),
+                    videoId: videoId,
+                    quality: originalQualityLabel,
+                    storageKey: video.storageKey,
+                    storageUrl: video.storageUrl,
+                    cdnUrl: video.cdnUrl,
+                    width: sourceMetadata.width,
+                    height: sourceMetadata.height,
+                    sizeBytes: video.sizeBytes,
+                    bitrate: sourceMetadata.bitrate,
+                    status: 'ready',
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
 
-            console.log(`✅ Original quality saved as: ${originalQualityLabel} (${sourceMetadata.width}x${sourceMetadata.height})`);
+                const savedOriginal = await this.videoQualityRepository.save(originalQuality);
+                qualityVariants.push(savedOriginal);
+
+                console.log(`✅ Original quality saved as: ${originalQualityLabel} (${sourceMetadata.width}x${sourceMetadata.height})`);
+            } else {
+                console.log('ℹ️  Skipping original non-MP4 file to ensure cross-platform compatibility');
+            }
+
+            // Prefer MP4 variant for primary playback
+            const mp4Variants = qualityVariants
+                .filter(variant => path.extname(variant.storageKey).toLowerCase() === '.mp4')
+                .sort((a, b) => a.height - b.height);
+
+            const highestMp4Variant = mp4Variants[mp4Variants.length - 1];
+
+            if (highestMp4Variant) {
+                const shouldReplacePrimary = !sourceIsMp4;
+
+                if (shouldReplacePrimary) {
+                    console.log(`🎯 Updating primary playback source to MP4 variant: ${highestMp4Variant.quality}`);
+
+                    const previousStorageKey = video.storageKey;
+
+                    video.storageKey = highestMp4Variant.storageKey;
+                    video.storageUrl = highestMp4Variant.storageUrl || highestMp4Variant.cdnUrl || video.storageUrl;
+                    video.cdnUrl = highestMp4Variant.cdnUrl || null;
+                    video.mimeType = 'video/mp4';
+                    video.width = highestMp4Variant.width;
+                    video.height = highestMp4Variant.height;
+                    if (typeof highestMp4Variant.sizeBytes === 'number') {
+                        video.sizeBytes = highestMp4Variant.sizeBytes;
+                    }
+
+                    // Best-effort cleanup of the original incompatible file
+                    if (previousStorageKey && previousStorageKey !== highestMp4Variant.storageKey) {
+                        try {
+                            await this.storageRepository.delete(previousStorageKey);
+                            console.log(`🗑️  Removed original source file: ${previousStorageKey}`);
+                        } catch (cleanupError) {
+                            console.warn(`⚠️  Failed to delete original file ${previousStorageKey}:`, cleanupError.message);
+                        }
+                    }
+                }
+            } else {
+                console.warn('⚠️  No MP4 variants generated; original file retained for playback');
+            }
 
             // Clean up temp directory
             if (fs.existsSync(tempDir)) {
@@ -226,6 +275,7 @@ class TranscodeVideoUseCase {
 
             // Update video status back to ready
             video.status = 'ready';
+            video.updatedAt = new Date();
             await this.videoRepository.update(video);
 
             console.log(`🎉 Transcoding complete for video: ${videoId}`);
