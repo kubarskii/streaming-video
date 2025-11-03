@@ -58,7 +58,7 @@ class VideoTranscoder {
     /**
      * Get video metadata using ffprobe
      * @param {string} inputPath - Path to video file
-     * @returns {Promise<{width: number, height: number, duration: number, bitrate: number}>}
+     * @returns {Promise<{width: number, height: number, duration: number, bitrate: number, hasAudio: boolean}>}
      */
     async getVideoMetadata(inputPath) {
         return new Promise((resolve, reject) => {
@@ -72,11 +72,14 @@ class VideoTranscoder {
                     return reject(new Error('No video stream found'));
                 }
 
+                const hasAudio = metadata.streams.some(s => s.codec_type === 'audio');
+
                 resolve({
                     width: videoStream.width,
                     height: videoStream.height,
                     duration: metadata.format.duration,
-                    bitrate: metadata.format.bit_rate ? parseInt(metadata.format.bit_rate) : null
+                    bitrate: metadata.format.bit_rate ? parseInt(metadata.format.bit_rate) : null,
+                    hasAudio
                 });
             });
         });
@@ -125,10 +128,11 @@ class VideoTranscoder {
      * @param {string} quality - Quality level (e.g., "720p")
      * @param {number} sourceWidth - Source video width
      * @param {number} sourceHeight - Source video height
+     * @param {boolean} hasAudio - Whether the source video contains an audio stream
      * @param {Function} onProgress - Progress callback
      * @returns {Promise<{width: number, height: number, sizeBytes: number, bitrate: string}>}
      */
-    async transcodeToQuality(inputPath, outputPath, quality, sourceWidth, sourceHeight, onProgress = null) {
+    async transcodeToQuality(inputPath, outputPath, quality, sourceWidth, sourceHeight, hasAudio = true, onProgress = null) {
         const preset = this.qualityPresets[quality];
 
         if (!preset) {
@@ -142,9 +146,7 @@ class VideoTranscoder {
             const command = ffmpeg(inputPath)
                 .output(outputPath)
                 .videoCodec('libx264')
-                .audioCodec('aac')
                 .videoBitrate(preset.bitrate)
-                .audioBitrate(preset.audioBitrate)
                 // Use scale filter to preserve aspect ratio (width=-2 ensures divisible by 2)
                 .videoFilters([
                     `scale=-2:${preset.height}`
@@ -156,6 +158,14 @@ class VideoTranscoder {
                     '-profile:v main',
                     '-crf 23' // Constant Rate Factor for quality
                 ]);
+
+            if (hasAudio) {
+                command
+                    .audioCodec('aac')
+                    .audioBitrate(preset.audioBitrate);
+            } else {
+                command.noAudio();
+            }
 
             if (onProgress) {
                 command.on('progress', (progress) => {
@@ -203,7 +213,7 @@ class VideoTranscoder {
 
         // Get source video metadata
         const metadata = await this.getVideoMetadata(inputPath);
-        console.log(`Source video: ${metadata.width}x${metadata.height}`);
+        console.log(`Source video: ${metadata.width}x${metadata.height}${metadata.hasAudio ? '' : ' (no audio stream detected)'}`);
 
         // Determine which qualities to generate
         const qualitiesToGenerate = this.determineQualitiesToGenerate(metadata.height);
@@ -229,6 +239,7 @@ class VideoTranscoder {
                     quality,
                     metadata.width,
                     metadata.height,
+                    metadata.hasAudio,
                     onProgress ? (progress) => onProgress(quality, progress) : null
                 );
 
