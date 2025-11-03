@@ -128,7 +128,18 @@ class ConversionWorker {
             // Download original MOV file from storage
             console.log(`📥 Downloading original file from storage...`);
             const originalPath = path.join(tempDir, fileName);
-            await this.storageRepository.downloadFile(storageKey, originalPath);
+
+            // Use getObjectStream to download the file
+            const { stream } = await this.storageRepository.getObjectStream(storageKey);
+            const writeStream = fs.createWriteStream(originalPath);
+
+            // Pipe the stream to file
+            await new Promise((resolve, reject) => {
+                stream.pipe(writeStream);
+                stream.on('error', reject);
+                writeStream.on('finish', resolve);
+                writeStream.on('error', reject);
+            });
 
             await job.updateProgress(40);
 
@@ -148,11 +159,14 @@ class ConversionWorker {
             console.log(`📤 Uploading WebM file to storage...`);
             const webmStorageKey = storageKey.replace(/\.(mov|MOV)$/, '.webm');
             const webmFileSize = fs.statSync(webmPath).size;
-            
-            const uploadResult = await this.storageRepository.uploadFile(
+
+            const uploadResult = await this.storageRepository.upload(
                 webmPath,
                 webmStorageKey,
-                'video/webm'
+                {
+                    contentType: 'video/webm',
+                    originalName: webmFileName,
+                }
             );
 
             await job.updateProgress(85);
