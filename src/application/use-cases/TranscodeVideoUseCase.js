@@ -37,7 +37,6 @@ class TranscodeVideoUseCase {
 
         console.log(`✅ Found video: ${video.title} (${video.fileName})`);
 
-
         // Delete existing quality variants if any (to avoid unique constraint errors on re-transcode)
         const existingCount = await this.videoQualityRepository.deleteByVideoId(videoId);
         if (existingCount > 0) {
@@ -48,9 +47,12 @@ class TranscodeVideoUseCase {
         video.status = 'processing';
         await this.videoRepository.update(video);
 
+        let tempDir = null;
+        let sourceVideoPath = null;
+
         try {
             // Download or get local path to source video
-            const sourceVideoPath = await this.getSourceVideoPath(video);
+            sourceVideoPath = await this.getSourceVideoPath(video);
 
             // Extract source video metadata if not already available
             let sourceMetadata;
@@ -72,7 +74,7 @@ class TranscodeVideoUseCase {
             }
 
             // Create temp directory for transcoded videos
-            const tempDir = path.join(process.cwd(), 'videos', 'temp', `transcode_${videoId}`);
+            tempDir = path.join(process.cwd(), 'videos', 'temp', `transcode_${videoId}`);
             if (!fs.existsSync(tempDir)) {
                 fs.mkdirSync(tempDir, { recursive: true });
             }
@@ -253,16 +255,6 @@ class TranscodeVideoUseCase {
                 console.warn('⚠️  No MP4 variants generated; original file retained for playback');
             }
 
-            // Clean up temp directory
-            if (fs.existsSync(tempDir)) {
-                fs.rmSync(tempDir, { recursive: true, force: true });
-            }
-
-            // Clean up source video if it was downloaded
-            if (sourceVideoPath && sourceVideoPath.includes('temp') && fs.existsSync(sourceVideoPath)) {
-                fs.unlinkSync(sourceVideoPath);
-            }
-
             // Update video status back to ready
             video.status = 'ready';
             video.updatedAt = new Date();
@@ -280,6 +272,19 @@ class TranscodeVideoUseCase {
             await this.videoRepository.update(video);
 
             throw error;
+        } finally {
+            // ALWAYS clean up temp files, even if errors occurred
+            try {
+                if (tempDir && fs.existsSync(tempDir)) {
+                    fs.rmSync(tempDir, { recursive: true, force: true });
+                }
+                // Clean up source video if it was downloaded
+                if (sourceVideoPath && sourceVideoPath.includes('temp') && fs.existsSync(sourceVideoPath)) {
+                    fs.unlinkSync(sourceVideoPath);
+                }
+            } catch (cleanupError) {
+                console.warn('⚠️  Failed to cleanup temp files:', cleanupError.message);
+            }
         }
     }
 

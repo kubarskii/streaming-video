@@ -28,6 +28,9 @@
     "db:studio": "prisma studio",
     "setup": "npm install && npm run db:generate && npm run migrate",
     "queue:mov-convert": "node scripts/queue-mov-conversions.js",
+    "queue:check": "node scripts/check-jobs.js",
+    "queue:retry": "node scripts/retry-failed-jobs.js",
+    "queue:retry:all": "node scripts/retry-failed-jobs.js all",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "type-check": "tsc"

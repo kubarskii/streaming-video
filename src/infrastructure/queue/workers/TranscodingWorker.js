@@ -40,10 +40,15 @@ class TranscodingWorker {
                 return await this.processJob(job);
             },
             {
-                connection: this.connection,
+                connection: /** @type {any} */ (this.connection),
                 concurrency: 1, // Process one video at a time (CPU intensive)
                 removeOnComplete: { count: 100 },
                 removeOnFail: { count: 50 },
+                // Stalled job handling (jobs that were active when worker crashed)
+                lockDuration: 60000, // 60 seconds - renew lock every minute
+                lockRenewTime: 30000, // Renew lock every 30 seconds
+                stalledInterval: 30000, // Check for stalled jobs every 30 seconds
+                maxStalledCount: 2, // Retry stalled jobs twice before failing
             }
         );
 
@@ -86,6 +91,14 @@ class TranscodingWorker {
 
         this.worker.on('active', (job) => {
             // Processing job silently
+        });
+
+        this.worker.on('stalled', (jobId) => {
+            console.warn(`⚠️  Job stalled and will be reprocessed: ${jobId}`);
+        });
+
+        this.worker.on('resumed', () => {
+            console.log('🔄 Worker resumed - picking up pending jobs');
         });
 
         console.log(`✅ Transcoding worker started`);

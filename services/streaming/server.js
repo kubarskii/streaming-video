@@ -8,6 +8,7 @@ const http = require('http');
 // Infrastructure
 const DatabaseConfig = require('../../src/infrastructure/config/DatabaseConfig');
 const StorageConfig = require('../../src/infrastructure/config/StorageConfig');
+const RedisCache = require('../../src/infrastructure/cache/RedisCache');
 const PrismaVideoRepository = require('../../src/infrastructure/persistence/PrismaVideoRepository');
 const PrismaVideoQualityRepository = require('../../src/infrastructure/persistence/PrismaVideoQualityRepository');
 const PrismaVideoLikeRepository = require('../../src/infrastructure/persistence/PrismaVideoLikeRepository');
@@ -68,6 +69,10 @@ async function initializeContainer() {
     const storageRepository = StorageConfig.createStorageRepository();
     const jwtService = new JWTService();
 
+    // Initialize Redis cache for distributed view tracking
+    const redisCache = new RedisCache();
+    await redisCache.connect();
+
     // Application Services
     // @ts-ignore - videoQualityRepository is optional but we're providing it
     const videoService = new VideoService(
@@ -98,7 +103,8 @@ async function initializeContainer() {
         videoService,
         storageRepository,
         incrementVideoViewsUseCase,
-        videoQualityRepository
+        videoQualityRepository,
+        redisCache // For distributed view tracking across multiple instances
     );
     const videoController = new VideoController(videoService);
     const videoLikeController = new VideoLikeController(
@@ -131,13 +137,15 @@ async function initializeContainer() {
     console.log('✅ Dependencies initialized');
     console.log(`📦 Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
     console.log(`📦 Storage: ${process.env.STORAGE_MODE || 'local'}`);
+    console.log(`📦 Stream Mode: ${process.env.STREAM_MODE || 'redirect'} ${process.env.STREAM_MODE === 'redirect' ? '(CDN offload - unlimited scale)' : '(Server proxy)'}`);
+    console.log(`📦 Redis: ${process.env.REDIS_URL ? 'Connected' : 'Not configured'}`);
     console.log('');
 
-    return { router, jwtService, prismaClient };
+    return { router, jwtService, prismaClient, streamController, redisCache };
 }
 
 async function main() {
-    const { router, jwtService, prismaClient } = await initializeContainer();
+    const { router, jwtService, prismaClient, streamController, redisCache } = await initializeContainer();
 
     const server = http.createServer(async (req, res) => {
         // Apply CORS
@@ -189,6 +197,18 @@ async function main() {
         server.close(() => {
             console.log('✅ HTTP server closed');
         });
+
+        // Cleanup stream controller resources
+        if (streamController && streamController.cleanup) {
+            streamController.cleanup();
+            console.log('✅ Stream controller cleaned up');
+        }
+
+        // Disconnect Redis cache
+        if (redisCache) {
+            await redisCache.disconnect();
+        }
+
         await prismaClient.$disconnect();
         console.log('✅ Database disconnected');
         process.exit(0);

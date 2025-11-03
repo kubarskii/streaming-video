@@ -1,4 +1,4 @@
-const { Worker, Queue } = require('bullmq');
+const { Worker, Queue, Job } = require('bullmq');
 const path = require('path');
 const fs = require('fs');
 const QueueConfig = require('../../config/QueueConfig');
@@ -27,7 +27,7 @@ class ThumbnailWorker {
         const queueName = QueueConfig.getQueueNames().THUMBNAIL_GENERATION;
 
         // Create queue instance for re-enqueuing failed jobs
-        this.queue = new Queue(queueName, { connection: this.connection });
+        this.queue = new Queue(queueName, { connection: /** @type {any} */ (this.connection) });
 
         this.worker = new Worker(
             queueName,
@@ -35,10 +35,15 @@ class ThumbnailWorker {
                 return await this.processJob(job);
             },
             {
-                connection: this.connection,
+                connection: /** @type {any} */ (this.connection),
                 concurrency: 2, // Can process multiple thumbnails concurrently
                 removeOnComplete: { count: 200 },
                 removeOnFail: { count: 50 },
+                // Stalled job handling (jobs that were active when worker crashed)
+                lockDuration: 60000, // 60 seconds - renew lock every minute
+                lockRenewTime: 30000, // Renew lock every 30 seconds
+                stalledInterval: 30000, // Check for stalled jobs every 30 seconds
+                maxStalledCount: 2, // Retry stalled jobs twice before failing
             }
         );
 
@@ -83,6 +88,14 @@ class ThumbnailWorker {
             // Processing job silently
         });
 
+        this.worker.on('stalled', (jobId) => {
+            console.warn(`⚠️  Thumbnail job stalled and will be reprocessed: ${jobId}`);
+        });
+
+        this.worker.on('resumed', () => {
+            console.log('🔄 Thumbnail worker resumed - picking up pending jobs');
+        });
+
         console.log(`✅ Thumbnail worker started`);
     }
 
@@ -92,6 +105,10 @@ class ThumbnailWorker {
      */
     async processJob(job) {
         const { videoId, storageKey, videoPath } = job.data;
+
+        let localVideoPath = videoPath;
+        let shouldCleanup = false;
+        let generatedThumbnailPath = null;
 
         try {
             await job.updateProgress(10);
@@ -113,10 +130,6 @@ class ThumbnailWorker {
             }
 
             await job.updateProgress(25);
-
-            // Determine video path (local or download from storage)
-            let localVideoPath = videoPath;
-            let shouldCleanup = false;
 
             if (!localVideoPath || !fs.existsSync(localVideoPath)) {
                 // Download video from storage
@@ -141,7 +154,7 @@ class ThumbnailWorker {
                 `thumb_${videoId}.jpg`
             );
 
-            const generatedThumbnailPath = await this.thumbnailGenerator.generateFromVideo(
+            generatedThumbnailPath = await this.thumbnailGenerator.generateFromVideo(
                 localVideoPath,
                 thumbnailTempPath,
                 { size: '640x360' }
@@ -168,19 +181,6 @@ class ThumbnailWorker {
             await this.videoRepository.update(video);
 
             await job.updateProgress(90);
-
-            // Cleanup temporary files
-            try {
-                if (fs.existsSync(generatedThumbnailPath)) {
-                    fs.unlinkSync(generatedThumbnailPath);
-                }
-                if (shouldCleanup && fs.existsSync(localVideoPath)) {
-                    fs.unlinkSync(localVideoPath);
-                }
-            } catch (cleanupError) {
-                console.warn('⚠️  Failed to cleanup temp files:', cleanupError.message);
-            }
-
             await job.updateProgress(100);
 
             return {
@@ -191,6 +191,18 @@ class ThumbnailWorker {
         } catch (error) {
             console.error(`❌ Thumbnail generation failed for video ${videoId}:`, error);
             throw error; // Re-throw to mark job as failed
+        } finally {
+            // ALWAYS cleanup temporary files, even if errors occurred
+            try {
+                if (generatedThumbnailPath && fs.existsSync(generatedThumbnailPath)) {
+                    fs.unlinkSync(generatedThumbnailPath);
+                }
+                if (shouldCleanup && localVideoPath && fs.existsSync(localVideoPath)) {
+                    fs.unlinkSync(localVideoPath);
+                }
+            } catch (cleanupError) {
+                console.warn('⚠️  Failed to cleanup temp files:', cleanupError.message);
+            }
         }
     }
 

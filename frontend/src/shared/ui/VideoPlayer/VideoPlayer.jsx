@@ -4,6 +4,7 @@
  */
 import React, { useEffect, useState, useRef, useImperativeHandle, useCallback } from 'react';
 import { FaCog, FaCheck } from 'react-icons/fa';
+import { useFloating, offset, flip, shift, size, limitShift, autoUpdate } from '@floating-ui/react';
 
 // FSD Imports
 import { PLAYER_CONSTANTS, PLAYER_STATES, PLAYER_EVENTS, MIME_TYPES } from '../../../shared/config/videoPlayer.constants';
@@ -83,6 +84,56 @@ export const VideoPlayer = React.forwardRef(({
     const hasRestoredPositionRef = useRef(false);
     const pendingRestorePositionRef = useRef(null);
     const isDraggingRef = useRef(false);
+
+    // Floating UI for settings dropdown positioning
+    // Always position above the settings button, constrained to player container
+    const { refs: floatingRefs, floatingStyles } = useFloating({
+        placement: 'top',
+        strategy: 'absolute',
+        whileElementsMounted: autoUpdate,
+        middleware: [
+            offset(8),
+            // Only flip if absolutely necessary (not enough space at all)
+            flip({
+                fallbackPlacements: ['top-start', 'top-end'], // Keep above if possible
+                boundary: containerRef.current,
+                padding: 16,
+            }),
+            shift({
+                padding: 8,
+                boundary: containerRef.current,
+                limiter: limitShift(),
+            }),
+            size({
+                apply({ rects, elements }) {
+                    // Get accurate measurements using getBoundingClientRect
+                    const container = containerRef.current;
+                    const reference = elements.reference;
+
+                    if (!container || !reference) return;
+
+                    const containerRect = container.getBoundingClientRect();
+                    const referenceRect = reference.getBoundingClientRect();
+
+                    // Calculate space from button to top of container
+                    const spaceAbove = referenceRect.top - containerRect.top;
+                    // Subtract offset (8px) and safety margin (16px)
+                    const maxHeight = Math.max(Math.min(spaceAbove - 24, 400), 80);
+
+                    // Calculate available width
+                    const containerWidth = containerRect.width;
+                    const maxWidth = Math.min(containerWidth - 24, 300);
+
+                    Object.assign(elements.floating.style, {
+                        maxHeight: `${maxHeight}px`,
+                        maxWidth: `${maxWidth}px`,
+                        overflowY: 'auto',
+                        overflowX: 'hidden',
+                    });
+                },
+            }),
+        ],
+    });
 
     // State Machine
     const [playerState, sendPlayerEvent] = useStateMachine(videoPlayerFSMConfig);
@@ -872,6 +923,36 @@ export const VideoPlayer = React.forwardRef(({
         setUpNextCountdown(null);
     }, []);
 
+    // Close settings dropdown when clicking outside
+    useEffect(() => {
+        if (!showSettings) return;
+
+        const handleClickOutside = (event) => {
+            // Check if click is outside both the button and dropdown
+            const referenceEl = floatingRefs.reference.current;
+            const floatingEl = floatingRefs.floating.current;
+
+            if (
+                referenceEl &&
+                floatingEl &&
+                !referenceEl.contains(event.target) &&
+                !floatingEl.contains(event.target)
+            ) {
+                setShowSettings(false);
+                setShowPlaybackRates(false);
+                setShowQualities(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, [showSettings, floatingRefs]);
+
     // Cleanup countdown interval on unmount
     useEffect(() => {
         return () => {
@@ -1072,6 +1153,7 @@ export const VideoPlayer = React.forwardRef(({
                             {/* Settings Menu */}
                             <div className={styles.settingsMenu}>
                                 <button
+                                    ref={floatingRefs.setReference}
                                     className={styles.controlButton}
                                     onClick={() => setShowSettings(!showSettings)}
                                     type="button"
@@ -1080,7 +1162,11 @@ export const VideoPlayer = React.forwardRef(({
                                 </button>
 
                                 {showSettings && (
-                                    <div className={styles.settingsDropdown}>
+                                    <div
+                                        ref={floatingRefs.setFloating}
+                                        className={styles.settingsDropdown}
+                                        style={floatingStyles}
+                                    >
                                         {!showPlaybackRates && !showQualities && (
                                             <>
                                                 <div

@@ -13,21 +13,125 @@ class StreamController {
      * @param {*} storageRepository
      * @param {*} incrementVideoViewsUseCase
      * @param {*} [videoQualityRepository]
+     * @param {*} [redisCache] - Optional Redis cache for distributed view tracking
      */
-    constructor(videoService, storageRepository, incrementVideoViewsUseCase, videoQualityRepository = null) {
+    constructor(videoService, storageRepository, incrementVideoViewsUseCase, videoQualityRepository = null, redisCache = null) {
         this.videoService = videoService;
         this.storageRepository = storageRepository;
         this.incrementVideoViewsUseCase = incrementVideoViewsUseCase;
         this.videoQualityRepository = videoQualityRepository;
-        // Track viewed videos in this session to avoid duplicate counts
-        this.viewedVideos = new Set();
+        this.redisCache = redisCache;
+
+        // Fallback: In-memory tracking if Redis not available
+        // Only used as backup - Redis is preferred for horizontal scaling
+        this.viewedVideos = new Map();
+        this.maxViewedVideosSize = 10000;
+        this.viewExpiry = 60 * 60 * 1000; // 1 hour in milliseconds
+        this.viewExpirySeconds = 3600; // 1 hour in seconds (for Redis)
+
+        // Periodically cleanup in-memory cache (fallback only)
+        this.cleanupInterval = setInterval(() => {
+            if (!this.redisCache || !this.redisCache.isAvailable()) {
+                this.cleanupOldViews();
+            }
+        }, 5 * 60 * 1000); // Check every 5 minutes
+
+        if (this.redisCache) {
+            console.log('✅ StreamController: Using Redis for distributed view tracking');
+        } else {
+            console.log('⚠️  StreamController: Using in-memory view tracking (not suitable for multiple instances)');
+        }
+    }
+
+    /**
+     * Remove expired view records (fallback for in-memory)
+     */
+    cleanupOldViews() {
+        const now = Date.now();
+        const expiredKeys = [];
+
+        for (const [videoId, timestamp] of this.viewedVideos.entries()) {
+            if (now - timestamp > this.viewExpiry) {
+                expiredKeys.push(videoId);
+            }
+        }
+
+        expiredKeys.forEach(key => this.viewedVideos.delete(key));
+
+        if (expiredKeys.length > 0) {
+            console.log(`🧹 Cleaned up ${expiredKeys.length} expired view records`);
+        }
+
+        // If still over limit, remove oldest entries (LRU)
+        if (this.viewedVideos.size > this.maxViewedVideosSize) {
+            const entriesToRemove = this.viewedVideos.size - this.maxViewedVideosSize;
+            const sortedEntries = Array.from(this.viewedVideos.entries())
+                .sort((a, b) => a[1] - b[1]);
+
+            for (let i = 0; i < entriesToRemove; i++) {
+                this.viewedVideos.delete(sortedEntries[i][0]);
+            }
+
+            console.log(`🧹 Removed ${entriesToRemove} oldest view records (size limit)`);
+        }
+    }
+
+    /**
+     * Check if video view should be counted
+     * Uses Redis if available (distributed), falls back to in-memory
+     * @param {string} videoId 
+     * @param {string} [userId] - Optional user ID for per-user tracking
+     * @returns {Promise<boolean>}
+     */
+    async shouldCountView(videoId, userId = null) {
+        // Try Redis first (preferred for horizontal scaling)
+        if (this.redisCache && this.redisCache.isAvailable()) {
+            try {
+                return await this.redisCache.shouldCountView(videoId, userId, this.viewExpirySeconds);
+            } catch (error) {
+                console.error('Redis view check failed, falling back to in-memory:', error.message);
+                // Fall through to in-memory fallback
+            }
+        }
+
+        // Fallback: In-memory tracking (single instance only)
+        const lastViewed = this.viewedVideos.get(videoId);
+        if (!lastViewed) {
+            this.viewedVideos.set(videoId, Date.now());
+            return true;
+        }
+
+        const now = Date.now();
+        if (now - lastViewed > this.viewExpiry) {
+            this.viewedVideos.set(videoId, now);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Cleanup resources (call on shutdown)
+     */
+    cleanup() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+        this.viewedVideos.clear();
     }
 
     /**
      * Stream video file with Range support
+     * Supports two modes:
+     * - redirect: Redirect to CDN/B2 URL (scalable, recommended for production)
+     * - proxy: Stream through server (needed for private buckets/auth)
      */
     async streamVideo(req, res, fileKey) {
         try {
+            // Check stream mode from environment (redirect = unlimited scale)
+            const streamMode = process.env.STREAM_MODE || 'redirect'; // 'redirect' or 'proxy'
+
             // First, check if this is a quality variant
             let videoQuality = null;
             if (this.videoQualityRepository) {
@@ -36,14 +140,19 @@ class StreamController {
 
             if (videoQuality) {
                 // Streaming a quality variant - increment view count for the parent video
-                if (this.incrementVideoViewsUseCase && !this.viewedVideos.has(videoQuality.videoId)) {
-                    this.viewedVideos.add(videoQuality.videoId);
+                const userId = req.user?.id || req.user?.userId || null;
+                if (this.incrementVideoViewsUseCase && await this.shouldCountView(videoQuality.videoId, userId)) {
                     this.incrementVideoViewsUseCase.execute(videoQuality.videoId).catch(err => {
                         console.error('Failed to increment video views:', err);
                     });
                 }
 
-                // Stream the quality variant
+                // For CDN mode, redirect to direct URL
+                if (streamMode === 'redirect' && this.storageRepository.getUrl) {
+                    return this.redirectToCDN(req, res, videoQuality.storageKey);
+                }
+
+                // Otherwise proxy through server
                 return this.streamQualityVariant(req, res, videoQuality);
             }
 
@@ -58,21 +167,25 @@ class StreamController {
             if (!video) {
                 // If not in database, try to serve as static file (for thumbnails)
                 if (fileKey.startsWith('thumb_')) {
+                    // For thumbnails, use CDN redirect if available
+                    if (streamMode === 'redirect' && this.storageRepository.getUrl) {
+                        return this.redirectToCDN(req, res, fileKey);
+                    }
                     return await this.streamStaticFile(req, res, fileKey);
                 }
                 res.writeHead(404, { 'Content-Type': 'text/plain' });
                 return res.end('Video not found');
             }
 
-            // Increment view count if this is the first time streaming this video in this session
-            if (this.incrementVideoViewsUseCase && !this.viewedVideos.has(video.id)) {
-                this.viewedVideos.add(video.id);
+            // Increment view count if this is the first time streaming this video or enough time has passed
+            const userId = req.user?.id || req.user?.userId || null;
+            if (this.incrementVideoViewsUseCase && await this.shouldCountView(video.id, userId)) {
                 this.incrementVideoViewsUseCase.execute(video.id).catch(err => {
                     console.error('Failed to increment video views:', err);
                 });
             }
 
-            // For local storage, stream from filesystem
+            // For local storage, always stream from filesystem
             if (this.storageRepository.getFilePath) {
                 const filePath = this.storageRepository.getFilePath(video.storageKey);
                 if (filePath && require('fs').existsSync(filePath)) {
@@ -80,13 +193,41 @@ class StreamController {
                 }
             }
 
-            // For cloud storage (B2), use authenticated streaming
-            return this.streamFromB2(req, res, video.storageKey, video);
+            // For cloud storage (B2/CDN)
+            if (streamMode === 'redirect') {
+                // Redirect mode: offload to CDN (unlimited scale)
+                return this.redirectToCDN(req, res, video.storageKey);
+            } else {
+                // Proxy mode: stream through server (for private buckets)
+                return this.streamFromB2(req, res, video.storageKey, video);
+            }
 
         } catch (error) {
             console.error('Error streaming video:', error);
             res.writeHead(500, { 'Content-Type': 'text/plain' });
             res.end('Internal server error');
+        }
+    }
+
+    /**
+     * Redirect client directly to CDN/B2 URL
+     * This offloads streaming to edge network for unlimited scalability
+     */
+    async redirectToCDN(req, res, storageKey) {
+        try {
+            const cdnUrl = await this.storageRepository.getUrl(storageKey);
+
+            // 302 redirect to CDN (allows Range requests at CDN level)
+            res.writeHead(302, {
+                'Location': cdnUrl,
+                'Cache-Control': 'public, max-age=300', // Cache redirect for 5 minutes
+                'Access-Control-Allow-Origin': '*',
+            });
+            res.end();
+        } catch (error) {
+            console.error('Error getting CDN URL:', error);
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            res.end('Failed to get video URL');
         }
     }
 
@@ -142,7 +283,21 @@ class StreamController {
                         'Cache-Control': 'public, max-age=31536000',
                     });
 
-                    return fs.createReadStream(filePath).pipe(res);
+                    const stream = fs.createReadStream(filePath);
+
+                    stream.on('error', (error) => {
+                        console.error('Error reading static file:', error);
+                        if (!res.headersSent) {
+                            res.writeHead(500, { 'Content-Type': 'text/plain' });
+                            res.end('Error reading file');
+                        }
+                    });
+
+                    req.on('close', () => {
+                        stream.destroy();
+                    });
+
+                    return stream.pipe(res);
                 }
             }
 
@@ -182,7 +337,22 @@ class StreamController {
                 'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
                 'Access-Control-Allow-Headers': 'Range',
             });
-            return fs.createReadStream(filePath).pipe(res);
+
+            const stream = fs.createReadStream(filePath);
+
+            stream.on('error', (error) => {
+                console.error('Error reading video file:', error);
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Error reading file');
+                }
+            });
+
+            req.on('close', () => {
+                stream.destroy();
+            });
+
+            return stream.pipe(res);
         }
 
         // Parse Range header
@@ -216,6 +386,19 @@ class StreamController {
         });
 
         const stream = fs.createReadStream(filePath, { start, end });
+
+        stream.on('error', (error) => {
+            console.error('Error reading video file (range):', error);
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.end('Error reading file');
+            }
+        });
+
+        req.on('close', () => {
+            stream.destroy();
+        });
+
         stream.pipe(res);
     }
 
@@ -262,18 +445,33 @@ class StreamController {
             // Pipe stream to client
             // AWS SDK v3 returns a readable stream that we can pipe directly
             if (result.stream && result.stream.pipe) {
+                // Handle stream errors
+                result.stream.on('error', (error) => {
+                    console.error('Error in B2 stream:', error);
+                    if (!res.headersSent) {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Stream error');
+                    } else if (res.destroy) {
+                        res.destroy();
+                    }
+                });
+
                 result.stream.pipe(res);
             } else {
                 throw new Error('Unsupported stream type');
             }
 
-            // Handle errors
+            // Handle response errors
             res.on('error', (error) => {
                 console.error('Error streaming to client:', error);
+                if (result.stream && result.stream.destroy) {
+                    result.stream.destroy();
+                }
             });
 
+            // Cleanup on client disconnect
             req.on('close', () => {
-                if (result.stream.destroy) {
+                if (result.stream && result.stream.destroy) {
                     result.stream.destroy();
                 }
             });
@@ -357,10 +555,15 @@ class StreamController {
                 upstreamRes.pipe(res);
 
                 upstreamRes.on('error', (error) => {
-                    console.error('Error streaming:', error);
+                    console.error('Error streaming from URL:', error);
                     if (!res.headersSent) {
                         res.writeHead(500, { 'Content-Type': 'text/plain' });
                         res.end('Stream error');
+                    } else if (res.destroy) {
+                        res.destroy();
+                    }
+                    if (upstreamReq && !upstreamReq.destroyed) {
+                        upstreamReq.destroy();
                     }
                 });
             });
@@ -373,8 +576,19 @@ class StreamController {
                 }
             });
 
+            // Cleanup on client disconnect
             req.on('close', () => {
-                upstreamReq.destroy();
+                if (upstreamReq && !upstreamReq.destroyed) {
+                    upstreamReq.destroy();
+                }
+            });
+
+            // Cleanup on response error
+            res.on('error', (error) => {
+                console.error('Error in response stream:', error);
+                if (upstreamReq && !upstreamReq.destroyed) {
+                    upstreamReq.destroy();
+                }
             });
 
         } catch (error) {

@@ -38,6 +38,11 @@ class ConversionWorker {
                 concurrency: 1, // Process one video at a time (CPU intensive)
                 removeOnComplete: { count: 100 },
                 removeOnFail: { count: 50 },
+                // Stalled job handling (jobs that were active when worker crashed)
+                lockDuration: 60000, // 60 seconds - renew lock every minute
+                lockRenewTime: 30000, // Renew lock every 30 seconds
+                stalledInterval: 30000, // Check for stalled jobs every 30 seconds
+                maxStalledCount: 2, // Retry stalled jobs twice before failing
             }
         );
 
@@ -82,6 +87,14 @@ class ConversionWorker {
             console.log(`🔄 Processing MOV conversion: ${job.id}`);
         });
 
+        this.worker.on('stalled', (jobId) => {
+            console.warn(`⚠️  MOV conversion job stalled and will be reprocessed: ${jobId}`);
+        });
+
+        this.worker.on('resumed', () => {
+            console.log('🔄 MOV conversion worker resumed - picking up pending jobs');
+        });
+
         console.log(`✅ MOV Conversion worker started`);
     }
 
@@ -91,6 +104,10 @@ class ConversionWorker {
      */
     async processJob(job) {
         const { videoId, storageKey, fileName, mimeType } = job.data;
+
+        let tempDir = null;
+        let originalPath = null;
+        let webmPath = null;
 
         try {
             console.log(`🎬 Converting MOV to WebM for video: ${videoId}`);
@@ -118,7 +135,7 @@ class ConversionWorker {
             }
 
             // Create temp directory for processing
-            const tempDir = path.join(process.cwd(), 'videos', 'temp', 'conversion', videoId);
+            tempDir = path.join(process.cwd(), 'videos', 'temp', 'conversion', videoId);
             if (!fs.existsSync(tempDir)) {
                 fs.mkdirSync(tempDir, { recursive: true });
             }
@@ -127,7 +144,7 @@ class ConversionWorker {
 
             // Download original MOV file from storage
             console.log(`📥 Downloading original file from storage...`);
-            const originalPath = path.join(tempDir, fileName);
+            originalPath = path.join(tempDir, fileName);
 
             // Use getObjectStream to download the file
             const { stream } = await this.storageRepository.getObjectStream(storageKey);
@@ -146,7 +163,7 @@ class ConversionWorker {
             // Convert MOV to WebM
             console.log(`🔄 Converting to WebM...`);
             const webmFileName = fileName.replace(/\.(mov|MOV)$/, '.webm');
-            const webmPath = path.join(tempDir, webmFileName);
+            webmPath = path.join(tempDir, webmFileName);
 
             await this.videoTranscoder.convertToWebm(originalPath, webmPath, {
                 crf: 32, // Quality (lower = better, range: 4-63)
@@ -183,16 +200,6 @@ class ConversionWorker {
 
             await job.updateProgress(95);
 
-            // Clean up temp files
-            console.log(`🧹 Cleaning up temp files...`);
-            try {
-                fs.unlinkSync(originalPath);
-                fs.unlinkSync(webmPath);
-                fs.rmdirSync(tempDir, { recursive: true });
-            } catch (cleanupErr) {
-                console.error(`⚠️  Failed to clean up temp files:`, cleanupErr.message);
-            }
-
             // Delete old MOV file from storage
             try {
                 console.log(`🗑️  Deleting original MOV file from storage...`);
@@ -228,6 +235,22 @@ class ConversionWorker {
             }
 
             throw error; // Re-throw to mark job as failed
+        } finally {
+            // ALWAYS clean up temp files, even if errors occurred
+            console.log(`🧹 Cleaning up temp files...`);
+            try {
+                if (originalPath && fs.existsSync(originalPath)) {
+                    fs.unlinkSync(originalPath);
+                }
+                if (webmPath && fs.existsSync(webmPath)) {
+                    fs.unlinkSync(webmPath);
+                }
+                if (tempDir && fs.existsSync(tempDir)) {
+                    fs.rmSync(tempDir, { recursive: true, force: true });
+                }
+            } catch (cleanupErr) {
+                console.error(`⚠️  Failed to clean up temp files:`, cleanupErr.message);
+            }
         }
     }
 
