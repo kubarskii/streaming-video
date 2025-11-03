@@ -286,19 +286,28 @@ class VideoTranscoder {
 
         return new Promise((resolve, reject) => {
             const command = ffmpeg(inputPath)
+                // Use inputOptions to tell FFmpeg what to read BEFORE processing
+                .inputOptions([
+                    '-err_detect ignore_err'  // Ignore stream errors
+                ])
                 .outputOptions([
-                    '-c:v libvpx-vp9',
-                    '-b:v 0',
-                    `-crf ${crf}`,
-                    '-pix_fmt yuv420p',
-                    '-row-mt 1',
-                    '-tile-columns 1',
-                    '-frame-parallel 1',
-                    '-auto-alt-ref 1',
-                    '-lag-in-frames 25',
-                    '-c:a libvorbis',
-                    `-b:a ${audioBitrate}`,
-                    '-deadline good'
+                    // Map ONLY the streams we want - must come before codec options
+                    '-map 0:v:0',           // Map only first video stream
+                    '-map 0:a:0?',          // Map first audio stream if exists (? = optional)
+                    '-c:v libvpx-vp9',      // VP9 video codec
+                    '-b:v 0',               // Variable bitrate for video
+                    `-crf ${crf}`,          // Quality (lower = better)
+                    '-pix_fmt yuv420p',     // Pixel format for compatibility
+                    '-row-mt 1',            // Multi-threaded encoding
+                    '-tile-columns 1',      // Tiling for parallel encoding
+                    '-frame-parallel 1',    // Frame-level parallelism
+                    '-auto-alt-ref 1',      // Alternative reference frames
+                    '-lag-in-frames 25',    // Lookahead frames
+                    '-c:a libvorbis',       // Vorbis audio codec
+                    `-b:a ${audioBitrate}`, // Audio bitrate
+                    '-deadline good',       // Encoding speed/quality tradeoff
+                    '-map_metadata -1',     // Strip all metadata
+                    '-max_muxing_queue_size 1024' // Increase muxing queue for large files
                 ])
                 .format('webm')
                 .on('end', () => resolve(outputPath))

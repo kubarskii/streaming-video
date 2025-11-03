@@ -26,7 +26,7 @@ class ConversionWorker {
         const queueName = QueueConfig.getQueueNames().MOV_CONVERSION;
 
         // Create queue instance for re-enqueuing failed jobs
-        this.queue = new Queue(queueName, { connection: this.connection });
+        this.queue = new Queue(queueName, { connection: /** @type {any} */ (this.connection) });
 
         this.worker = new Worker(
             queueName,
@@ -34,7 +34,7 @@ class ConversionWorker {
                 return await this.processJob(job);
             },
             {
-                connection: this.connection,
+                connection: /** @type {any} */ (this.connection),
                 concurrency: 1, // Process one video at a time (CPU intensive)
                 removeOnComplete: { count: 100 },
                 removeOnFail: { count: 50 },
