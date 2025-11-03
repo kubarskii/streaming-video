@@ -81,6 +81,69 @@ If you have existing videos in the `videos/` folder:
 node scripts/import-videos.js
 ```
 
+## 🐳 Docker Deployment
+
+### Quick Start with Docker Compose
+
+Run locally with environment variables (same as Railway):
+
+```bash
+# Option 1: Export variables first
+export DATABASE_URL="postgresql://..."
+export REDIS_URL="redis://..."
+export JWT_SECRET="your_secret"
+# ... export other variables
+npm run docker:up
+
+# Option 2: Use .env file (will be loaded by shell)
+# Create .env file and source it:
+source .env
+npm run docker:up
+
+# Option 3: Use Railway CLI (connects to Railway environment)
+railway run npm run docker:up
+
+# View logs
+npm run docker:logs
+
+# Stop application
+npm run docker:down
+```
+
+### Build Custom Docker Image
+
+```bash
+# Build image
+npm run docker:build
+
+# Run with environment file
+npm run docker:run
+```
+
+### Railway Deployment
+
+The project is optimized for Railway deployment with Docker:
+
+1. **Connect your repository** to Railway
+2. **Add PostgreSQL plugin** (sets `DATABASE_URL` automatically)
+3. **Add Redis plugin** (sets `REDIS_URL` automatically)
+4. **Set environment variables:**
+   - `JWT_SECRET` - Random secure string
+   - `ARGON2_SECRET` - Random secure string
+   - `STORAGE_MODE=b2`
+   - B2 credentials (see Backblaze B2 Setup)
+5. **Deploy** - Railway will use the Dockerfile automatically
+
+📖 **Full deployment guide:** See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions.
+
+### Docker Benefits
+
+- ✅ **Consistent environments** - Same setup everywhere
+- ✅ **Easy scaling** - Deploy to any cloud provider
+- ✅ **Optimized builds** - Multi-stage builds reduce image size
+- ✅ **Production-ready** - Security hardening and health checks
+- ✅ **Fast deployments** - Layer caching for quick rebuilds
+
 ## 🎯 Usage
 
 ### Start Server
