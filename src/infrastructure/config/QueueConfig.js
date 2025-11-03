@@ -1,6 +1,18 @@
 const Redis = require('ioredis');
 
 /**
+ * Queue Priority Constants
+ * Lower number = Higher priority in BullMQ
+ */
+const QUEUE_PRIORITY = {
+    CRITICAL: 1,    // Highest priority
+    HIGH: 2,
+    NORMAL: 3,
+    LOW: 4,
+    BACKGROUND: 5   // Lowest priority
+};
+
+/**
  * Queue Configuration
  * Manages Redis connection and queue settings
  */
@@ -94,7 +106,16 @@ class QueueConfig {
         return {
             VIDEO_TRANSCODING: 'video-transcoding',
             THUMBNAIL_GENERATION: 'thumbnail-generation',
+            MOV_CONVERSION: 'mov-conversion',
         };
+    }
+
+    /**
+     * Get queue priorities
+     * @returns {Object} Priority constants
+     */
+    static getPriorities() {
+        return QUEUE_PRIORITY;
     }
 }
 

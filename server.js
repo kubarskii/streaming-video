@@ -51,7 +51,6 @@ const RemoveVideoLikeUseCase = require('./src/application/use-cases/RemoveVideoL
 const VideoController = require('./src/presentation/controllers/VideoController');
 const StreamController = require('./src/presentation/controllers/StreamController');
 const AuthController = require('./src/presentation/controllers/AuthController');
-const UploadController = require('./src/presentation/controllers/UploadController');
 const ChunkUploadController = require('./src/presentation/controllers/ChunkUploadController');
 const ChannelController = require('./src/presentation/controllers/ChannelController');
 const SubscriptionController = require('./src/presentation/controllers/SubscriptionController');
@@ -126,7 +125,6 @@ class Container {
         const videoController = new VideoController(videoService);
         const streamController = new StreamController(videoService, storageRepository, incrementVideoViewsUseCase, videoQualityRepository);
         const authController = new AuthController(authService);
-        const uploadController = new UploadController(videoService);
         const channelController = new ChannelController(
             createChannelUseCase,
             getChannelUseCase,
@@ -162,7 +160,6 @@ class Container {
             videoController,
             streamController,
             authController,
-            uploadController,
             channelController,
             subscriptionController,
             commentController,

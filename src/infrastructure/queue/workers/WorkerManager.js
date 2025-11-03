@@ -1,5 +1,6 @@
 const TranscodingWorker = require('./TranscodingWorker');
 const ThumbnailWorker = require('./ThumbnailWorker');
+const ConversionWorker = require('./ConversionWorker');
 
 /**
  * Manages all workers
@@ -34,6 +35,15 @@ class WorkerManager {
         );
         thumbnailWorker.start();
         this.workers.push(thumbnailWorker);
+
+        // Create and start MOV conversion worker
+        const conversionWorker = new ConversionWorker(
+            this.repositories.videoRepository,
+            this.repositories.storageRepository,
+            this.repositories.videoTranscoder
+        );
+        conversionWorker.start();
+        this.workers.push(conversionWorker);
 
         console.log(`✅ All workers started (${this.workers.length} workers)`);
 

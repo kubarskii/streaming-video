@@ -5,10 +5,9 @@
 const { URL } = require('url');
 
 class UploadServiceRouter {
-    constructor(videoController, authController, uploadController, chunkUploadController, channelController, playlistController, queueController) {
+    constructor(videoController, authController, chunkUploadController, channelController, playlistController, queueController) {
         this.videoController = videoController;
         this.authController = authController;
-        this.uploadController = uploadController;
         this.chunkUploadController = chunkUploadController;
         this.channelController = channelController;
         this.playlistController = playlistController;
@@ -44,14 +43,9 @@ class UploadServiceRouter {
         }
 
         // ============================================================
-        // UPLOAD ROUTES
+        // CHUNKED UPLOAD ROUTES
         // ============================================================
-        if (pathname === '/api/upload' && req.method === 'POST') {
-            await this.uploadController.uploadVideo(req, res);
-            return true;
-        }
-
-        // Chunked Upload Routes
+        // Note: All uploads now use chunked upload API
         if (pathname === '/api/upload/init' && req.method === 'POST') {
             await this.chunkUploadController.initializeUpload(req, res);
             return true;

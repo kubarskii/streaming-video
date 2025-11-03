@@ -86,6 +86,8 @@ model Video {
   @@index([status])
   @@index([uploadedAt])
   @@index([userId])
+  @@index([mimeType])
+  @@index([status, uploadedAt])
 }
 
 model VideoQuality {

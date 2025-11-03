@@ -25,13 +25,13 @@ console.log('');
 const uploadProxy = createProxyMiddleware({
     target: UPLOAD_SERVICE_URL,
     changeOrigin: true,
-    logLevel: 'silent',
+    logger: console, // Uses console for logging
 });
 
 const streamingProxy = createProxyMiddleware({
     target: STREAMING_SERVICE_URL,
     changeOrigin: true,
-    logLevel: 'silent',
+    logger: console, // Uses console for logging
 });
 
 // Static file serving

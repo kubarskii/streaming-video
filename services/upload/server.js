@@ -26,7 +26,6 @@ const ChunkUploadService = require('../../src/application/services/ChunkUploadSe
 // Presentation
 const VideoController = require('../../src/presentation/controllers/VideoController');
 const AuthController = require('../../src/presentation/controllers/AuthController');
-const UploadController = require('../../src/presentation/controllers/UploadController');
 const ChunkUploadController = require('../../src/presentation/controllers/ChunkUploadController');
 const ChannelController = require('../../src/presentation/controllers/ChannelController');
 const PlaylistController = require('../../src/presentation/controllers/PlaylistController');
@@ -74,7 +73,6 @@ async function initializeContainer() {
     // Presentation Controllers
     const videoController = new VideoController(videoService);
     const authController = new AuthController(authService);
-    const uploadController = new UploadController(videoService);
     // Use Cases for Channel
     const CreateChannelUseCase = require('../../src/application/use-cases/CreateChannelUseCase');
     const GetChannelUseCase = require('../../src/application/use-cases/GetChannelUseCase');
@@ -108,7 +106,6 @@ async function initializeContainer() {
     const router = new UploadServiceRouter(
         videoController,
         authController,
-        uploadController,
         chunkUploadController,
         channelController,
         playlistController,

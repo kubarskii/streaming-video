@@ -5,11 +5,10 @@
 const { URL } = require('url');
 
 class Router {
-    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController, chunkUploadController, videoLikeController, playlistController, queueController) {
+    constructor(videoController, streamController, authController, channelController, subscriptionController, commentController, chunkUploadController, videoLikeController, playlistController, queueController) {
         this.videoController = videoController;
         this.streamController = streamController;
         this.authController = authController;
-        this.uploadController = uploadController;
         this.channelController = channelController;
         this.subscriptionController = subscriptionController;
         this.commentController = commentController;
@@ -44,12 +43,7 @@ class Router {
             return await this.authController.me(req, res);
         }
 
-        // Upload Route (Simple)
-        if (pathname === '/api/upload' && req.method === 'POST') {
-            return await this.uploadController.uploadVideo(req, res);
-        }
-
-        // Chunked Upload Routes
+        // Chunked Upload Routes (All uploads use chunked API)
         if (pathname === '/api/upload/init' && req.method === 'POST') {
             return await this.chunkUploadController.initializeUpload(req, res);
         }
