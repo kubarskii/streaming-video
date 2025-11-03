@@ -76,8 +76,8 @@ nodemon.json
 eslint.config.js
 frontend/eslint.config.js
 tsconfig.json
-frontend/vite.config.js
-frontend/vitest.config.js
+# frontend/vite.config.js  # NEED THIS for build!
+# frontend/vitest.config.js  # Test config not needed but harmless
 
 # Git export
 data-export.sql

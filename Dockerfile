@@ -1,28 +1,15 @@
-# Multi-stage Dockerfile for Video Streaming Platform
+# Simple single-stage Dockerfile for Video Streaming Platform
 # Optimized for Railway deployment
 
-# =====================================
-# Stage 1: Build Frontend
-# =====================================
-FROM node:20-alpine AS frontend-builder
-
-WORKDIR /app
-
-# Copy all frontend files
-COPY frontend/ ./frontend/
-
-# Install dependencies and build
-WORKDIR /app/frontend
-RUN npm ci && npm run build
-
-# =====================================
-# Stage 2: Production Image
-# =====================================
 FROM node:20-alpine
 
+RUN ls -la
+
 WORKDIR /app
 
-# Install runtime dependencies and build tools
+RUN ls -la
+
+# Install system dependencies
 RUN apk add --no-cache \
     python3 \
     make \
@@ -31,22 +18,34 @@ RUN apk add --no-cache \
     openssl \
     dumb-init
 
-# Copy package files and install as root (to avoid permission issues)
-COPY package*.json ./
-COPY prisma ./prisma/
-
-# Install production dependencies and generate Prisma client as root
-RUN npm ci --only=production && \
-    npx prisma generate
-
-# Copy application source
+# Copy all files
 COPY . .
 
-# Remove any existing public directory and copy fresh build
-RUN rm -rf public
-COPY --from=frontend-builder /app/frontend/dist ./public
+# Build frontend (creates dist folder)
+WORKDIR /app/frontend
 
-# Create videos directory for temporary storage
+# Debug: Check what's in frontend directory
+RUN echo "=== Contents of /app/frontend ===" && \
+    ls -la
+
+RUN npm ci && \
+    rm -rf node_modules/.vite .vite dist && \
+    npm run build -- --outDir ./dist
+
+# Copy built frontend to root public folder
+RUN cp -r dist /app/public
+
+# Debug: Show what was built
+RUN echo "Built files:" && ls -la /app/public/assets/
+
+# Install backend dependencies
+WORKDIR /app
+RUN npm ci && npx prisma generate
+
+# Clean up frontend folder and .env to save space
+RUN rm -rf frontend && rm -f .env
+
+# Create videos directory
 RUN mkdir -p videos/temp
 
 # Create non-root user and set ownership
@@ -69,4 +68,3 @@ ENTRYPOINT ["dumb-init", "--"]
 
 # Start both server and worker
 CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]
-

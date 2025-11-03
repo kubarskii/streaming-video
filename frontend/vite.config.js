@@ -15,10 +15,7 @@ export default defineConfig(({ mode }) => {
       react({
         jsxRuntime: 'automatic',
         jsxImportSource: 'react',
-        babel: {
-          plugins: []
-        }
-      })
+      }),
     ],
     resolve: {
       alias: {
@@ -28,8 +25,6 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-      sourcemap: false,
-      minify: 'esbuild',
       rollupOptions: {
         output: {
           manualChunks: {

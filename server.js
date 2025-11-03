@@ -65,7 +65,7 @@ const corsMiddleware = require('./src/presentation/middleware/corsMiddleware');
 const { authMiddleware } = require('./src/presentation/middleware/authMiddleware');
 
 // Configuration
-const HOST = process.env.HOST || '127.0.0.1';
+const HOST = process.env.HOST || '0.0.0.0';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const PUBLIC_DIR = path.join(__dirname, 'public');
