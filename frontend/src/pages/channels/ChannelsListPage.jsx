@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useAbortController } from '../../shared/lib';
 import { channelsAPI } from '../../shared/api/channels';
-import { Avatar, Button, EmptyState, VideoEmptyIcon } from '../../shared/ui';
+import { Avatar, Button, EmptyState, VideoEmptyIcon, ChannelCardSkeleton } from '../../shared/ui';
 import './ChannelsListPage.css';
 
 export const ChannelsListPage = () => {
@@ -16,7 +16,8 @@ export const ChannelsListPage = () => {
 
     useEffect(() => {
         loadChannels();
-    }, [sortBy, signal]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortBy]);
 
     const loadChannels = async () => {
         try {
@@ -41,7 +42,19 @@ export const ChannelsListPage = () => {
     if (loading) {
         return (
             <div className="channels-list-page">
-                <div className="loading">Loading channels...</div>
+                <div className="page-header">
+                    <div>
+                        <h1>Browse Channels</h1>
+                        <p className="page-description">
+                            Discover content creators on our platform
+                        </p>
+                    </div>
+                </div>
+                <div className="channels-grid">
+                    {Array.from({ length: 12 }).map((_, index) => (
+                        <ChannelCardSkeleton key={index} />
+                    ))}
+                </div>
             </div>
         );
     }

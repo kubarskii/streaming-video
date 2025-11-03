@@ -10,7 +10,6 @@ class PasswordHasher {
             memoryCost: 65536, // 64 MB
             timeCost: 3,
             parallelism: 4,
-            secret: Buffer.from(process.env.ARGON2_SECRET || 'default-secret-change-in-production'),
         };
     }
 
@@ -20,9 +19,7 @@ class PasswordHasher {
 
     async verify(hash, password) {
         try {
-            return await argon2.verify(hash, password, {
-                secret: this.options.secret,
-            });
+            return await argon2.verify(hash, password);
         } catch (error) {
             console.error('Password verification error:', error);
             return false;

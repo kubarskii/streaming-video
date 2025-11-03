@@ -1,8 +1,11 @@
 /**
  * Custom hook for managing AbortController lifecycle
- * Automatically cleans up pending requests when component unmounts or dependencies change
+ * Automatically cleans up pending requests when component unmounts
  * 
  * @returns {AbortSignal} signal - The abort signal to pass to API calls
+ * 
+ * Note: Do NOT include the signal in useEffect dependency arrays.
+ * The signal is only for cleanup purposes and should not trigger re-fetches.
  * 
  * @example
  * const signal = useAbortController();
@@ -12,17 +15,15 @@
  *     const data = await api.getData({ signal });
  *   };
  *   fetchData();
- * }, [signal]);
+ * }, [videoId]); // Only include actual dependencies, NOT signal
  */
 import { useEffect, useRef } from 'react';
 
 export const useAbortController = () => {
-    const abortControllerRef = useRef(null);
+    // Initialize with AbortController immediately to avoid undefined
+    const abortControllerRef = useRef(new AbortController());
 
     useEffect(() => {
-        // Create new AbortController on mount
-        abortControllerRef.current = new AbortController();
-
         // Cleanup function: abort all pending requests
         return () => {
             if (abortControllerRef.current) {
@@ -31,6 +32,6 @@ export const useAbortController = () => {
         };
     }, []);
 
-    return abortControllerRef.current?.signal;
+    return abortControllerRef.current.signal;
 };
 

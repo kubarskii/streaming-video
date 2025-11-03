@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from '@tanstack/react-router';
 import { playlistsAPI } from '../../shared/api/playlists';
 import { useAbortController } from '../../shared/lib';
-import { VideoCard, EmptyState, ErrorState, Spinner, Button } from '../../shared/ui';
+import { VideoCard, EmptyState, ErrorState, Skeleton, VideoCardSkeleton, Button } from '../../shared/ui';
 import { formatRelativeTime } from '../../shared/lib';
 import './PlaylistViewPage.css';
 
@@ -19,7 +19,8 @@ export const PlaylistViewPage = () => {
 
     useEffect(() => {
         loadPlaylist();
-    }, [playlistId, signal]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [playlistId]);
 
     const loadPlaylist = async () => {
         try {
@@ -45,8 +46,17 @@ export const PlaylistViewPage = () => {
     if (loading) {
         return (
             <div className="playlist-view-page">
-                <div className="playlist-view-loading">
-                    <Spinner size="large" label="Loading playlist" />
+                <div className="playlist-view-header">
+                    <Skeleton width="300px" height="2rem" />
+                    <Skeleton width="400px" height="1rem" />
+                    <Skeleton width="200px" height="1rem" />
+                </div>
+                <div className="playlist-view-videos">
+                    <div className="playlist-videos-grid">
+                        {Array.from({ length: 8 }).map((_, index) => (
+                            <VideoCardSkeleton key={index} />
+                        ))}
+                    </div>
                 </div>
             </div>
         );

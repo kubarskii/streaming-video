@@ -6,8 +6,8 @@ import { videosAPI } from '../../shared/api/videos';
 import { channelsAPI } from '../../shared/api/channels';
 import { ChunkedUploader } from '../../shared/lib/ChunkedUploader';
 import { FEATURES, getUploadStrategy } from '../../shared/config/features';
-import { Button, EmptyState } from '../../shared/ui';
-import './UploadPage.css';
+import { Button, EmptyState, Input, Textarea, UploadIcon, ImageIcon, CloseIcon, VideoIcon } from '../../shared/ui';
+import styles from './UploadPage.module.css';
 
 export const UploadPage = () => {
     const { user } = useAuth();
@@ -376,9 +376,9 @@ export const UploadPage = () => {
 
     if (checkingChannel) {
         return (
-            <div className="upload-page">
-                <div className="upload-container">
-                    <div className="loading">Checking your channel...</div>
+            <div className={styles['upload-page']}>
+                <div className={styles['upload-container']}>
+                    <div className={styles['loading']}>Checking your channel...</div>
                 </div>
             </div>
         );
@@ -386,8 +386,8 @@ export const UploadPage = () => {
 
     if (!channel) {
         return (
-            <div className="upload-page">
-                <div className="upload-container">
+            <div className={styles['upload-page']}>
+                <div className={styles['upload-container']}>
                     <EmptyState
                         title="Create Your Channel First"
                         message="You need to create a channel before you can upload videos."
@@ -403,37 +403,32 @@ export const UploadPage = () => {
     }
 
     return (
-        <div className="upload-page">
-            <div className="upload-container">
-                <h1 className="upload-title">Upload Video</h1>
-                <p className="upload-subtitle">
-                    Share your video with the world (up to 10GB!)
-                </p>
+        <div className={styles['upload-page']}>
+            <div className={styles['upload-container']}>
+                <div className={styles['upload-header']}>
+                    <h1 className={styles['upload-title']}>Upload Video</h1>
+                    <p className={styles['upload-subtitle']}>
+                        Share your video with the world (up to 10GB!)
+                    </p>
+                </div>
 
                 {FEATURES.SHOW_UPLOAD_METHOD && uploadStrategy && (
-                    <div style={{
-                        padding: '8px 16px',
-                        background: uploadStrategy === 'chunked' ? '#e8f5e9' : '#e3f2fd',
-                        borderRadius: '4px',
-                        marginBottom: '16px',
-                        fontSize: '14px',
-                        color: '#333'
-                    }}>
+                    <div className={styles['upload-strategy-badge']}>
                         📦 Upload Method: <strong>{uploadStrategy === 'chunked' ? 'Chunked' : 'Simple'}</strong>
                         {uploadStrategy === 'chunked' && ' (Large file - resumable upload)'}
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="upload-form">
+                <form onSubmit={handleSubmit} className={styles['upload-form']}>
                     {error && (
-                        <div className="upload-error">
+                        <div className={styles['upload-error']}>
                             {error}
                         </div>
                     )}
 
                     {!file ? (
                         <div
-                            className={`upload-dropzone ${dragActive ? 'active' : ''}`}
+                            className={`${styles['upload-dropzone']} ${dragActive ? styles['active'] : ''}`}
                             onClick={() => fileInputRef.current?.click()}
                             onDragEnter={handleDrag}
                             onDragLeave={handleDrag}
@@ -448,21 +443,24 @@ export const UploadPage = () => {
                                 style={{ display: 'none' }}
                             />
 
-                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" className="upload-icon">
+                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" className={styles['upload-icon']}>
                                 <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="2" />
                                 <path d="M32 20v24M20 32h24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                             </svg>
 
                             <h3>Drag and drop video file here</h3>
                             <p>or click to browse</p>
-                            <p className="upload-hint">
+                            <p className={styles['upload-hint']}>
                                 MP4, WebM, MOV up to 10GB {FEATURES.CHUNKED_UPLOAD && '(chunked upload supported!)'}
                             </p>
                         </div>
                     ) : (
-                        <div className="file-preview">
-                            <div className="file-info">
-                                <div className="file-details">
+                        <div className={styles['file-preview']}>
+                            <div className={styles['file-info']}>
+                                <div className={styles['file-icon']}>
+                                    <VideoIcon size={28} />
+                                </div>
+                                <div className={styles['file-details']}>
                                     <h4>{file.name}</h4>
                                     <p>{formatFileSize(file.size)}</p>
                                 </div>
@@ -470,41 +468,42 @@ export const UploadPage = () => {
                                     <button
                                         type="button"
                                         onClick={() => setFile(null)}
-                                        className="btn-remove"
+                                        className={styles['btn-remove']}
+                                        aria-label="Remove file"
                                     >
-                                        ×
+                                        <CloseIcon size={20} />
                                     </button>
                                 )}
                             </div>
 
                             {uploading && (
-                                <div className="upload-progress">
-                                    <div className="progress-bar">
-                                        <div className="progress-fill" style={{ width: `${progress}%` }} />
+                                <div className={styles['upload-progress']}>
+                                    <div className={styles['progress-bar']}>
+                                        <div className={styles['progress-fill']} style={{ width: `${progress}%` }} />
                                     </div>
-                                    <div className="progress-details">
-                                        <p className="progress-text">{progress}% uploaded</p>
+                                    <div className={styles['progress-details']}>
+                                        <p className={styles['progress-text']}>{progress}% uploaded</p>
                                         {uploadStrategy === 'chunked' && totalChunks > 0 && (
-                                            <p className="progress-chunks">Chunks: {chunksCompleted}/{totalChunks}</p>
+                                            <p className={styles['progress-chunks']}>Chunks: {chunksCompleted}/{totalChunks}</p>
                                         )}
-                                        <p className="progress-speed">Speed: {formatSpeed(uploadSpeed)}</p>
+                                        <p className={styles['progress-speed']}>Speed: {formatSpeed(uploadSpeed)}</p>
                                     </div>
                                     {uploadStrategy === 'chunked' && (
-                                        <div className="upload-controls">
-                                            <button
-                                                type="button"
+                                        <div className={styles['upload-controls']}>
+                                            <Button
+                                                variant="secondary"
                                                 onClick={handlePauseResume}
-                                                className="btn btn-secondary"
+                                                fullWidth
                                             >
                                                 {uploadPaused ? 'Resume' : 'Pause'}
-                                            </button>
-                                            <button
-                                                type="button"
+                                            </Button>
+                                            <Button
+                                                variant="danger"
                                                 onClick={handleCancel}
-                                                className="btn btn-danger"
+                                                fullWidth
                                             >
                                                 Cancel
-                                            </button>
+                                            </Button>
                                         </div>
                                     )}
                                 </div>
@@ -512,40 +511,36 @@ export const UploadPage = () => {
                         </div>
                     )}
 
-                    <div className="form-group">
-                        <label htmlFor="title" className="form-label">Title *</label>
-                        <input
-                            id="title"
-                            type="text"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            placeholder="Enter video title"
-                            required
-                            disabled={uploading}
-                            maxLength={100}
-                            className="form-input"
-                        />
-                    </div>
+                    <Input
+                        id="title"
+                        label="Title"
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Enter video title"
+                        required
+                        disabled={uploading}
+                        maxLength={100}
+                        fullWidth
+                    />
 
-                    <div className="form-group">
-                        <label htmlFor="description" className="form-label">Description</label>
-                        <textarea
-                            id="description"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Tell viewers about your video"
-                            rows={4}
-                            disabled={uploading}
-                            maxLength={5000}
-                            className="form-textarea"
-                        />
-                    </div>
+                    <Textarea
+                        id="description"
+                        label="Description"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="Tell viewers about your video"
+                        rows={4}
+                        disabled={uploading}
+                        maxLength={5000}
+                        fullWidth
+                    />
 
-                    <div className="form-group">
-                        <label htmlFor="thumbnail" className="form-label">
+                    <div className={styles['form-group']}>
+                        <label htmlFor="thumbnail" className={styles['form-label']}>
                             Thumbnail (Optional)
                         </label>
-                        <div className="thumbnail-upload">
+                        <div className={styles['thumbnail-upload']}>
                             <input
                                 ref={thumbnailInputRef}
                                 id="thumbnail"
@@ -556,7 +551,7 @@ export const UploadPage = () => {
                                 disabled={uploading}
                             />
                             {thumbnailPreview ? (
-                                <div className="thumbnail-preview">
+                                <div className={styles['thumbnail-preview']}>
                                     <img src={thumbnailPreview} alt="Thumbnail preview" />
                                     {!uploading && (
                                         <button
@@ -565,44 +560,46 @@ export const UploadPage = () => {
                                                 setThumbnail(null);
                                                 setThumbnailPreview(null);
                                             }}
-                                            className="btn-remove-thumbnail"
+                                            className={styles['btn-remove-thumbnail']}
+                                            aria-label="Remove thumbnail"
                                         >
-                                            ×
+                                            <CloseIcon size={20} />
                                         </button>
                                     )}
                                 </div>
                             ) : (
-                                <button
-                                    type="button"
+                                <Button
+                                    variant="secondary"
                                     onClick={() => thumbnailInputRef.current?.click()}
-                                    className="btn-upload-thumbnail"
                                     disabled={uploading}
+                                    icon={<ImageIcon size={20} />}
                                 >
                                     Choose Thumbnail
-                                </button>
+                                </Button>
                             )}
                         </div>
-                        <p className="form-hint">
+                        <p className={styles['form-hint']}>
                             Recommended: 1280x720 (16:9 ratio)
                         </p>
                     </div>
 
-                    <div className="form-actions">
-                        <button
-                            type="button"
+                    <div className={styles['form-actions']}>
+                        <Button
+                            variant="secondary"
                             onClick={() => navigate({ to: '/' })}
-                            className="btn btn-secondary"
                             disabled={uploading}
                         >
                             Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             type="submit"
-                            className="btn btn-primary"
+                            variant="primary"
                             disabled={!file || uploading}
+                            loading={uploading}
+                            icon={!uploading && <UploadIcon size={20} />}
                         >
                             {uploading ? 'Uploading...' : 'Upload Video'}
-                        </button>
+                        </Button>
                     </div>
                 </form>
             </div>

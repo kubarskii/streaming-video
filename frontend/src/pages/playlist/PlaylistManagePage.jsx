@@ -6,9 +6,9 @@ import { useAuth } from '../../shared/context/AuthContext';
 import { useAbortController } from '../../shared/lib';
 import { playlistsAPI } from '../../shared/api/playlists';
 import { videosAPI } from '../../shared/api/videos';
-import { Button, EmptyState, VideoEmptyIcon, DeleteIcon } from '../../shared/ui';
+import { Button, EmptyState, VideoEmptyIcon, DeleteIcon, Skeleton, VideoCardSkeleton } from '../../shared/ui';
 import { formatDuration } from '../../shared/lib';
-import './PlaylistManagePage.css';
+import styles from './PlaylistManagePage.module.css';
 
 export const PlaylistManagePage = () => {
     const { playlistId } = useParams({ from: '/playlist/$playlistId/manage' });
@@ -31,7 +31,8 @@ export const PlaylistManagePage = () => {
         }
         loadPlaylist();
         loadAvailableVideos();
-    }, [playlistId, isAuthenticated, signal]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [playlistId, isAuthenticated]);
 
     const loadPlaylist = async () => {
         try {
@@ -154,16 +155,29 @@ export const PlaylistManagePage = () => {
 
     if (loading) {
         return (
-            <div className="playlist-manage-page">
-                <div className="playlist-manage-loading">Loading playlist...</div>
+            <div className={styles['playlist-manage-page']}>
+                <div className={styles['playlist-manage-header']}>
+                    <Skeleton width="300px" height="2rem" />
+                    <Skeleton width="500px" height="1rem" />
+                </div>
+                <div className={styles['playlist-manage-content']}>
+                    <div className={styles['videos-section']}>
+                        <Skeleton width="200px" height="1.5rem" />
+                        <div className={styles['videos-grid']}>
+                            {Array.from({ length: 6 }).map((_, index) => (
+                                <VideoCardSkeleton key={index} />
+                            ))}
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="playlist-manage-page">
-                <div className="playlist-manage-error">{error}</div>
+            <div className={styles['playlist-manage-page']}>
+                <div className={styles['playlist-manage-error']}>{error}</div>
                 <Button variant="secondary" onClick={() => navigate({ to: '/profile' })}>
                     Back to Profile
                 </Button>
@@ -173,8 +187,8 @@ export const PlaylistManagePage = () => {
 
     if (!playlist) {
         return (
-            <div className="playlist-manage-page">
-                <div className="playlist-manage-error">Playlist not found</div>
+            <div className={styles['playlist-manage-page']}>
+                <div className={styles['playlist-manage-error']}>Playlist not found</div>
                 <Button variant="secondary" onClick={() => navigate({ to: '/profile' })}>
                     Back to Profile
                 </Button>
@@ -183,9 +197,9 @@ export const PlaylistManagePage = () => {
     }
 
     return (
-        <div className="playlist-manage-page">
-            <div className="playlist-manage-header">
-                <div className="playlist-manage-header-left">
+        <div className={styles['playlist-manage-page']}>
+            <div className={styles['playlist-manage-header']}>
+                <div className={styles['playlist-manage-header-left']}>
                     <Button
                         variant="ghost"
                         size="small"
@@ -193,9 +207,9 @@ export const PlaylistManagePage = () => {
                     >
                         ← Back
                     </Button>
-                    <div className="playlist-manage-title-section">
+                    <div className={styles['playlist-manage-title-section']}>
                         <h1>{playlist.title}</h1>
-                        <p className="playlist-manage-subtitle">
+                        <p className={styles['playlist-manage-subtitle']}>
                             {playlistVideos.length} {playlistVideos.length === 1 ? 'video' : 'videos'}
                             {playlist.description && ` • ${playlist.description}`}
                         </p>
@@ -203,12 +217,12 @@ export const PlaylistManagePage = () => {
                 </div>
             </div>
 
-            <div className="playlist-manage-content">
+            <div className={styles['playlist-manage-content']}>
                 {/* Current Videos in Playlist */}
-                <div className="playlist-manage-section">
-                    <div className="playlist-manage-section-header">
+                <div className={styles['playlist-manage-section']}>
+                    <div className={styles['playlist-manage-section-header']}>
                         <h2>Playlist Videos</h2>
-                        <p className="section-description">
+                        <p className={styles['section-description']}>
                             Drag videos to reorder them. The order will be saved automatically.
                         </p>
                     </div>
@@ -220,7 +234,7 @@ export const PlaylistManagePage = () => {
                             description="Add videos from your library below"
                         />
                     ) : (
-                        <div className="playlist-videos-list">
+                        <div className={styles['playlist-videos-list']}>
                             {playlistVideos.map((playlistVideo, index) => {
                                 const video = playlistVideo.video;
                                 const videoId = video?.id || playlistVideo.videoId;
@@ -230,28 +244,28 @@ export const PlaylistManagePage = () => {
                                 return (
                                     <div
                                         key={playlistVideo.id || videoId}
-                                        className={`playlist-video-item ${isDragged ? 'dragging' : ''} ${isDraggedOver ? 'drag-over' : ''}`}
+                                        className={`${styles['playlist-video-item']} ${isDragged ? styles['dragging'] : ''} ${isDraggedOver ? styles['drag-over'] : ''}`}
                                         draggable
                                         onDragStart={(e) => handleDragStart(e, videoId)}
                                         onDragOver={(e) => handleDragOver(e, index)}
                                         onDragLeave={handleDragLeave}
                                         onDrop={(e) => handleDrop(e, index)}
                                     >
-                                        <div className="video-item-content">
-                                            <div className="video-index">{index + 1}</div>
-                                            <div className="drag-handle" title="Drag to reorder">
+                                        <div className={styles['video-item-content']}>
+                                            <div className={styles['video-index']}>{index + 1}</div>
+                                            <div className={styles['drag-handle']} title="Drag to reorder">
                                                 ☰
                                             </div>
                                             {video?.thumbnailUrl && (
                                                 <img
                                                     src={video.thumbnailUrl}
                                                     alt={video.title}
-                                                    className="video-thumbnail"
+                                                    className={styles['video-thumbnail']}
                                                 />
                                             )}
-                                            <div className="video-info">
-                                                <div className="video-title">{video?.title || 'Loading...'}</div>
-                                                <div className="video-meta">
+                                            <div className={styles['video-info']}>
+                                                <div className={styles['video-title']}>{video?.title || 'Loading...'}</div>
+                                                <div className={styles['video-meta']}>
                                                     {video?.durationMs && (
                                                         <span>{formatDuration(video.durationMs)}</span>
                                                     )}
@@ -278,10 +292,10 @@ export const PlaylistManagePage = () => {
                 </div>
 
                 {/* Add Videos Section */}
-                <div className="playlist-manage-section">
-                    <div className="playlist-manage-section-header">
+                <div className={styles['playlist-manage-section']}>
+                    <div className={styles['playlist-manage-section-header']}>
                         <h2>Add Videos</h2>
-                        <p className="section-description">
+                        <p className={styles['section-description']}>
                             Select videos from your library to add to this playlist
                         </p>
                     </div>
@@ -293,20 +307,20 @@ export const PlaylistManagePage = () => {
                             description="All your videos are already in this playlist"
                         />
                     ) : (
-                        <div className="add-videos-list">
+                        <div className={styles['add-videos-list']}>
                             {videosNotInPlaylist.map(video => (
-                                <div key={video.id} className="add-video-item">
-                                    <div className="video-item-content">
+                                <div key={video.id} className={styles['add-video-item']}>
+                                    <div className={styles['video-item-content']}>
                                         {video.thumbnailUrl && (
                                             <img
                                                 src={video.thumbnailUrl}
                                                 alt={video.title}
-                                                className="video-thumbnail"
+                                                className={styles['video-thumbnail']}
                                             />
                                         )}
-                                        <div className="video-info">
-                                            <div className="video-title">{video.title}</div>
-                                            <div className="video-meta">
+                                        <div className={styles['video-info']}>
+                                            <div className={styles['video-title']}>{video.title}</div>
+                                            <div className={styles['video-meta']}>
                                                 {video.durationMs && (
                                                     <span>{formatDuration(video.durationMs)}</span>
                                                 )}

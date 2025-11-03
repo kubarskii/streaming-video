@@ -4,7 +4,7 @@ import { useAbortController } from '../../lib';
 import { commentsAPI } from '../../api/comments';
 import { CommentForm } from './CommentForm';
 import { CommentItem } from './CommentItem';
-import { Button, Spinner, EmptyState } from '../index';
+import { Button, CommentSkeleton, EmptyState } from '../index';
 import './Comments.css';
 
 /**
@@ -29,7 +29,8 @@ export const CommentsSection = ({ videoId }) => {
 
     useEffect(() => {
         loadComments();
-    }, [videoId, signal]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [videoId]);
 
     const loadComments = async () => {
         try {
@@ -137,8 +138,10 @@ export const CommentsSection = ({ videoId }) => {
         return (
             <div className="comments-section">
                 <h2 className="comments-title">Comments</h2>
-                <div className="comments-loading">
-                    <Spinner size="medium" center />
+                <div className="comments-list">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                        <CommentSkeleton key={index} />
+                    ))}
                 </div>
             </div>
         );

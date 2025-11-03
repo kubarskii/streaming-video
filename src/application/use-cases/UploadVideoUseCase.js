@@ -296,7 +296,7 @@ class UploadVideoUseCase {
                 durationMs: input.durationMs || null,
                 width: input.width || null,
                 height: input.height || null,
-                status: VideoStatus.READY,
+                status: VideoStatus.PROCESSING, // Start as processing since transcoding will be queued
                 uploadedAt: new Date(),
                 updatedAt: new Date(),
                 userId: input.userId || null,

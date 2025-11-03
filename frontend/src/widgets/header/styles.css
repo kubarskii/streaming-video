@@ -52,7 +52,7 @@
 .header-logo-text {
   font-size: 1.25rem;
   font-weight: 700;
-  color: white;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 

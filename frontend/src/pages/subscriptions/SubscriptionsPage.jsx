@@ -6,7 +6,7 @@ import { useAuth } from '../../shared/context/AuthContext';
 import { useAbortController } from '../../shared/lib';
 import { subscriptionsAPI } from '../../shared/api/subscriptions';
 import { channelsAPI } from '../../shared/api/channels';
-import { Avatar, Button, EmptyState, VideoEmptyIcon } from '../../shared/ui';
+import { Avatar, Button, EmptyState, VideoEmptyIcon, ChannelCardSkeleton } from '../../shared/ui';
 import './SubscriptionsPage.css';
 
 export const SubscriptionsPage = () => {
@@ -24,7 +24,8 @@ export const SubscriptionsPage = () => {
             return;
         }
         loadSubscriptions();
-    }, [isAuthenticated, signal]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAuthenticated]);
 
     const loadSubscriptions = async () => {
         try {
@@ -82,7 +83,17 @@ export const SubscriptionsPage = () => {
     if (loading) {
         return (
             <div className="subscriptions-page">
-                <div className="loading">Loading subscriptions...</div>
+                <div className="page-header">
+                    <h1>Your Subscriptions</h1>
+                    <p className="page-description">
+                        Channels you're subscribed to
+                    </p>
+                </div>
+                <div className="channels-grid">
+                    {Array.from({ length: 8 }).map((_, index) => (
+                        <ChannelCardSkeleton key={index} />
+                    ))}
+                </div>
             </div>
         );
     }

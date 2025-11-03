@@ -4,10 +4,12 @@
 const { formidable } = require('formidable');
 const path = require('path');
 const fs = require('fs');
+const { getQueueManager } = require('../../infrastructure/queue/QueueManager');
 
 class UploadController {
     constructor(videoService) {
         this.videoService = videoService;
+        this.queueManager = getQueueManager();
     }
 
     async uploadVideo(req, res) {
@@ -68,15 +70,37 @@ class UploadController {
                 console.error('Failed to delete temp file:', err);
             }
 
-            // Trigger transcoding asynchronously (don't wait for it)
-            this.videoService.transcodeVideo(video.id)
-                .then(() => {
-                    console.log(`✅ Transcoding complete for video ${video.id}`);
-                })
-                .catch(err => {
-                    console.error(`❌ Transcoding failed for video ${video.id}:`, err.message);
-                    // Don't fail the upload if transcoding fails
+            // Add transcoding job to queue (non-blocking)
+            try {
+                await this.queueManager.addTranscodingJob({
+                    videoId: video.id,
+                    storageKey: video.storageKey,
+                    userId: req.user.id,
                 });
+                console.log(`📤 Transcoding job queued for video ${video.id}`);
+            } catch (queueError) {
+                console.error(`❌ Failed to queue transcoding job:`, queueError.message);
+                // Set video to ready so users can still watch the original file
+                try {
+                    video.status = 'ready';
+                    await this.videoService.updateVideoMetadataUseCase.videoRepository.update(video);
+                } catch (updateError) {
+                    console.error(`❌ Failed to update video status:`, updateError.message);
+                }
+            }
+
+            // If no thumbnail was uploaded, queue thumbnail generation
+            if (!video.thumbnailUrl) {
+                try {
+                    await this.queueManager.addThumbnailJob({
+                        videoId: video.id,
+                        storageKey: video.storageKey,
+                    });
+                    console.log(`📤 Thumbnail job queued for video ${video.id}`);
+                } catch (queueError) {
+                    console.error(`❌ Failed to queue thumbnail job:`, queueError.message);
+                }
+            }
 
             // Convert thumbnail URL to server proxy URL
             const thumbnailUrl = video.thumbnailUrl ? this.convertToServerUrl(video.thumbnailUrl) : null;

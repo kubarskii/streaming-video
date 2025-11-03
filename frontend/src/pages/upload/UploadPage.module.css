@@ -1,0 +1,502 @@
+/* Upload Page - Modern Design */
+
+.upload-page {
+    min-height: calc(100vh - 4rem);
+    padding: 3rem 1.5rem;
+    background: var(--bg-primary);
+}
+
+.upload-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.upload-header {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.upload-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.02em;
+}
+
+.upload-subtitle {
+    font-size: 1.125rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.upload-strategy-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2rem;
+}
+
+.upload-form {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* ==================== ERROR ==================== */
+.upload-error {
+    padding: 1rem 1.25rem;
+    background: var(--error-bg);
+    border: 2px solid var(--error-color);
+    border-radius: 12px;
+    color: var(--error-color);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.upload-error::before {
+    content: '⚠️';
+    font-size: 1.25rem;
+}
+
+/* ==================== DROPZONE ==================== */
+.upload-dropzone {
+    border: 3px dashed var(--border-color);
+    border-radius: 16px;
+    padding: 4rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--bg-secondary);
+    position: relative;
+    overflow: hidden;
+}
+
+.upload-dropzone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--primary-color);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.upload-dropzone:hover {
+    border-color: var(--primary-color);
+    background: var(--bg-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.upload-dropzone.active {
+    border-color: var(--primary-color);
+    background: var(--focus-ring);
+    border-style: solid;
+    box-shadow: 0 0 0 4px var(--focus-ring);
+}
+
+.upload-icon {
+    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    opacity: 0.8;
+    position: relative;
+    z-index: 1;
+}
+
+.upload-dropzone h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+    position: relative;
+    z-index: 1;
+    letter-spacing: -0.01em;
+}
+
+.upload-dropzone p {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    position: relative;
+    z-index: 1;
+}
+
+.upload-hint {
+    font-size: 0.875rem !important;
+    color: var(--text-secondary);
+    margin-top: 1rem !important;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    display: inline-block;
+}
+
+/* ==================== FILE PREVIEW ==================== */
+.file-preview {
+    border: 2px solid var(--border-color);
+    border-radius: 16px;
+    padding: 2rem;
+    background: var(--bg-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.file-icon {
+    width: 56px;
+    height: 56px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--primary-color);
+    font-size: 1.5rem;
+}
+
+.file-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.file-details h4 {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.375rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+}
+
+.file-details p {
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.btn-remove {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 2px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+    font-weight: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-remove:hover {
+    background: var(--error-bg);
+    color: var(--error-color);
+    border-color: var(--error-color);
+    transform: scale(1.05);
+}
+
+.btn-remove:active {
+    transform: scale(0.95);
+}
+
+/* ==================== PROGRESS ==================== */
+.upload-progress {
+    margin-top: 2rem;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 12px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--primary-color);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    -webkit-animation: shimmer 2s infinite;
+    animation: shimmer 2s infinite;
+}
+
+@-webkit-keyframes shimmer {
+    0% {
+        -webkit-transform: translateX(-100%);
+        transform: translateX(-100%);
+    }
+    100% {
+        -webkit-transform: translateX(100%);
+        transform: translateX(100%);
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        -webkit-transform: translateX(-100%);
+        transform: translateX(-100%);
+    }
+    100% {
+        -webkit-transform: translateX(100%);
+        transform: translateX(100%);
+    }
+}
+
+.progress-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.progress-text {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.progress-chunks {
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 0.375rem 0.875rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.progress-speed {
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 0.375rem 0.875rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.upload-controls {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.25rem;
+}
+
+.upload-controls button {
+    flex: 1;
+}
+
+/* ==================== FORM GROUPS ==================== */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.form-label {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+.form-hint {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-top: 0.5rem;
+}
+
+/* ==================== THUMBNAIL ==================== */
+.thumbnail-upload {
+    margin-top: 0.5rem;
+}
+
+.thumbnail-preview {
+    position: relative;
+    border: 2px solid var(--border-color);
+    border-radius: 16px;
+    overflow: hidden;
+    max-width: 400px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.thumbnail-preview img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.btn-remove-thumbnail {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: none;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 300;
+    backdrop-filter: blur(8px);
+}
+
+.btn-remove-thumbnail:hover {
+    background: var(--error-color);
+    transform: scale(1.1);
+}
+
+.btn-remove-thumbnail:active {
+    transform: scale(0.95);
+}
+
+/* Shared Button component is used for thumbnail upload button */
+
+/* ==================== FORM ACTIONS ==================== */
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    padding-top: 2rem;
+    border-top: 2px solid var(--border-color);
+    margin-top: 1rem;
+}
+
+/* Shared Button component is used for all action buttons */
+
+/* ==================== LOADING STATE ==================== */
+.loading {
+    text-align: center;
+    padding: 4rem 2rem;
+    font-size: 1.125rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 768px) {
+    .upload-page {
+        padding: 2rem 1rem;
+    }
+
+    .upload-header {
+        margin-bottom: 2rem;
+    }
+
+    .upload-title {
+        font-size: 2rem;
+    }
+
+    .upload-subtitle {
+        font-size: 1rem;
+    }
+
+    .upload-dropzone {
+        padding: 3rem 1.5rem;
+    }
+
+    .upload-dropzone h3 {
+        font-size: 1.25rem;
+    }
+
+    .file-preview {
+        padding: 1.5rem;
+    }
+
+    .file-icon {
+        width: 48px;
+        height: 48px;
+    }
+
+    .file-details h4 {
+        font-size: 1rem;
+    }
+
+    .progress-details {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .form-actions {
+        flex-direction: column-reverse;
+    }
+
+    .form-actions .btn {
+        width: 100%;
+    }
+
+    .upload-controls {
+        flex-direction: column;
+    }
+
+    .thumbnail-preview {
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .upload-page {
+        padding: 1.5rem 0.75rem;
+    }
+
+    .upload-title {
+        font-size: 1.75rem;
+    }
+
+    .upload-subtitle {
+        font-size: 0.9375rem;
+    }
+
+    .upload-dropzone {
+        padding: 2.5rem 1rem;
+    }
+
+    .file-preview {
+        padding: 1.25rem;
+    }
+
+    .btn-remove {
+        width: 40px;
+        height: 40px;
+    }
+}
+

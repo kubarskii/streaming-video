@@ -4,7 +4,7 @@ import { Link, useSearch } from '@tanstack/react-router';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import { videosAPI } from '../../shared/api/videos';
 import { useAbortController } from '../../shared/lib';
-import { VideoCard, VideoCardGrid, Spinner, EmptyState, VideoEmptyIcon, SearchEmptyIcon, Button } from '../../shared/ui';
+import { VideoCard, VideoCardGrid, VideoCardSkeleton, Spinner, EmptyState, VideoEmptyIcon, SearchEmptyIcon, Button } from '../../shared/ui';
 import './HomePage.css';
 
 export const HomePage = () => {
@@ -68,8 +68,12 @@ export const HomePage = () => {
 
     if (loading && videos.length === 0) {
         return (
-            <div className="loading-container">
-                <Spinner size="large" center />
+            <div className="home-page">
+                <VideoCardGrid>
+                    {Array.from({ length: 12 }).map((_, index) => (
+                        <VideoCardSkeleton key={index} />
+                    ))}
+                </VideoCardGrid>
             </div>
         );
     }

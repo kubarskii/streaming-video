@@ -1,0 +1,211 @@
+// @ts-check
+// Streaming Service
+// Handles video streaming, quality variants, and view counting
+
+require('dotenv').config();
+const http = require('http');
+
+// Infrastructure
+const DatabaseConfig = require('../../src/infrastructure/config/DatabaseConfig');
+const StorageConfig = require('../../src/infrastructure/config/StorageConfig');
+const PrismaVideoRepository = require('../../src/infrastructure/persistence/PrismaVideoRepository');
+const PrismaVideoQualityRepository = require('../../src/infrastructure/persistence/PrismaVideoQualityRepository');
+const PrismaVideoLikeRepository = require('../../src/infrastructure/persistence/PrismaVideoLikeRepository');
+const PrismaSubscriptionRepository = require('../../src/infrastructure/persistence/PrismaSubscriptionRepository');
+const PrismaCommentRepository = require('../../src/infrastructure/persistence/PrismaCommentRepository');
+const PrismaChannelRepository = require('../../src/infrastructure/persistence/PrismaChannelRepository');
+
+// Application Services
+const VideoService = require('../../src/application/services/VideoService');
+
+// Use Cases
+const IncrementVideoViewsUseCase = require('../../src/application/use-cases/IncrementVideoViewsUseCase');
+const LikeVideoUseCase = require('../../src/application/use-cases/LikeVideoUseCase');
+const GetVideoLikeStatsUseCase = require('../../src/application/use-cases/GetVideoLikeStatsUseCase');
+const RemoveVideoLikeUseCase = require('../../src/application/use-cases/RemoveVideoLikeUseCase');
+const SubscribeToChannelUseCase = require('../../src/application/use-cases/SubscribeToChannelUseCase');
+const UnsubscribeFromChannelUseCase = require('../../src/application/use-cases/UnsubscribeFromChannelUseCase');
+const GetUserSubscriptionsUseCase = require('../../src/application/use-cases/GetUserSubscriptionsUseCase');
+const CheckSubscriptionStatusUseCase = require('../../src/application/use-cases/CheckSubscriptionStatusUseCase');
+const CreateCommentUseCase = require('../../src/application/use-cases/CreateCommentUseCase');
+const GetVideoCommentsUseCase = require('../../src/application/use-cases/GetVideoCommentsUseCase');
+const UpdateCommentUseCase = require('../../src/application/use-cases/UpdateCommentUseCase');
+const DeleteCommentUseCase = require('../../src/application/use-cases/DeleteCommentUseCase');
+
+// Presentation
+const StreamController = require('../../src/presentation/controllers/StreamController');
+const VideoController = require('../../src/presentation/controllers/VideoController');
+const VideoLikeController = require('../../src/presentation/controllers/VideoLikeController');
+const SubscriptionController = require('../../src/presentation/controllers/SubscriptionController');
+const CommentController = require('../../src/presentation/controllers/CommentController');
+
+// Router
+const StreamingServiceRouter = require('./router');
+const corsMiddleware = require('../../src/presentation/middleware/corsMiddleware');
+const { authMiddleware } = require('../../src/presentation/middleware/authMiddleware');
+const JWTService = require('../../src/infrastructure/auth/JWTService');
+
+// Configuration
+const PORT = parseInt(process.env.PORT || '3003', 10);
+const SERVICE_NAME = process.env.SERVICE_NAME || 'streaming';
+
+// Ensure unique port if PORT is already 3000
+const ACTUAL_PORT = PORT === 3000 ? 3003 : PORT;
+
+async function initializeContainer() {
+    console.log(`🎬 ${SERVICE_NAME.toUpperCase()} SERVICE`);
+    console.log('='.repeat(SERVICE_NAME.length + 17));
+    console.log('');
+
+    // Infrastructure
+    const prismaClient = DatabaseConfig.getPrismaClient();
+    const videoRepository = new PrismaVideoRepository(prismaClient);
+    const videoQualityRepository = new PrismaVideoQualityRepository(prismaClient);
+    const videoLikeRepository = new PrismaVideoLikeRepository(prismaClient);
+    const subscriptionRepository = new PrismaSubscriptionRepository(prismaClient);
+    const commentRepository = new PrismaCommentRepository(prismaClient);
+    const channelRepository = new PrismaChannelRepository(prismaClient);
+    const storageRepository = StorageConfig.createStorageRepository();
+    const jwtService = new JWTService();
+
+    // Application Services
+    // @ts-ignore - videoQualityRepository is optional but we're providing it
+    const videoService = new VideoService(
+        videoRepository,
+        storageRepository,
+        null, // No thumbnail generator needed
+        null, // No channel repository needed
+        videoQualityRepository // Needed for quality variants
+    );
+
+    // Use Cases
+    const incrementVideoViewsUseCase = new IncrementVideoViewsUseCase(videoRepository);
+    const likeVideoUseCase = new LikeVideoUseCase(videoLikeRepository, videoRepository);
+    const getVideoLikeStatsUseCase = new GetVideoLikeStatsUseCase(videoLikeRepository);
+    const removeVideoLikeUseCase = new RemoveVideoLikeUseCase(videoLikeRepository);
+    const subscribeToChannelUseCase = new SubscribeToChannelUseCase(subscriptionRepository, channelRepository);
+    const unsubscribeFromChannelUseCase = new UnsubscribeFromChannelUseCase(subscriptionRepository, channelRepository);
+    const getUserSubscriptionsUseCase = new GetUserSubscriptionsUseCase(subscriptionRepository);
+    const checkSubscriptionStatusUseCase = new CheckSubscriptionStatusUseCase(subscriptionRepository);
+    const createCommentUseCase = new CreateCommentUseCase(commentRepository, videoRepository);
+    const getVideoCommentsUseCase = new GetVideoCommentsUseCase(commentRepository);
+    const updateCommentUseCase = new UpdateCommentUseCase(commentRepository);
+    const deleteCommentUseCase = new DeleteCommentUseCase(commentRepository);
+
+    // Presentation Controllers
+    // @ts-ignore - videoQualityRepository is optional but we're providing it
+    const streamController = new StreamController(
+        videoService,
+        storageRepository,
+        incrementVideoViewsUseCase,
+        videoQualityRepository
+    );
+    const videoController = new VideoController(videoService);
+    const videoLikeController = new VideoLikeController(
+        likeVideoUseCase,
+        getVideoLikeStatsUseCase,
+        removeVideoLikeUseCase
+    );
+    const subscriptionController = new SubscriptionController(
+        subscribeToChannelUseCase,
+        unsubscribeFromChannelUseCase,
+        getUserSubscriptionsUseCase,
+        checkSubscriptionStatusUseCase
+    );
+    const commentController = new CommentController(
+        createCommentUseCase,
+        getVideoCommentsUseCase,
+        updateCommentUseCase,
+        deleteCommentUseCase
+    );
+
+    // Router
+    const router = new StreamingServiceRouter(
+        streamController,
+        videoController,
+        videoLikeController,
+        subscriptionController,
+        commentController
+    );
+
+    console.log('✅ Dependencies initialized');
+    console.log(`📦 Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
+    console.log(`📦 Storage: ${process.env.STORAGE_MODE || 'local'}`);
+    console.log('');
+
+    return { router, jwtService, prismaClient };
+}
+
+async function main() {
+    const { router, jwtService, prismaClient } = await initializeContainer();
+
+    const server = http.createServer(async (req, res) => {
+        // Apply CORS
+        corsMiddleware(req, res, async () => {
+            // Optional auth (for streaming we may not require auth)
+            const token = req.headers.authorization?.replace('Bearer ', '');
+            if (token) {
+                try {
+                    const payload = jwtService.verifyToken(token);
+                    if (payload && typeof payload === 'object' && 'userId' in payload) {
+                        // @ts-ignore - Adding user property to request
+                        // Map userId to id for compatibility with controllers
+                        req.user = {
+                            id: payload.userId,
+                            userId: payload.userId,
+                            email: payload.email,
+                            username: payload.username
+                        };
+                    }
+                } catch (err) {
+                    // Invalid token, continue as unauthenticated
+                }
+            }
+
+            // Route request
+            const handled = await router.route(req, res);
+
+            if (!handled) {
+                // Health check
+                if (req.url === '/health') {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({
+                        status: 'healthy',
+                        service: SERVICE_NAME,
+                        timestamp: new Date().toISOString()
+                    }));
+                }
+
+                // Not found
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Not found' }));
+            }
+        });
+    });
+
+    // Graceful shutdown
+    const shutdown = async () => {
+        console.log('\n🛑 Shutting down streaming service...');
+        server.close(() => {
+            console.log('✅ HTTP server closed');
+        });
+        await prismaClient.$disconnect();
+        console.log('✅ Database disconnected');
+        process.exit(0);
+    };
+
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+
+    server.listen(ACTUAL_PORT, '0.0.0.0', () => {
+        console.log(`✅ Streaming Service listening on port ${ACTUAL_PORT}`);
+        console.log(`🌍 Health check: http://localhost:${ACTUAL_PORT}/health`);
+        console.log('');
+    });
+}
+
+main().catch((error) => {
+    console.error('❌ Failed to start streaming service:', error);
+    process.exit(1);
+});
+

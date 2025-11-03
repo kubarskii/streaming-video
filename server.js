@@ -58,6 +58,7 @@ const SubscriptionController = require('./src/presentation/controllers/Subscript
 const CommentController = require('./src/presentation/controllers/CommentController');
 const VideoLikeController = require('./src/presentation/controllers/VideoLikeController');
 const PlaylistController = require('./src/presentation/controllers/PlaylistController');
+const QueueController = require('./src/presentation/controllers/QueueController');
 const ChunkUploadService = require('./src/application/services/ChunkUploadService');
 const InMemoryUploadSessionRepository = require('./src/infrastructure/persistence/InMemoryUploadSessionRepository');
 const Router = require('./src/presentation/routes/Router');
@@ -150,6 +151,7 @@ class Container {
             removeVideoLikeUseCase
         );
         const playlistController = new PlaylistController(playlistService);
+        const queueController = new QueueController();
 
         // Chunked Upload
         const uploadSessionRepository = new InMemoryUploadSessionRepository();
@@ -166,7 +168,8 @@ class Container {
             commentController,
             chunkUploadController,
             videoLikeController,
-            playlistController
+            playlistController,
+            queueController
         );
 
         return { router, prismaClient, storageRepository, authService };
