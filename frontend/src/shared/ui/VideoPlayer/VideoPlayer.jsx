@@ -132,7 +132,7 @@ export const VideoPlayer = React.forwardRef(({
     const countdownIntervalRef = useRef(null);
 
     // Native fullscreen API (like F11)
-    const { isFullscreen, toggleFullscreen: toggleFullscreenNative } = useFullscreen(containerRef);
+    const { isFullscreen, toggleFullscreen: toggleFullscreenNative } = useFullscreen(containerRef, videoRef);
 
     // Automatically hide/show header based on fullscreen state
     useFullscreenHeader({
@@ -911,6 +911,8 @@ export const VideoPlayer = React.forwardRef(({
                     preload="metadata"
                     playsInline
                     webkit-playsinline="true"
+                    controls={false}
+                    x-webkit-airplay="allow"
                 >
                     {src && <source src={src} type={videoMimeType} />}
                     <p>

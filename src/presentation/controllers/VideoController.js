@@ -309,8 +309,6 @@ class VideoController {
      */
     async getVideoQualities(req, res, videoId) {
         try {
-            console.log(`[VideoController] getVideoQualities called for video: ${videoId}`);
-
             // Validate video ID
             const validation = validateParams(z.object({ id: uuidSchema }), { id: videoId });
             if (validation.success === false) {
@@ -318,7 +316,6 @@ class VideoController {
             }
 
             const qualities = await this.videoService.getVideoQualities(videoId);
-            console.log(`[VideoController] Found ${qualities.length} qualities:`, qualities);
 
             const response = {
                 videoId,
@@ -335,8 +332,6 @@ class VideoController {
                     playbackUrl: `/video?file=${q.storageKey}`
                 }))
             };
-
-            console.log(`[VideoController] Sending response:`, JSON.stringify(response, null, 2));
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(response));
@@ -368,7 +363,7 @@ class VideoController {
 
             // Start transcoding (async - don't wait)
             this.videoService.transcodeVideo(videoId)
-                .then(() => console.log(`✅ Transcoding complete for video ${videoId}`))
+                .then(() => { })
                 .catch(err => console.error(`❌ Transcoding failed for video ${videoId}:`, err));
 
             res.writeHead(202, { 'Content-Type': 'application/json' });

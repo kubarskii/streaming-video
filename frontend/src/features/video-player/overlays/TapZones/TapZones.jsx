@@ -34,6 +34,17 @@ export const TapZones = ({
     const countResetTimeoutRef = useRef({ left: null, center: null, right: null });
 
     const handleZoneTap = useCallback((zone, event) => {
+        // Don't prevent default if controls are visible - allow buttons to work
+        if (showControls) {
+            // Only prevent default for zones, not for controls
+            const target = event.target;
+            const controlsElement = target.closest('.videoControls');
+            if (controlsElement) {
+                // Let controls handle the event
+                return;
+            }
+        }
+        
         event.preventDefault();
         event.stopPropagation();
 
@@ -43,8 +54,8 @@ export const TapZones = ({
 
         // Get tap position for feedback overlay
         const rect = event.currentTarget.getBoundingClientRect();
-        const x = event.clientX || (event.touches && event.touches[0]?.clientX) || rect.left + rect.width / 2;
-        const y = event.clientY || (event.touches && event.touches[0]?.clientY) || rect.top + rect.height / 2;
+        const x = event.clientX || (event.touches && event.touches[0]?.clientX) || (event.changedTouches && event.changedTouches[0]?.clientX) || rect.left + rect.width / 2;
+        const y = event.clientY || (event.touches && event.touches[0]?.clientY) || (event.changedTouches && event.changedTouches[0]?.clientY) || rect.top + rect.height / 2;
 
         // Clear any pending single tap timeout for this zone
         if (tapTimeoutRef.current[zone]) {
@@ -52,8 +63,8 @@ export const TapZones = ({
             tapTimeoutRef.current[zone] = null;
         }
 
-        // Double tap detected
-        if (timeDiff < PLAYER_CONSTANTS.DOUBLE_TAP_THRESHOLD) {
+        // Double tap detected (within threshold)
+        if (timeDiff < PLAYER_CONSTANTS.DOUBLE_TAP_THRESHOLD && timeDiff > 0) {
             lastTapTimeRef.current[zone] = now;
             
             // Increment tap count
@@ -135,8 +146,29 @@ export const TapZones = ({
             {/* Center Zone - Play/Pause & Fullscreen */}
             <div
                 className="tap-zone tap-zone--center"
-                onClick={(e) => handleZoneTap('center', e)}
-                onTouchEnd={(e) => handleZoneTap('center', e)}
+                onClick={(e) => {
+                    // Don't handle if clicking a control button
+                    const target = e.target;
+                    if (target.closest('.videoControls') || target.closest('button') || target.closest('.icon-btn')) {
+                        return;
+                    }
+                    handleZoneTap('center', e);
+                }}
+                onTouchStart={(e) => {
+                    // Don't handle if touching a control button
+                    const target = e.target;
+                    if (target.closest('.videoControls') || target.closest('button') || target.closest('.icon-btn')) {
+                        return;
+                    }
+                }}
+                onTouchEnd={(e) => {
+                    // Don't handle if touching a control button
+                    const target = e.target;
+                    if (target.closest('.videoControls') || target.closest('button') || target.closest('.icon-btn')) {
+                        return;
+                    }
+                    handleZoneTap('center', e);
+                }}
                 aria-label="Tap to play/pause, double tap for fullscreen"
             >
                 <div className="tap-zone__ripple" />

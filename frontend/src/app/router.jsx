@@ -6,8 +6,13 @@ import { VideoPage } from '../pages/video/VideoPage';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { RegisterPage } from '../pages/auth/RegisterPage';
 import { UploadPageProtected } from '../pages/upload/UploadPageProtected';
-import { ProfilePage } from '../pages/profile/ProfilePage';
-import { ChannelPage } from '../pages/channel/ChannelPage';
+import { ProfileLayout } from '../pages/profile/ProfileLayout';
+import { ProfileVideosPage } from '../pages/profile/ProfileVideosPage';
+import { ProfilePlaylistsPage } from '../pages/profile/ProfilePlaylistsPage';
+import { ProfileChannelPage } from '../pages/profile/ProfileChannelPage';
+import { ChannelLayout } from '../pages/channel/ChannelLayout';
+import { ChannelVideosPage } from '../pages/channel/ChannelVideosPage';
+import { ChannelPlaylistsPage } from '../pages/channel/ChannelPlaylistsPage';
 import { ChannelsListPage } from '../pages/channels/ChannelsListPage';
 import { SubscriptionsPage } from '../pages/subscriptions/SubscriptionsPage';
 import { PlaylistManagePage } from '../pages/playlist/PlaylistManagePage';
@@ -58,36 +63,48 @@ const uploadRoute = createRoute({
     component: UploadPageProtected,
 });
 
-// Profile routes (protected) - with nested routes for tabs
+// Profile routes (protected) - with nested routes for separate pages
 const profileRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/profile',
-    component: ProfilePage,
+    component: ProfileLayout,
 });
 
 const profileVideosRoute = createRoute({
     getParentRoute: () => profileRoute,
     path: '/',
-    component: ProfilePage,
+    component: ProfileVideosPage,
 });
 
 const profilePlaylistsRoute = createRoute({
     getParentRoute: () => profileRoute,
     path: '/playlists',
-    component: ProfilePage,
+    component: ProfilePlaylistsPage,
 });
 
 const profileChannelRoute = createRoute({
     getParentRoute: () => profileRoute,
     path: '/channel',
-    component: ProfilePage,
+    component: ProfileChannelPage,
 });
 
-// Channel route
+// Channel routes - with nested routes for separate pages
 const channelRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/channel/$userId',
-    component: ChannelPage,
+    component: ChannelLayout,
+});
+
+const channelVideosRoute = createRoute({
+    getParentRoute: () => channelRoute,
+    path: '/',
+    component: ChannelVideosPage,
+});
+
+const channelPlaylistsRoute = createRoute({
+    getParentRoute: () => channelRoute,
+    path: '/playlists',
+    component: ChannelPlaylistsPage,
 });
 
 // Channels list route
@@ -130,7 +147,10 @@ const routeTree = rootRoute.addChildren([
         profilePlaylistsRoute,
         profileChannelRoute,
     ]),
-    channelRoute,
+    channelRoute.addChildren([
+        channelVideosRoute,
+        channelPlaylistsRoute,
+    ]),
     channelsRoute,
     subscriptionsRoute,
     playlistViewRoute,

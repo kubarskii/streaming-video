@@ -48,6 +48,16 @@
   z-index: 10000 !important;
 }
 
+/* Fullscreen video controls respect safe areas */
+:global(:fullscreen) .videoControls,
+:global(:-webkit-full-screen) .videoControls,
+:global(:-moz-full-screen) .videoControls,
+:global(:-ms-fullscreen) .videoControls {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+}
+
 .videoElement {
   background-color: transparent;
   position: absolute;
@@ -132,6 +142,7 @@
   right: 0;
   background: linear-gradient(to top, var(--player-bg-overlay) 0%, var(--player-bg-overlay-light) 60%, transparent 100%);
   padding: var(--player-controls-padding);
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
@@ -140,6 +151,8 @@
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
+  /* Ensure controls are above tap zones */
+  isolation: isolate;
 }
 
 .videoControls.show {
@@ -294,7 +307,7 @@
 /* Mobile optimizations for controls */
 @media (max-width: 768px) {
   .videoControls {
-    padding: 16px 8px 8px;
+    padding: 16px 8px calc(8px + env(safe-area-inset-bottom));
   }
 
   .controlsRow {
@@ -316,7 +329,7 @@
 
 @media (max-width: 480px) {
   .videoControls {
-    padding: 12px 6px 6px;
+    padding: 12px 6px calc(6px + env(safe-area-inset-bottom));
   }
 
   .controlsRow {

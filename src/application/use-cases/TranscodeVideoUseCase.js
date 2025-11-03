@@ -26,19 +26,22 @@ class TranscodeVideoUseCase {
      * @returns {Promise<Array<Object>>} Array of created quality variants
      */
     async execute(videoId) {
-        console.log(`🎬 Starting transcoding for video: ${videoId}`);
+        console.log(`🔍 Looking up video in database: ${videoId}`);
 
         // Get video from database
         const video = await this.videoRepository.findById(videoId);
         if (!video) {
+            console.error(`❌ Video ${videoId} not found in database`);
             throw new Error('Video not found');
         }
+
+        console.log(`✅ Found video: ${video.title} (${video.fileName})`);
 
 
         // Delete existing quality variants if any (to avoid unique constraint errors on re-transcode)
         const existingCount = await this.videoQualityRepository.deleteByVideoId(videoId);
         if (existingCount > 0) {
-            console.log(`🗑️  Deleted ${existingCount} existing quality variants`);
+            // Deleted existing quality variants for re-transcoding
         }
 
         // Update video status to processing
@@ -52,9 +55,7 @@ class TranscodeVideoUseCase {
             // Extract source video metadata if not already available
             let sourceMetadata;
             if (!video.width || !video.height) {
-                console.log('📊 Extracting source video metadata...');
                 sourceMetadata = await this.videoTranscoder.getVideoMetadata(sourceVideoPath);
-                console.log(`   Source: ${sourceMetadata.width}x${sourceMetadata.height}`);
 
                 // Update video record with metadata
                 video.width = sourceMetadata.width;
@@ -82,16 +83,10 @@ class TranscodeVideoUseCase {
                 sourceVideoPath,
                 tempDir,
                 baseFileName,
-                (quality, progress) => {
-                    console.log(`  ${quality}: ${Math.round(progress.percent || 0)}%`);
-                }
+                null // Progress callback removed for performance
             );
 
-            if (transcodedVideos.length > 0) {
-                console.log(`✅ Transcoding complete. Generated ${transcodedVideos.length} qualities`);
-            } else {
-                console.log(`ℹ️  No transcoded qualities generated (source resolution too low)`);
-            }
+            // Transcoding complete, generated qualities
 
             // Upload transcoded videos and save to database
             const qualityVariants = [];
@@ -101,7 +96,6 @@ class TranscodeVideoUseCase {
                 const ext = path.extname(transcoded.path);
                 const storageKey = `${videoId}_${transcoded.quality}${ext}`;
 
-                console.log(`📤 Uploading ${transcoded.quality}...`);
 
                 // Upload to storage
                 const { storageUrl, cdnUrl } = await this.storageRepository.upload(
@@ -132,8 +126,7 @@ class TranscodeVideoUseCase {
 
                 const savedQuality = await this.videoQualityRepository.save(qualityVariant);
                 qualityVariants.push(savedQuality);
-
-                console.log(`✅ ${transcoded.quality} uploaded: ${storageKey}`);
+                console.log(`✅ ${transcoded.quality} saved to DB and available for playback`);
 
                 // Clean up temp file
                 if (fs.existsSync(transcoded.path)) {
@@ -142,9 +135,8 @@ class TranscodeVideoUseCase {
             }
 
             // Generate thumbnail from the source video if video doesn't have one
-            if (!video.thumbnailUrl && sourceVideoPath && fs.existsSync(sourceVideoPath)) {
+            if (!video.thumbnailUrl && sourceVideoPath && typeof sourceVideoPath === 'string' && fs.existsSync(sourceVideoPath)) {
                 try {
-                    console.log('🎬 Generating thumbnail from source video...');
                     const ThumbnailGenerator = require('../../infrastructure/media/ThumbnailGenerator');
                     const thumbnailGenerator = new ThumbnailGenerator();
                     const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
@@ -170,7 +162,6 @@ class TranscodeVideoUseCase {
                     );
 
                     video.thumbnailUrl = thumbnailUpload.cdnUrl || thumbnailUpload.storageUrl;
-                    console.log(`✅ Thumbnail generated: ${video.thumbnailUrl}`);
 
                     // Clean up temp thumbnail
                     if (fs.existsSync(generatedThumbnailPath)) {
@@ -219,9 +210,9 @@ class TranscodeVideoUseCase {
                 const savedOriginal = await this.videoQualityRepository.save(originalQuality);
                 qualityVariants.push(savedOriginal);
 
-                console.log(`✅ Original quality saved as: ${originalQualityLabel} (${sourceMetadata.width}x${sourceMetadata.height})`);
+                // Original quality saved
             } else {
-                console.log('ℹ️  Skipping original non-MP4 file to ensure cross-platform compatibility');
+                // Skipping original non-MP4 file
             }
 
             // Prefer MP4 variant for primary playback
@@ -235,7 +226,7 @@ class TranscodeVideoUseCase {
                 const shouldReplacePrimary = !sourceIsMp4;
 
                 if (shouldReplacePrimary) {
-                    console.log(`🎯 Updating primary playback source to MP4 variant: ${highestMp4Variant.quality}`);
+                    // Updating primary playback source to MP4 variant
 
                     const previousStorageKey = video.storageKey;
 
@@ -253,7 +244,6 @@ class TranscodeVideoUseCase {
                     if (previousStorageKey && previousStorageKey !== highestMp4Variant.storageKey) {
                         try {
                             await this.storageRepository.delete(previousStorageKey);
-                            console.log(`🗑️  Removed original source file: ${previousStorageKey}`);
                         } catch (cleanupError) {
                             console.warn(`⚠️  Failed to delete original file ${previousStorageKey}:`, cleanupError.message);
                         }
@@ -269,7 +259,7 @@ class TranscodeVideoUseCase {
             }
 
             // Clean up source video if it was downloaded
-            if (sourceVideoPath.includes('temp') && fs.existsSync(sourceVideoPath)) {
+            if (sourceVideoPath && sourceVideoPath.includes('temp') && fs.existsSync(sourceVideoPath)) {
                 fs.unlinkSync(sourceVideoPath);
             }
 
@@ -278,8 +268,7 @@ class TranscodeVideoUseCase {
             video.updatedAt = new Date();
             await this.videoRepository.update(video);
 
-            console.log(`🎉 Transcoding complete for video: ${videoId}`);
-            console.log(`   Generated ${qualityVariants.length} quality variants`);
+            console.log(`✅ Transcoding complete: ${videoId} (${qualityVariants.length} variants)`);
 
             return qualityVariants;
 
@@ -309,7 +298,6 @@ class TranscodeVideoUseCase {
         }
 
         // For cloud storage, download video temporarily
-        console.log('📥 Downloading video from cloud storage for transcoding...');
         const tempPath = path.join(process.cwd(), 'videos', 'temp', `source_${video.id}${path.extname(video.fileName)}`);
 
         // Ensure temp directory exists
@@ -332,7 +320,6 @@ class TranscodeVideoUseCase {
 
                 file.on('finish', () => {
                     file.close();
-                    console.log('✅ Video downloaded for transcoding');
                     resolve(tempPath);
                 });
             }).on('error', (err) => {

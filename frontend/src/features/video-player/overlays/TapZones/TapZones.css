@@ -27,6 +27,7 @@
   -moz-user-select: none;
   -ms-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
 }
 
 /* Visual feedback on tap (optional, for debugging) */

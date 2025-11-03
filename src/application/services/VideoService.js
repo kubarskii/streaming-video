@@ -13,6 +13,14 @@ const GetVideoQualitiesUseCase = require('../use-cases/GetVideoQualitiesUseCase'
 const TranscodeVideoUseCase = require('../use-cases/TranscodeVideoUseCase');
 
 class VideoService {
+    /**
+     * @param {*} videoRepository
+     * @param {*} storageRepository
+     * @param {*} thumbnailGenerator
+     * @param {*} channelRepository
+     * @param {*} [videoQualityRepository]
+     * @param {*} [videoTranscoder]
+     */
     constructor(videoRepository, storageRepository, thumbnailGenerator, channelRepository, videoQualityRepository = null, videoTranscoder = null) {
         this.uploadVideoUseCase = new UploadVideoUseCase(videoRepository, storageRepository, thumbnailGenerator, channelRepository, videoTranscoder);
         this.getVideoUseCase = new GetVideoUseCase(videoRepository);

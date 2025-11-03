@@ -10,12 +10,14 @@ const { v4: uuidv4 } = require('uuid');
 const stream = require('stream');
 const { promisify } = require('util');
 const pipeline = promisify(stream.pipeline);
+const { getQueueManager } = require('../../infrastructure/queue/QueueManager');
 
 class ChunkUploadControllerOptimized {
     constructor(chunkUploadService, videoService, storageRepository) {
         this.chunkUploadService = chunkUploadService;
         this.videoService = videoService;
         this.storageRepository = storageRepository;
+        this.queueManager = getQueueManager();
     }
 
     /**
@@ -260,7 +262,6 @@ class ChunkUploadControllerOptimized {
             const progress = (updatedSession.uploadedChunks.length / totalChunks) * 100;
 
             const elapsedMs = Date.now() - startTime;
-            console.log(`   ✓ Chunk ${chunkIndex + 1}/${totalChunks} uploaded (${elapsedMs}ms, ${(chunkFile.size / 1024 / 1024).toFixed(2)}MB)`);
 
             return this.sendJson(res, 200, {
                 chunkIndex,
@@ -339,14 +340,12 @@ class ChunkUploadControllerOptimized {
                 b2UploadId,
                 sortedParts
             );
-            console.log(`✅ B2 multipart upload completed: ${storageKey}`);
 
             // Generate thumbnail (same as original controller)
             let thumbnailUrl = null;
             const tempVideoPath = path.join(process.cwd(), 'videos', 'temp', `temp_${videoId}${path.extname(session.fileName)}`);
 
             try {
-                console.log('🎬 Generating thumbnail from video...');
 
                 const headCommand = new (require('@aws-sdk/client-s3').HeadObjectCommand)({
                     Bucket: this.storageRepository.bucket,
@@ -437,7 +436,7 @@ class ChunkUploadControllerOptimized {
                 durationMs: null,
                 width: null,
                 height: null,
-                status: VideoStatus.READY,
+                status: VideoStatus.PROCESSING, // Start as processing since transcoding will be queued
                 uploadedAt: new Date(),
                 updatedAt: new Date(),
                 userId: req.user.id,
@@ -449,6 +448,7 @@ class ChunkUploadControllerOptimized {
             try {
                 const videoRepo = this.videoService.uploadVideoUseCase.videoRepository;
                 savedVideo = await videoRepo.save(video);
+                console.log(`✅ Video saved to DB with ID: ${savedVideo.id}`);
 
                 // Update channel video count
                 try {
@@ -467,11 +467,36 @@ class ChunkUploadControllerOptimized {
                 throw dbError;
             }
 
-            // Trigger transcoding asynchronously
-            this.videoService.transcodeVideo(savedVideo.id)
-                .catch(err => {
-                    console.error(`❌ Transcoding failed for video ${savedVideo.id}:`, err.message);
+            // Add transcoding job to queue (non-blocking)
+            try {
+                await this.queueManager.addTranscodingJob({
+                    videoId: savedVideo.id,
+                    storageKey: savedVideo.storageKey,
+                    userId: savedVideo.userId,
                 });
+            } catch (queueError) {
+                console.error(`❌ Failed to queue transcoding job:`, queueError.message);
+                // Set video to ready so users can still watch the original file
+                try {
+                    savedVideo.status = 'ready';
+                    await this.videoService.uploadVideoUseCase.videoRepository.update(savedVideo);
+                } catch (updateError) {
+                    console.error(`❌ Failed to update video status:`, updateError.message);
+                }
+            }
+
+            // If no thumbnail, queue thumbnail generation
+            if (!savedVideo.thumbnailUrl) {
+                try {
+                    await this.queueManager.addThumbnailJob({
+                        videoId: savedVideo.id,
+                        storageKey: savedVideo.storageKey,
+                        videoPath: '', // Video is in B2 storage, will be downloaded by worker
+                    });
+                } catch (queueError) {
+                    console.error(`❌ Failed to queue thumbnail job:`, queueError.message);
+                }
+            }
 
             // Clean up session
             setImmediate(() => {

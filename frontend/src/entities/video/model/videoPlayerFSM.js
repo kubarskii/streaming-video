@@ -17,12 +17,15 @@ export const videoPlayerFSMConfig = {
             on: {
                 [PLAYER_EVENTS.PLAY]: PLAYER_STATES.LOADING,
                 [PLAYER_EVENTS.LOADED_METADATA]: PLAYER_STATES.READY,
+                [PLAYER_EVENTS.WAITING]: PLAYER_STATES.LOADING, // Start loading if buffering begins
             },
         },
 
         [PLAYER_STATES.LOADING]: {
             on: {
                 [PLAYER_EVENTS.LOADED_METADATA]: PLAYER_STATES.READY,
+                [PLAYER_EVENTS.WAITING]: PLAYER_STATES.LOADING, // Stay in loading while buffering initial data
+                [PLAYER_EVENTS.CAN_PLAY]: PLAYER_STATES.READY, // Can transition to ready when enough data is loaded
                 [PLAYER_EVENTS.ERROR]: PLAYER_STATES.ERROR,
             },
         },
@@ -31,6 +34,7 @@ export const videoPlayerFSMConfig = {
             on: {
                 [PLAYER_EVENTS.PLAY]: PLAYER_STATES.PLAYING,
                 [PLAYER_EVENTS.SEEK]: PLAYER_STATES.SEEKING,
+                [PLAYER_EVENTS.WAITING]: PLAYER_STATES.BUFFERING, // Can start buffering from ready state
                 [PLAYER_EVENTS.ERROR]: PLAYER_STATES.ERROR,
             },
         },
@@ -50,6 +54,7 @@ export const videoPlayerFSMConfig = {
             on: {
                 [PLAYER_EVENTS.PLAY]: PLAYER_STATES.PLAYING,
                 [PLAYER_EVENTS.SEEK]: PLAYER_STATES.SEEKING,
+                [PLAYER_EVENTS.WAITING]: PLAYER_STATES.BUFFERING, // Can start buffering from paused state
                 [PLAYER_EVENTS.ENDED]: PLAYER_STATES.ENDED,
                 [PLAYER_EVENTS.ERROR]: PLAYER_STATES.ERROR,
             },

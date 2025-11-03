@@ -5,7 +5,7 @@
 const { URL } = require('url');
 
 class Router {
-    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController, chunkUploadController, videoLikeController, playlistController) {
+    constructor(videoController, streamController, authController, uploadController, channelController, subscriptionController, commentController, chunkUploadController, videoLikeController, playlistController, queueController) {
         this.videoController = videoController;
         this.streamController = streamController;
         this.authController = authController;
@@ -16,6 +16,7 @@ class Router {
         this.chunkUploadController = chunkUploadController;
         this.videoLikeController = videoLikeController;
         this.playlistController = playlistController;
+        this.queueController = queueController;
     }
 
     /**
@@ -163,6 +164,12 @@ class Router {
             return await this.videoController.incrementVideoViews(req, res, videoId);
         }
 
+        // Get video processing status (GET /api/videos/:videoId/processing-status)
+        if (pathname.match(/^\/api\/videos\/[^/]+\/processing-status$/) && req.method === 'GET') {
+            const videoId = pathname.split('/')[3];
+            return await this.queueController.getVideoProcessingStatus(req, res, videoId);
+        }
+
         // Get single video by ID (GET /api/videos/:id)
         if (pathname.startsWith('/api/videos/') && req.method === 'GET') {
             const videoId = pathname.split('/')[3];
@@ -226,6 +233,20 @@ class Router {
         if (pathname.match(/^\/api\/subscriptions\/[^/]+\/status$/) && req.method === 'GET') {
             const channelId = pathname.split('/')[3];
             return await this.subscriptionController.checkStatus(req, res, channelId);
+        }
+
+        // Queue Routes
+        if (pathname === '/api/queues/metrics' && req.method === 'GET') {
+            return await this.queueController.getQueueMetrics(req, res);
+        }
+
+        if (pathname === '/api/queues/health' && req.method === 'GET') {
+            return await this.queueController.getQueueHealth(req, res);
+        }
+
+        if (pathname.match(/^\/api\/queues\/[^/]+\/jobs\/[^/]+\/retry$/) && req.method === 'POST') {
+            const [, , , queueName, , jobId] = pathname.split('/');
+            return await this.queueController.retryJob(req, res, queueName, jobId);
         }
 
         // Comment Routes

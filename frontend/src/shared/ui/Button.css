@@ -18,7 +18,7 @@
 }
 
 .ui-button:focus-visible {
-  outline: 3px solid rgba(102, 126, 234, 0.5);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -45,18 +45,20 @@
 
 /* Variants */
 .ui-button--primary {
-  background: #667eea;
-  color: white;
-  border: 1px solid #667eea;
+  background: var(--primary-color);
+  border: 1px solid var(--primary-color);
 }
 
 .ui-button--primary:hover:not(:disabled) {
-  background: #5568d3;
-  border-color: #5568d3;
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .ui-button--primary:active:not(:disabled) {
-  background: #4c5fd4;
+  background: var(--primary-dark);
+  transform: translateY(0);
 }
 
 .ui-button--secondary {
@@ -75,18 +77,21 @@
 }
 
 .ui-button--danger {
-  background: #ef4444;
+  background: var(--error-color);
   color: white;
-  border: 1px solid #ef4444;
+  border: 1px solid var(--error-color);
 }
 
 .ui-button--danger:hover:not(:disabled) {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: var(--error-dark);
+  border-color: var(--error-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .ui-button--danger:active:not(:disabled) {
-  background: #b91c1c;
+  background: var(--error-dark);
+  transform: translateY(0);
 }
 
 .ui-button--ghost {
@@ -141,4 +146,3 @@
   width: 1.25em;
   height: 1.25em;
 }
-

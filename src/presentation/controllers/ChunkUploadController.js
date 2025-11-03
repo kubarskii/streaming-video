@@ -7,12 +7,14 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
+const { getQueueManager } = require('../../infrastructure/queue/QueueManager');
 
 class ChunkUploadController {
     constructor(chunkUploadService, videoService, storageRepository) {
         this.chunkUploadService = chunkUploadService;
         this.videoService = videoService;
         this.storageRepository = storageRepository;
+        this.queueManager = getQueueManager();
     }
 
     /**
@@ -314,15 +316,12 @@ class ChunkUploadController {
                 b2UploadId,
                 sortedParts
             );
-            console.log(`✅ B2 multipart upload completed: ${storageKey}`);
 
             // Generate thumbnail by downloading beginning of video with enough data to extract middle frame
             let thumbnailUrl = null;
             const tempVideoPath = path.join(process.cwd(), 'videos', 'temp', `temp_${videoId}${path.extname(session.fileName)}`);
 
             try {
-                console.log('🎬 Generating thumbnail from video...');
-
                 // Get total file size from B2
                 const headCommand = new (require('@aws-sdk/client-s3').HeadObjectCommand)({
                     Bucket: this.storageRepository.bucket,
@@ -330,14 +329,11 @@ class ChunkUploadController {
                 });
                 const headResponse = await this.storageRepository.client.send(headCommand);
                 const totalSize = headResponse.ContentLength;
-                console.log(`📊 Total video size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
 
                 // Download first 50MB which should include moov atom + enough video data
                 // This allows ffmpeg to seek to middle timestamps
                 const downloadSize = Math.min(50 * 1024 * 1024, totalSize); // 50MB or less
                 const rangeEnd = downloadSize - 1;
-
-                console.log(`📥 Downloading first ${(downloadSize / 1024 / 1024).toFixed(2)} MB (includes metadata + video data)`);
 
                 const { stream: videoStream } = await this.storageRepository.getObjectStream(
                     storageKey,
@@ -358,7 +354,6 @@ class ChunkUploadController {
                 }
 
                 const fileStats = fs.statSync(tempVideoPath);
-                console.log(`✅ Downloaded ${(fileStats.size / 1024 / 1024).toFixed(2)} MB`);
 
                 if (fileStats.size === 0) {
                     throw new Error('Downloaded file is empty');
@@ -376,7 +371,6 @@ class ChunkUploadController {
 
                 try {
                     const fullVideoDuration = await thumbnailGenerator.getVideoDuration(tempVideoPath);
-                    console.log(`📊 Full video duration from metadata: ${fullVideoDuration ? fullVideoDuration.toFixed(2) : 'unknown'}s`);
 
                     if (fullVideoDuration && fullVideoDuration > 0) {
                         // Estimate bitrate: totalSize / duration (rough approximation)
@@ -385,22 +379,17 @@ class ChunkUploadController {
                         const bytesDownloaded = fileStats.size;
                         const secondsAvailable = (bytesDownloaded * 8) / estimatedBitrate;
 
-                        console.log(`📊 Estimated ${secondsAvailable.toFixed(2)}s of video in downloaded ${(bytesDownloaded / 1024 / 1024).toFixed(2)}MB`);
-
                         // Use middle of available data, with safety margin
                         if (secondsAvailable > 20) {
                             // Extract from 40-60% of available data
                             const safeMiddle = secondsAvailable * 0.5 * 0.8; // 50% of available, with 20% safety margin
                             extractTimestamp = thumbnailGenerator.formatTimestamp(Math.min(safeMiddle, secondsAvailable - 5));
-                            console.log(`📍 Extracting from safe middle: ${extractTimestamp}`);
                         } else if (secondsAvailable > 5) {
                             // Short available data, use early timestamp
                             extractTimestamp = '00:00:03.000';
-                            console.log(`📍 Limited data available, using early timestamp: ${extractTimestamp}`);
                         } else {
                             // Very limited data
                             extractTimestamp = '00:00:01.000';
-                            console.log(`📍 Very limited data, using: ${extractTimestamp}`);
                         }
                     }
                 } catch (durationError) {
@@ -432,7 +421,6 @@ class ChunkUploadController {
                 );
 
                 thumbnailUrl = thumbnailUpload.cdnUrl || thumbnailUpload.storageUrl;
-                console.log(`✅ Thumbnail generated and uploaded: ${thumbnailUrl}`);
 
                 // Clean up temp files
                 try {
@@ -442,7 +430,6 @@ class ChunkUploadController {
 
             } catch (thumbnailError) {
                 console.error('❌ Failed to generate thumbnail:', thumbnailError.message);
-                console.log('ℹ️  Thumbnail will be generated during transcoding as fallback');
 
                 // Clean up temp files
                 try {
@@ -467,7 +454,7 @@ class ChunkUploadController {
                 durationMs: null,
                 width: null,
                 height: null,
-                status: VideoStatus.READY,
+                status: VideoStatus.PROCESSING, // Start as processing since transcoding will be queued
                 uploadedAt: new Date(),
                 updatedAt: new Date(),
                 userId: req.user.id,
@@ -493,7 +480,7 @@ class ChunkUploadController {
                 // This prevents creating new connections
                 const videoRepo = this.videoService.uploadVideoUseCase.videoRepository;
                 savedVideo = await videoRepo.save(video);
-                console.log(`✅ Video record created: ${savedVideo.id}`);
+                console.log(`✅ Video saved to DB with ID: ${savedVideo.id}`);
 
                 // Update channel video count
                 try {
@@ -519,14 +506,36 @@ class ChunkUploadController {
                 throw dbError;
             }
 
-            // Trigger transcoding asynchronously (don't wait for it)
-            this.videoService.transcodeVideo(savedVideo.id)
-                .then(() => {
-                    // Transcoding complete
-                })
-                .catch(err => {
-                    console.error(`❌ Transcoding failed for video ${savedVideo.id}:`, err.message);
+            // Add transcoding job to queue (non-blocking)
+            try {
+                await this.queueManager.addTranscodingJob({
+                    videoId: savedVideo.id,
+                    storageKey: savedVideo.storageKey,
+                    userId: savedVideo.userId,
                 });
+            } catch (queueError) {
+                console.error(`❌ Failed to queue transcoding job:`, queueError.message);
+                // Set video to ready so users can still watch the original file
+                try {
+                    savedVideo.status = 'ready';
+                    await this.videoService.uploadVideoUseCase.videoRepository.update(savedVideo);
+                } catch (updateError) {
+                    console.error(`❌ Failed to update video status:`, updateError.message);
+                }
+            }
+
+            // If no thumbnail, queue thumbnail generation
+            if (!savedVideo.thumbnailUrl) {
+                try {
+                    await this.queueManager.addThumbnailJob({
+                        videoId: savedVideo.id,
+                        storageKey: savedVideo.storageKey,
+                        videoPath: '', // Video is in B2 storage, will be downloaded by worker
+                    });
+                } catch (queueError) {
+                    console.error(`❌ Failed to queue thumbnail job:`, queueError.message);
+                }
+            }
 
             // Clean up session asynchronously
             setImmediate(() => {

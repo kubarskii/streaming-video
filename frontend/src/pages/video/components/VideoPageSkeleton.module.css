@@ -1,18 +1,63 @@
 /* Video Page Skeleton Loading Styles - CSS Module */
 
-.skeleton {
-    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-hover) 50%, var(--bg-secondary) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 8px;
-}
-
+/* Keyframe animations for skeleton loading */
 @keyframes shimmer {
     0% {
-        background-position: 200% 0;
+        transform: translateX(-100%);
     }
     100% {
-        background-position: -200% 0;
+        transform: translateX(100%);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.skeleton {
+    background: var(--bg-secondary);
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.skeleton::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.8) 25%,
+        rgba(255, 255, 255, 1) 50%,
+        rgba(255, 255, 255, 0.8) 75%,
+        transparent 100%
+    );
+    animation: shimmer 1.5s ease-in-out infinite;
+    z-index: 1;
+    pointer-events: none;
+    will-change: transform;
+}
+
+/* Dark mode shimmer adjustment */
+@media (prefers-color-scheme: dark) {
+    .skeleton::after {
+        background: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.2) 25%,
+            rgba(255, 255, 255, 0.3) 50%,
+            rgba(255, 255, 255, 0.2) 75%,
+            transparent 100%
+        );
     }
 }
 
@@ -28,15 +73,6 @@
 
 .skeletonPlayIcon {
     animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% {
-        opacity: 0.4;
-    }
-    50% {
-        opacity: 0.6;
-    }
 }
 
 /* Skeleton variants */

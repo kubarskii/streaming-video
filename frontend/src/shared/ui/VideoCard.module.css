@@ -303,29 +303,70 @@
 /* ============================================
    Skeleton Loading
    ============================================ */
-.ui-video-card--skeleton {
+
+/* Keyframe animations for skeleton loading */
+@keyframes skeletonShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.uiVideoCardSkeleton {
   pointer-events: none;
 }
 
-.ui-skeleton {
-  background: var(--bg-secondary);
-  background-size: 200% 100%;
-  animation: ui-skeleton-loading 1.5s ease-in-out infinite;
-  border-radius: 0.25rem;
+.uiVideoCardThumbnail.uiSkeleton {
+  background: var(--bg-secondary) !important;
 }
 
-.ui-skeleton--text {
+.uiSkeleton {
+  background: var(--bg-secondary) !important;
+  position: relative;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.uiSkeleton::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.8) 25%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 255, 255, 0.8) 75%,
+    transparent 100%
+  );
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+  z-index: 1;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Dark mode shimmer adjustment */
+@media (prefers-color-scheme: dark) {
+  .uiSkeleton::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.2) 25%,
+      rgba(255, 255, 255, 0.3) 50%,
+      rgba(255, 255, 255, 0.2) 75%,
+      transparent 100%
+    );
+  }
+}
+
+.uiSkeletonText {
   height: 1rem;
   width: 100%;
-}
-
-@keyframes ui-skeleton-loading {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
 }
 
 /* ============================================

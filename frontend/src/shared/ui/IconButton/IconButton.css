@@ -16,6 +16,8 @@
   opacity: 0.85;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  position: relative;
+  pointer-events: auto; /* Ensure buttons always receive pointer events */
 }
 
 .icon-btn:hover {

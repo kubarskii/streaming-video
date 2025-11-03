@@ -160,7 +160,8 @@ export const VideoPage = () => {
         };
 
         fetchVideo();
-    }, [id, signal]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id]);
 
     useEffect(() => {
         if (!video) {
@@ -394,7 +395,8 @@ export const VideoPage = () => {
         };
 
         loadPlaylist();
-    }, [video, signal, playlistIdFromUrl]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [video, playlistIdFromUrl]);
 
 
     useEffect(() => {

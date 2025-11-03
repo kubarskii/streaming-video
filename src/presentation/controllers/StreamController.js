@@ -8,6 +8,12 @@ const https = require('https');
 const http = require('http');
 
 class StreamController {
+    /**
+     * @param {*} videoService
+     * @param {*} storageRepository
+     * @param {*} incrementVideoViewsUseCase
+     * @param {*} [videoQualityRepository]
+     */
     constructor(videoService, storageRepository, incrementVideoViewsUseCase, videoQualityRepository = null) {
         this.videoService = videoService;
         this.storageRepository = storageRepository;
@@ -22,8 +28,6 @@ class StreamController {
      */
     async streamVideo(req, res, fileKey) {
         try {
-            console.log(`[StreamController] Streaming request for: ${fileKey}`);
-
             // First, check if this is a quality variant
             let videoQuality = null;
             if (this.videoQualityRepository) {
@@ -31,10 +35,7 @@ class StreamController {
             }
 
             if (videoQuality) {
-                // Streaming a quality variant
-                console.log(`[StreamController] Streaming quality variant: ${videoQuality.quality} for video ${videoQuality.videoId}`);
-
-                // Increment view count for the parent video
+                // Streaming a quality variant - increment view count for the parent video
                 if (this.incrementVideoViewsUseCase && !this.viewedVideos.has(videoQuality.videoId)) {
                     this.viewedVideos.add(videoQuality.videoId);
                     this.incrementVideoViewsUseCase.execute(videoQuality.videoId).catch(err => {
@@ -45,35 +46,27 @@ class StreamController {
                 // Stream the quality variant
                 return this.streamQualityVariant(req, res, videoQuality);
             }
-            // Get video metadata from database by storage key
-            console.log(`[StreamController] Looking up video by storageKey: ${fileKey}`);
-            let video = null;
 
+            // Get video metadata from database by storage key
+            let video = null;
             try {
                 video = await this.videoService.getVideoByStorageKey(fileKey);
-                console.log(`[StreamController] Lookup result:`, video ? 'FOUND' : 'NULL');
             } catch (lookupError) {
                 console.error(`[StreamController] Error during lookup:`, lookupError);
             }
 
             if (!video) {
-                console.log(`[StreamController] Video not found in database: ${fileKey}`);
                 // If not in database, try to serve as static file (for thumbnails)
                 if (fileKey.startsWith('thumb_')) {
-                    console.log(`[StreamController] Trying to serve as thumbnail`);
                     return await this.streamStaticFile(req, res, fileKey);
                 }
                 res.writeHead(404, { 'Content-Type': 'text/plain' });
                 return res.end('Video not found');
             }
 
-            console.log(`[StreamController] Video found: ${video.id} - ${video.title}`);
-
             // Increment view count if this is the first time streaming this video in this session
-            // Only count initial request (not range requests for seeking)
             if (this.incrementVideoViewsUseCase && !this.viewedVideos.has(video.id)) {
                 this.viewedVideos.add(video.id);
-                // Increment views asynchronously without blocking the stream
                 this.incrementVideoViewsUseCase.execute(video.id).catch(err => {
                     console.error('Failed to increment video views:', err);
                 });
@@ -82,15 +75,12 @@ class StreamController {
             // For local storage, stream from filesystem
             if (this.storageRepository.getFilePath) {
                 const filePath = this.storageRepository.getFilePath(video.storageKey);
-                console.log(`[StreamController] getFilePath returned: ${filePath}`);
                 if (filePath && require('fs').existsSync(filePath)) {
-                    console.log(`[StreamController] File exists locally, streaming from filesystem`);
                     return this.streamLocalFile(req, res, filePath, video);
                 }
             }
 
             // For cloud storage (B2), use authenticated streaming
-            console.log(`[StreamController] Streaming from B2 cloud storage`);
             return this.streamFromB2(req, res, video.storageKey, video);
 
         } catch (error) {
@@ -112,15 +102,12 @@ class StreamController {
         // For local storage, stream from filesystem
         if (this.storageRepository.getFilePath) {
             const filePath = this.storageRepository.getFilePath(quality.storageKey);
-            console.log(`[StreamController] Quality variant path: ${filePath}`);
             if (filePath && require('fs').existsSync(filePath)) {
-                console.log(`[StreamController] Quality variant exists locally`);
                 return this.streamLocalFile(req, res, filePath, videoMetadata);
             }
         }
 
         // For cloud storage (B2), use authenticated streaming
-        console.log(`[StreamController] Streaming quality variant from B2`);
         return this.streamFromB2(req, res, quality.storageKey, videoMetadata);
     }
 
@@ -129,15 +116,11 @@ class StreamController {
      */
     async streamStaticFile(req, res, fileKey) {
         try {
-            console.log(`[StreamController] streamStaticFile for: ${fileKey}`);
-
             // For local storage, stream from filesystem
             if (this.storageRepository.getFilePath) {
                 const filePath = this.storageRepository.getFilePath(fileKey);
-                console.log(`[StreamController] Static file path: ${filePath}`);
 
                 if (filePath && fs.existsSync(filePath)) {
-                    console.log(`[StreamController] Static file exists locally`);
                     const stat = fs.statSync(filePath);
                     const fileSize = stat.size;
                     const ext = path.extname(filePath).toLowerCase();

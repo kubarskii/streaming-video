@@ -12,8 +12,14 @@ class PrismaVideoQualityRepository extends IVideoQualityRepository {
     }
 
     async save(quality) {
-        const saved = await this.prisma.videoQuality.create({
-            data: {
+        const saved = await this.prisma.videoQuality.upsert({
+            where: {
+                videoId_quality: {
+                    videoId: quality.videoId,
+                    quality: quality.quality
+                }
+            },
+            create: {
                 id: quality.id,
                 videoId: quality.videoId,
                 quality: quality.quality,
@@ -26,6 +32,17 @@ class PrismaVideoQualityRepository extends IVideoQualityRepository {
                 bitrate: quality.bitrate,
                 status: quality.status,
                 createdAt: quality.createdAt,
+                updatedAt: quality.updatedAt
+            },
+            update: {
+                storageKey: quality.storageKey,
+                storageUrl: quality.storageUrl,
+                cdnUrl: quality.cdnUrl,
+                width: quality.width,
+                height: quality.height,
+                sizeBytes: BigInt(quality.sizeBytes),
+                bitrate: quality.bitrate,
+                status: quality.status,
                 updatedAt: quality.updatedAt
             }
         });

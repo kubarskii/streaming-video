@@ -2,7 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { Avatar } from './Avatar';
 import { ClockIcon, EyeIcon, PlayIcon } from './Icons';
 import { formatViews, formatRelativeTime, formatDuration } from '../lib';
-import './VideoCard.css';
+import styles from './VideoCard.module.css';
 
 /**
  * Shared Video Card Component
@@ -33,9 +33,9 @@ export const VideoCard = ({
     const videoLink = `/video/${video.id}`;
 
     const cardClasses = [
-        'ui-video-card',
-        `ui-video-card--${variant}`,
-        actions && 'ui-video-card--has-actions',
+        styles['ui-video-card'],
+        styles[`ui-video-card--${variant}`],
+        actions && styles['ui-video-card--has-actions'],
         className,
     ]
         .filter(Boolean)
@@ -65,88 +65,88 @@ export const VideoCard = ({
     return (
         <div className={cardClasses} onClick={handleCardClick} style={{ cursor: actions ? 'default' : 'pointer' }}>
             {/* Thumbnail */}
-            <div className="ui-video-card__thumbnail">
+            <div className={styles['ui-video-card__thumbnail']}>
                 {thumbnailUrl ? (
                     <img
                         src={thumbnailUrl}
                         alt={video.title}
-                        className="ui-video-card__image"
+                        className={styles['ui-video-card__image']}
                         loading="lazy"
                     />
                 ) : (
-                    <div className="ui-video-card__placeholder">
+                    <div className={styles['ui-video-card__placeholder']}>
                         <PlayIcon size={48} />
                     </div>
                 )}
                 {duration && (
-                    <div className="ui-video-card__duration">
+                    <div className={styles['ui-video-card__duration']}>
                         <ClockIcon size={12} />
                         <span>{duration}</span>
                     </div>
                 )}
                 {video.status && video.status !== 'ready' && (
-                    <div className="ui-video-card__status">{video.status}</div>
+                    <div className={styles['ui-video-card__status']}>{video.status}</div>
                 )}
                 {onThumbnailUpload && (
-                    <div className="ui-video-card__thumbnail-overlay">
+                    <div className={styles['ui-video-card__thumbnail-overlay']}>
                         {onThumbnailUpload}
                     </div>
                 )}
             </div>
 
             {/* Info */}
-            <div className="ui-video-card__content">
+            <div className={styles['ui-video-card__content']}>
                 {showUser && video.user && variant !== 'compact' && (
-                    <div className="ui-video-card__user">
+                    <div className={styles['ui-video-card__user']}>
                         <Avatar name={video.user.username || video.user.name} size="small" />
                     </div>
                 )}
 
-                <div className="ui-video-card__info">
-                    <h3 className="ui-video-card__title">{video.title}</h3>
+                <div className={styles['ui-video-card__info']}>
+                    <h3 className={styles['ui-video-card__title']}>{video.title}</h3>
 
                     {showUser && video.user && video.userId && (
                         <Link
                             to={`/channel/${video.userId}`}
-                            className="ui-video-card__author"
+                            className={styles['ui-video-card__author']}
                         >
                             {video.user.channel?.name || video.user.username || video.user.name}
                         </Link>
                     )}
                     {showUser && video.user && !video.userId && (
-                        <div className="ui-video-card__author">
+                        <div className={styles['ui-video-card__author']}>
                             {video.user.channel?.name || video.user.username || video.user.name}
                         </div>
                     )}
 
-                    <div className="ui-video-card__meta">
+                    <div className={styles['ui-video-card__meta']}>
                         {showFileSize && video.sizeBytes && (
-                            <span className="ui-video-card__filesize">
+                            <span className={styles['ui-video-card__filesize']}>
                                 {formatFileSize(video.sizeBytes)}
                             </span>
                         )}
                         {video.views !== undefined && (
-                            <span className="ui-video-card__views">
+                            <span className={styles['ui-video-card__views']}>
                                 <EyeIcon size={14} />
                                 {formatViews(video.views)} views
                             </span>
                         )}
                         {video.uploadedAt && (
-                            <span className="ui-video-card__date">
+                            <span className={styles['ui-video-card__date']}>
                                 {formatRelativeTime(video.uploadedAt)}
                             </span>
                         )}
                     </div>
 
                     {showDescription && video.description && (
-                        <p className="ui-video-card__description">{video.description}</p>
+                        <p className={styles['ui-video-card__description']}>{video.description}</p>
                     )}
                 </div>
             </div>
 
             {/* Custom Actions */}
             {actions && (
-                <div className="ui-video-card__actions">
+                <div className={styles['ui-video-card__actions']}>
                     {actions}
                 </div>
             )}
@@ -159,8 +159,8 @@ export const VideoCard = ({
  */
 export const VideoCardGrid = ({ children, columns = 'auto', className = '' }) => {
     const gridClasses = [
-        'ui-video-card-grid',
-        `ui-video-card-grid--${columns}`,
+        styles['ui-video-card-grid'],
+        styles[`ui-video-card-grid--${columns}`],
         className,
     ]
         .filter(Boolean)
@@ -174,13 +174,13 @@ export const VideoCardGrid = ({ children, columns = 'auto', className = '' }) =>
  */
 export const VideoCardSkeleton = ({ variant = 'grid' }) => {
     return (
-        <div className={`ui-video-card ui-video-card--${variant} ui-video-card--skeleton`}>
-            <div className="ui-video-card__thumbnail ui-skeleton" />
-            <div className="ui-video-card__content">
-                <div className="ui-video-card__info">
-                    <div className="ui-video-card__title ui-skeleton ui-skeleton--text" />
-                    <div className="ui-video-card__meta">
-                        <div className="ui-skeleton ui-skeleton--text" style={{ width: '60%' }} />
+        <div className={`${styles['ui-video-card']} ${styles[`ui-video-card--${variant}`]} ${styles.uiVideoCardSkeleton}`}>
+            <div className={`${styles['ui-video-card__thumbnail']} ${styles.uiSkeleton}`} />
+            <div className={styles['ui-video-card__content']}>
+                <div className={styles['ui-video-card__info']}>
+                    <div className={`${styles['ui-video-card__title']} ${styles.uiSkeleton} ${styles.uiSkeletonText}`} />
+                    <div className={styles['ui-video-card__meta']}>
+                        <div className={`${styles.uiSkeleton} ${styles.uiSkeletonText}`} style={{ width: '60%' }} />
                     </div>
                 </div>
             </div>

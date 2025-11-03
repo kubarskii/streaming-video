@@ -33,11 +33,30 @@ export const IconButton = ({
     const sizeClass = `icon-btn--${size}`;
     const disabledClass = disabled ? 'icon-btn--disabled' : '';
 
+    const handleClick = (e) => {
+        // Ensure the event is not blocked by parent elements
+        e.stopPropagation();
+        if (onClick && !disabled) {
+            onClick(e);
+        }
+    };
+
+    const handleTouchEnd = (e) => {
+        // For mobile, handle touch events
+        e.stopPropagation();
+        if (onClick && !disabled) {
+            // Prevent duplicate click events
+            e.preventDefault();
+            onClick(e);
+        }
+    };
+
     return (
         <button
             type={type}
             className={`icon-btn ${sizeClass} ${disabledClass} ${className}`}
-            onClick={onClick}
+            onClick={handleClick}
+            onTouchEnd={handleTouchEnd}
             onDoubleClick={onDoubleClick}
             disabled={disabled}
             aria-label={ariaLabel}
