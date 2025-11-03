@@ -26,6 +26,7 @@
     left: 0;
     right: 0;
     height: 90vh;
+    max-height: calc(100vh - env(safe-area-inset-top));
     background: var(--bg-primary);
     border-radius: 16px 16px 0 0;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.2);
@@ -35,6 +36,15 @@
     transform: translateY(100%);
     transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
+    overflow: hidden;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+@supports (height: 100dvh) {
+    .mobilePlaylistSheet {
+        height: 90dvh;
+        max-height: calc(100dvh - env(safe-area-inset-top));
+    }
 }
 
 .mobilePlaylistHeader {
@@ -178,6 +188,22 @@
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     min-height: 0;
+    transition: padding-bottom 0.3s ease;
+}
+
+/* Expanded state: translateY(10%) = 10% of 90vh = 9vh offset */
+.mobilePlaylistContent.expanded {
+    padding-bottom: calc(9vh + 8px + env(safe-area-inset-bottom));
+}
+
+/* Half-open state: translateY(50%) = 50% of 90vh = 45vh offset */
+.mobilePlaylistContent.halfOpen {
+    padding-bottom: calc(45vh + 8px + env(safe-area-inset-bottom));
+}
+
+/* Closed state */
+.mobilePlaylistContent.closed {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
 }
 
 .mobilePlaylistContent::-webkit-scrollbar {
@@ -216,16 +242,22 @@
     margin-bottom: 6px;
 }
 
-.mobilePlaylistItem:hover:not(.active) {
+.mobilePlaylistItem:last-child {
+    margin-bottom: 0;
+}
+
+.mobilePlaylistItem:hover {
     background: var(--bg-hover);
 }
 
-.mobilePlaylistItem.active {
-    background: var(--bg-secondary);
+.mobilePlaylistItem.active,
+.active {
+    background: var(--bg-secondary) !important;
     color: var(--text-primary);
 }
 
-.mobilePlaylistItem.active .mobilePlaylistMeta {
+.mobilePlaylistItem.active .mobilePlaylistMeta,
+.active .mobilePlaylistMeta {
     color: var(--text-secondary);
 }
 
@@ -241,7 +273,8 @@
     color: var(--text-secondary);
 }
 
-.mobilePlaylistItem.active .mobilePlaylistNumber {
+.mobilePlaylistItem.active .mobilePlaylistNumber,
+.active .mobilePlaylistNumber {
     color: var(--text-primary);
 }
 
@@ -254,7 +287,8 @@
     flex-shrink: 0;
 }
 
-.mobilePlaylistThumbnail.placeholder {
+.mobilePlaylistThumbnail.placeholder,
+.placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -282,7 +316,8 @@
     line-height: 1.4;
 }
 
-.mobilePlaylistItem.active .mobilePlaylistVideoTitle {
+.mobilePlaylistItem.active .mobilePlaylistVideoTitle,
+.active .mobilePlaylistVideoTitle {
     color: var(--text-primary);
 }
 
