@@ -44,7 +44,7 @@ export const TapZones = ({
                 return;
             }
         }
-        
+
         event.preventDefault();
         event.stopPropagation();
 
@@ -66,7 +66,7 @@ export const TapZones = ({
         // Double tap detected (within threshold)
         if (timeDiff < PLAYER_CONSTANTS.DOUBLE_TAP_THRESHOLD && timeDiff > 0) {
             lastTapTimeRef.current[zone] = now;
-            
+
             // Increment tap count
             tapCountRef.current[zone]++;
 

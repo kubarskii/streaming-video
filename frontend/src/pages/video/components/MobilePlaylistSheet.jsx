@@ -173,7 +173,10 @@ export const MobilePlaylistSheet = ({
                     </button>
                 </div>
 
-                <div className={styles.mobilePlaylistContent}>
+                <div className={`${styles.mobilePlaylistContent} ${height <= 30 ? styles.expanded :
+                    height <= 70 ? styles.halfOpen :
+                        styles.closed
+                    }`}>
                     {playlistLoading && (
                         <div className={styles.mobilePlaylistEmpty}>Loading playlist…</div>
                     )}
@@ -198,7 +201,7 @@ export const MobilePlaylistSheet = ({
                             <button
                                 key={item.id}
                                 type="button"
-                                className={`${styles.mobilePlaylistItem} ${isActive ? 'active' : ''}`}
+                                className={`${styles.mobilePlaylistItem} ${isActive ? styles.active : ''}`}
                                 onClick={() => {
                                     onSelectVideo(index);
                                 }}
@@ -215,7 +218,7 @@ export const MobilePlaylistSheet = ({
                                 {item.thumbnailUrl ? (
                                     <img src={item.thumbnailUrl} alt="" className={styles.mobilePlaylistThumbnail} />
                                 ) : (
-                                    <div className={`${styles.mobilePlaylistThumbnail} placeholder`}>No thumbnail</div>
+                                    <div className={`${styles.mobilePlaylistThumbnail} ${styles.placeholder}`}>No thumbnail</div>
                                 )}
                                 <div className={styles.mobilePlaylistInfo}>
                                     <div className={styles.mobilePlaylistVideoTitle}>{item.title}</div>
