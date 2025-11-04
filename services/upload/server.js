@@ -1,6 +1,8 @@
 // @ts-check
 // Upload Service
-// Handles video uploads, authentication, and metadata management
+// Handles video uploads and metadata management
+// Authentication is handled by Gateway
+// TODO: Separate channels, playlists, likes, comments, subscriptions into dedicated services
 
 require('dotenv').config();
 const http = require('http');
@@ -10,32 +12,49 @@ const path = require('path');
 const DatabaseConfig = require('../../src/infrastructure/config/DatabaseConfig');
 const StorageConfig = require('../../src/infrastructure/config/StorageConfig');
 const PrismaVideoRepository = require('../../src/infrastructure/persistence/PrismaVideoRepository');
-const PrismaUserRepository = require('../../src/infrastructure/persistence/PrismaUserRepository');
 const PrismaChannelRepository = require('../../src/infrastructure/persistence/PrismaChannelRepository');
 const PrismaPlaylistRepository = require('../../src/infrastructure/persistence/PrismaPlaylistRepository');
-const PasswordHasher = require('../../src/infrastructure/auth/PasswordHasher');
-const JWTService = require('../../src/infrastructure/auth/JWTService');
+const PrismaVideoLikeRepository = require('../../src/infrastructure/persistence/PrismaVideoLikeRepository');
+const PrismaSubscriptionRepository = require('../../src/infrastructure/persistence/PrismaSubscriptionRepository');
+const PrismaCommentRepository = require('../../src/infrastructure/persistence/PrismaCommentRepository');
 const ThumbnailGenerator = require('../../src/infrastructure/media/ThumbnailGenerator');
 
 // Application Services
 const VideoService = require('../../src/application/services/VideoService');
-const AuthService = require('../../src/application/services/AuthService');
-const PlaylistService = require('../../src/application/services/PlaylistService');
 const ChunkUploadService = require('../../src/application/services/ChunkUploadService');
+const PlaylistService = require('../../src/application/services/PlaylistService');
+
+// Use Cases
+const CreateChannelUseCase = require('../../src/application/use-cases/CreateChannelUseCase');
+const GetChannelUseCase = require('../../src/application/use-cases/GetChannelUseCase');
+const UpdateChannelUseCase = require('../../src/application/use-cases/UpdateChannelUseCase');
+const ListChannelsUseCase = require('../../src/application/use-cases/ListChannelsUseCase');
+const LikeVideoUseCase = require('../../src/application/use-cases/LikeVideoUseCase');
+const GetVideoLikeStatsUseCase = require('../../src/application/use-cases/GetVideoLikeStatsUseCase');
+const RemoveVideoLikeUseCase = require('../../src/application/use-cases/RemoveVideoLikeUseCase');
+const SubscribeToChannelUseCase = require('../../src/application/use-cases/SubscribeToChannelUseCase');
+const UnsubscribeFromChannelUseCase = require('../../src/application/use-cases/UnsubscribeFromChannelUseCase');
+const GetUserSubscriptionsUseCase = require('../../src/application/use-cases/GetUserSubscriptionsUseCase');
+const CheckSubscriptionStatusUseCase = require('../../src/application/use-cases/CheckSubscriptionStatusUseCase');
+const CreateCommentUseCase = require('../../src/application/use-cases/CreateCommentUseCase');
+const GetVideoCommentsUseCase = require('../../src/application/use-cases/GetVideoCommentsUseCase');
+const UpdateCommentUseCase = require('../../src/application/use-cases/UpdateCommentUseCase');
+const DeleteCommentUseCase = require('../../src/application/use-cases/DeleteCommentUseCase');
 
 // Presentation
 const VideoController = require('../../src/presentation/controllers/VideoController');
-const AuthController = require('../../src/presentation/controllers/AuthController');
 const ChunkUploadController = require('../../src/presentation/controllers/ChunkUploadController');
+const QueueController = require('../../src/presentation/controllers/QueueController');
 const ChannelController = require('../../src/presentation/controllers/ChannelController');
 const PlaylistController = require('../../src/presentation/controllers/PlaylistController');
-const QueueController = require('../../src/presentation/controllers/QueueController');
+const VideoLikeController = require('../../src/presentation/controllers/VideoLikeController');
+const SubscriptionController = require('../../src/presentation/controllers/SubscriptionController');
+const CommentController = require('../../src/presentation/controllers/CommentController');
 const InMemoryUploadSessionRepository = require('../../src/infrastructure/persistence/InMemoryUploadSessionRepository');
 
 // Router
 const UploadServiceRouter = require('./router');
 const corsMiddleware = require('../../src/presentation/middleware/corsMiddleware');
-const { authMiddleware } = require('../../src/presentation/middleware/authMiddleware');
 
 // Configuration
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -52,12 +71,12 @@ async function initializeContainer() {
     // Infrastructure
     const prismaClient = DatabaseConfig.getPrismaClient();
     const videoRepository = new PrismaVideoRepository(prismaClient);
-    const userRepository = new PrismaUserRepository(prismaClient);
     const channelRepository = new PrismaChannelRepository(prismaClient);
     const playlistRepository = new PrismaPlaylistRepository(prismaClient);
+    const videoLikeRepository = new PrismaVideoLikeRepository(prismaClient);
+    const subscriptionRepository = new PrismaSubscriptionRepository(prismaClient);
+    const commentRepository = new PrismaCommentRepository(prismaClient);
     const storageRepository = StorageConfig.createStorageRepository();
-    const passwordHasher = new PasswordHasher();
-    const jwtService = new JWTService();
     const thumbnailGenerator = new ThumbnailGenerator();
 
     // Application Services
@@ -67,23 +86,28 @@ async function initializeContainer() {
         thumbnailGenerator,
         channelRepository
     );
-    const authService = new AuthService(userRepository, passwordHasher, jwtService);
     const playlistService = new PlaylistService(playlistRepository, videoRepository);
 
-    // Presentation Controllers
-    const videoController = new VideoController(videoService);
-    const authController = new AuthController(authService);
-    // Use Cases for Channel
-    const CreateChannelUseCase = require('../../src/application/use-cases/CreateChannelUseCase');
-    const GetChannelUseCase = require('../../src/application/use-cases/GetChannelUseCase');
-    const UpdateChannelUseCase = require('../../src/application/use-cases/UpdateChannelUseCase');
-    const ListChannelsUseCase = require('../../src/application/use-cases/ListChannelsUseCase');
-
-    const createChannelUseCase = new CreateChannelUseCase(channelRepository, userRepository);
+    // Use Cases
+    const createChannelUseCase = new CreateChannelUseCase(channelRepository, null); // No userRepository needed
     const getChannelUseCase = new GetChannelUseCase(channelRepository);
     const updateChannelUseCase = new UpdateChannelUseCase(channelRepository);
     const listChannelsUseCase = new ListChannelsUseCase(channelRepository);
+    const likeVideoUseCase = new LikeVideoUseCase(videoLikeRepository, videoRepository);
+    const getVideoLikeStatsUseCase = new GetVideoLikeStatsUseCase(videoLikeRepository);
+    const removeVideoLikeUseCase = new RemoveVideoLikeUseCase(videoLikeRepository);
+    const subscribeToChannelUseCase = new SubscribeToChannelUseCase(subscriptionRepository, channelRepository);
+    const unsubscribeFromChannelUseCase = new UnsubscribeFromChannelUseCase(subscriptionRepository, channelRepository);
+    const getUserSubscriptionsUseCase = new GetUserSubscriptionsUseCase(subscriptionRepository);
+    const checkSubscriptionStatusUseCase = new CheckSubscriptionStatusUseCase(subscriptionRepository);
+    const createCommentUseCase = new CreateCommentUseCase(commentRepository, videoRepository);
+    const getVideoCommentsUseCase = new GetVideoCommentsUseCase(commentRepository);
+    const updateCommentUseCase = new UpdateCommentUseCase(commentRepository);
+    const deleteCommentUseCase = new DeleteCommentUseCase(commentRepository);
 
+    // Presentation Controllers
+    const videoController = new VideoController(videoService);
+    const queueController = new QueueController();
     const channelController = new ChannelController(
         createChannelUseCase,
         getChannelUseCase,
@@ -91,7 +115,23 @@ async function initializeContainer() {
         listChannelsUseCase
     );
     const playlistController = new PlaylistController(playlistService);
-    const queueController = new QueueController();
+    const videoLikeController = new VideoLikeController(
+        likeVideoUseCase,
+        getVideoLikeStatsUseCase,
+        removeVideoLikeUseCase
+    );
+    const subscriptionController = new SubscriptionController(
+        subscribeToChannelUseCase,
+        unsubscribeFromChannelUseCase,
+        getUserSubscriptionsUseCase,
+        checkSubscriptionStatusUseCase
+    );
+    const commentController = new CommentController(
+        createCommentUseCase,
+        getVideoCommentsUseCase,
+        updateCommentUseCase,
+        deleteCommentUseCase
+    );
 
     // Chunked Upload
     const uploadSessionRepository = new InMemoryUploadSessionRepository();
@@ -105,11 +145,13 @@ async function initializeContainer() {
     // Router
     const router = new UploadServiceRouter(
         videoController,
-        authController,
         chunkUploadController,
+        queueController,
         channelController,
         playlistController,
-        queueController
+        videoLikeController,
+        subscriptionController,
+        commentController
     );
 
     console.log('✅ Dependencies initialized');
@@ -117,54 +159,59 @@ async function initializeContainer() {
     console.log(`📦 Storage: ${process.env.STORAGE_MODE || 'local'}`);
     console.log(`📦 Redis: ${process.env.REDIS_URL ? 'Connected' : 'Not configured'}`);
     console.log('');
+    console.log('ℹ️  Authentication is handled by Gateway');
+    console.log('ℹ️  User context received via X-User-* headers');
+    console.log('⚠️  TODO: Move channels, playlists, likes, comments, subscriptions to separate services');
+    console.log('');
 
-    return { router, authService, prismaClient };
+    return { router, prismaClient };
+}
+
+// Middleware to extract user from gateway headers
+function extractUserMiddleware(req, res, next) {
+    const userId = req.headers['x-user-id'];
+    const userEmail = req.headers['x-user-email'];
+    const username = req.headers['x-user-username'];
+
+    if (userId) {
+        req.user = {
+            id: userId,
+            userId: userId,
+            email: userEmail || '',
+            username: username || ''
+        };
+    }
+
+    next();
 }
 
 async function main() {
-    const { router, authService, prismaClient } = await initializeContainer();
+    const { router, prismaClient } = await initializeContainer();
 
     const server = http.createServer(async (req, res) => {
         // Apply CORS
         corsMiddleware(req, res, async () => {
-            // Apply auth middleware (extract JWT token)
-            const token = req.headers.authorization?.replace('Bearer ', '');
-            if (token) {
-                try {
-                    const payload = await authService.verifyToken(token);
-                    if (payload && typeof payload === 'object' && 'userId' in payload) {
-                        // @ts-ignore - Adding user property to request
-                        // Map userId to id for compatibility with controllers
-                        req.user = {
-                            id: payload.userId,
-                            userId: payload.userId,
-                            email: payload.email,
-                            username: payload.username
-                        };
+            // Extract user from gateway headers
+            extractUserMiddleware(req, res, async () => {
+                // Route request
+                const handled = await router.route(req, res);
+
+                if (!handled) {
+                    // Health check
+                    if (req.url === '/health') {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({
+                            status: 'healthy',
+                            service: SERVICE_NAME,
+                            timestamp: new Date().toISOString()
+                        }));
                     }
-                } catch (err) {
-                    // Invalid token, continue as unauthenticated
+
+                    // Not found
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Not found' }));
                 }
-            }
-
-            // Route request
-            const handled = await router.route(req, res);
-
-            if (!handled) {
-                // Health check
-                if (req.url === '/health') {
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    return res.end(JSON.stringify({
-                        status: 'healthy',
-                        service: SERVICE_NAME,
-                        timestamp: new Date().toISOString()
-                    }));
-                }
-
-                // Not found
-                res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Not found' }));
-            }
+            });
         });
     });
 
@@ -193,4 +240,3 @@ main().catch((error) => {
     console.error('❌ Failed to start upload service:', error);
     process.exit(1);
 });
-

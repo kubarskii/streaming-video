@@ -81,58 +81,108 @@ class TranscodeVideoUseCase {
 
             // Transcode to multiple qualities
             const baseFileName = path.parse(video.fileName).name;
-            const transcodedVideos = await this.videoTranscoder.transcodeToMultipleQualities(
-                sourceVideoPath,
-                tempDir,
-                baseFileName,
-                null // Progress callback removed for performance
-            );
+            let transcodedVideos = [];
 
-            // Transcoding complete, generated qualities
+            try {
+                transcodedVideos = await this.videoTranscoder.transcodeToMultipleQualities(
+                    sourceVideoPath,
+                    tempDir,
+                    baseFileName,
+                    null // Progress callback removed for performance
+                );
+            } catch (transcodeError) {
+                console.error(`❌ Transcoding failed:`, transcodeError.message);
+                // If transcoding completely fails, we'll still try to save the original
+                console.log(`⚠️  Transcoding failed, video will be marked as ready with original quality only`);
+            }
 
             // Upload transcoded videos and save to database
             const qualityVariants = [];
 
+            // Process each transcoded quality with individual error handling
             for (const transcoded of transcodedVideos) {
-                const qualityId = uuidv4();
-                const ext = path.extname(transcoded.path);
-                const storageKey = `${videoId}_${transcoded.quality}${ext}`;
+                try {
+                    const qualityId = uuidv4();
+                    const ext = path.extname(transcoded.path);
+                    const storageKey = `${videoId}_${transcoded.quality}${ext}`;
 
-
-                // Upload to storage
-                const { storageUrl, cdnUrl } = await this.storageRepository.upload(
-                    transcoded.path,
-                    storageKey,
-                    {
-                        contentType: 'video/mp4',
-                        originalName: path.basename(transcoded.path)
+                    // Verify file exists and has size
+                    if (!fs.existsSync(transcoded.path)) {
+                        console.error(`❌ Transcoded file not found: ${transcoded.path}`);
+                        continue;
                     }
-                );
 
-                // Save quality variant to database
-                const qualityVariant = {
-                    id: qualityId,
-                    videoId: videoId,
-                    quality: transcoded.quality,
-                    storageKey: storageKey,
-                    storageUrl: storageUrl,
-                    cdnUrl: cdnUrl,
-                    width: transcoded.width,
-                    height: transcoded.height,
-                    sizeBytes: transcoded.sizeBytes,
-                    bitrate: parseInt(transcoded.bitrate) || null,
-                    status: 'ready',
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                };
+                    const fileSize = fs.statSync(transcoded.path).size;
+                    if (fileSize === 0) {
+                        console.error(`❌ Transcoded file is empty: ${transcoded.path}`);
+                        continue;
+                    }
 
-                const savedQuality = await this.videoQualityRepository.save(qualityVariant);
-                qualityVariants.push(savedQuality);
-                console.log(`✅ ${transcoded.quality} saved to DB and available for playback`);
+                    // Upload to storage with retry logic
+                    let uploadResult;
+                    let uploadAttempts = 0;
+                    const maxUploadAttempts = 3;
 
-                // Clean up temp file
-                if (fs.existsSync(transcoded.path)) {
-                    fs.unlinkSync(transcoded.path);
+                    while (uploadAttempts < maxUploadAttempts) {
+                        try {
+                            uploadResult = await this.storageRepository.upload(
+                                transcoded.path,
+                                storageKey,
+                                {
+                                    contentType: 'video/mp4',
+                                    originalName: path.basename(transcoded.path)
+                                }
+                            );
+                            break; // Success
+                        } catch (uploadError) {
+                            uploadAttempts++;
+                            console.error(`❌ Upload attempt ${uploadAttempts} failed for ${transcoded.quality}:`, uploadError.message);
+
+                            if (uploadAttempts >= maxUploadAttempts) {
+                                throw uploadError;
+                            }
+
+                            // Wait before retry (exponential backoff)
+                            await new Promise(resolve => setTimeout(resolve, 1000 * uploadAttempts));
+                        }
+                    }
+
+                    // Save quality variant to database
+                    const qualityVariant = {
+                        id: qualityId,
+                        videoId: videoId,
+                        quality: transcoded.quality,
+                        storageKey: storageKey,
+                        storageUrl: uploadResult.storageUrl,
+                        cdnUrl: uploadResult.cdnUrl,
+                        width: transcoded.width,
+                        height: transcoded.height,
+                        sizeBytes: transcoded.sizeBytes,
+                        bitrate: parseInt(transcoded.bitrate) || null,
+                        status: 'ready',
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    };
+
+                    const savedQuality = await this.videoQualityRepository.save(qualityVariant);
+                    qualityVariants.push(savedQuality);
+                    console.log(`✅ ${transcoded.quality} saved to DB and available for playback`);
+
+                    // Clean up temp file
+                    if (fs.existsSync(transcoded.path)) {
+                        fs.unlinkSync(transcoded.path);
+                    }
+                } catch (qualityError) {
+                    console.error(`❌ Failed to process ${transcoded.quality}:`, qualityError.message);
+                    // Continue with other qualities even if one fails
+                    // Clean up temp file on error
+                    try {
+                        if (transcoded.path && fs.existsSync(transcoded.path)) {
+                            fs.unlinkSync(transcoded.path);
+                        }
+                    } catch (cleanupError) {
+                        console.error(`⚠️  Failed to cleanup temp file:`, cleanupError.message);
+                    }
                 }
             }
 
@@ -255,8 +305,19 @@ class TranscodeVideoUseCase {
                 console.warn('⚠️  No MP4 variants generated; original file retained for playback');
             }
 
-            // Update video status back to ready
-            video.status = 'ready';
+            // Update video status based on results
+            // If we have at least one quality variant OR the original is playable, mark as ready
+            const hasPlayableContent = qualityVariants.length > 0 ||
+                (video.storageUrl && (video.mimeType?.includes('mp4') || video.mimeType?.includes('webm')));
+
+            if (hasPlayableContent) {
+                video.status = 'ready';
+                console.log(`✅ Video ${videoId} marked as ready with ${qualityVariants.length} quality variant(s)`);
+            } else {
+                video.status = 'failed';
+                console.error(`❌ Video ${videoId} marked as failed: no playable content available`);
+            }
+
             video.updatedAt = new Date();
             await this.videoRepository.update(video);
 
@@ -266,10 +327,15 @@ class TranscodeVideoUseCase {
 
         } catch (error) {
             console.error(`❌ Transcoding failed for video ${videoId}:`, error);
+            console.error(`   Error details:`, error.stack);
 
             // Update video status to failed
-            video.status = 'failed';
-            await this.videoRepository.update(video);
+            try {
+                video.status = 'failed';
+                await this.videoRepository.update(video);
+            } catch (dbUpdateError) {
+                console.error(`❌ Failed to update video status to failed:`, dbUpdateError.message);
+            }
 
             throw error;
         } finally {
@@ -298,6 +364,7 @@ class TranscodeVideoUseCase {
         if (this.storageRepository.getFilePath) {
             const localPath = this.storageRepository.getFilePath(video.storageKey);
             if (fs.existsSync(localPath)) {
+                console.log(`📂 Using local storage file: ${localPath}`);
                 return localPath;
             }
         }
@@ -311,25 +378,63 @@ class TranscodeVideoUseCase {
             fs.mkdirSync(tempDir, { recursive: true });
         }
 
-        // Download the video
+        console.log(`📥 Downloading video from cloud storage...`);
         const url = video.cdnUrl || video.storageUrl;
+
+        if (!url) {
+            throw new Error('Video has no storage URL');
+        }
+
         const https = require('https');
         const http = require('http');
         const protocol = url.startsWith('https') ? https : http;
 
         return new Promise((resolve, reject) => {
             const file = fs.createWriteStream(tempPath);
+            let downloadedBytes = 0;
 
-            protocol.get(url, (response) => {
+            const request = protocol.get(url, (response) => {
+                if (response.statusCode !== 200) {
+                    reject(new Error(`Failed to download video: HTTP ${response.statusCode}`));
+                    return;
+                }
+
+                const totalBytes = parseInt(response.headers['content-length'] || '0');
+                console.log(`📥 Downloading ${(totalBytes / 1024 / 1024).toFixed(2)} MB...`);
+
+                response.on('data', (chunk) => {
+                    downloadedBytes += chunk.length;
+                });
+
                 response.pipe(file);
 
                 file.on('finish', () => {
                     file.close();
+                    console.log(`✅ Download complete: ${(downloadedBytes / 1024 / 1024).toFixed(2)} MB`);
                     resolve(tempPath);
                 });
-            }).on('error', (err) => {
-                fs.unlinkSync(tempPath);
-                reject(err);
+
+                file.on('error', (err) => {
+                    fs.unlinkSync(tempPath);
+                    reject(err);
+                });
+            });
+
+            request.on('error', (err) => {
+                try {
+                    if (fs.existsSync(tempPath)) {
+                        fs.unlinkSync(tempPath);
+                    }
+                } catch (cleanupError) {
+                    console.error('Failed to cleanup after download error:', cleanupError);
+                }
+                reject(new Error(`Download failed: ${err.message}`));
+            });
+
+            // Set timeout for download (30 minutes for large files)
+            request.setTimeout(30 * 60 * 1000, () => {
+                request.destroy();
+                reject(new Error('Download timeout: file too large or connection too slow'));
             });
         });
     }

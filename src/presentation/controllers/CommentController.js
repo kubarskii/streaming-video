@@ -56,9 +56,9 @@ class CommentController {
      */
     async getComments(req, res, queryParams) {
         try {
-            const videoId = queryParams.get('videoId');
-            const limit = parseInt(queryParams.get('limit') || '50', 10);
-            const offset = parseInt(queryParams.get('offset') || '0', 10);
+            const videoId = queryParams.videoId;
+            const limit = parseInt(queryParams.limit || '50', 10);
+            const offset = parseInt(queryParams.offset || '0', 10);
 
             if (!videoId) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });

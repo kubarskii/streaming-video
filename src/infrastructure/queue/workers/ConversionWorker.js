@@ -2,6 +2,7 @@ const { Worker, Queue } = require('bullmq');
 const path = require('path');
 const fs = require('fs');
 const QueueConfig = require('../../config/QueueConfig');
+const { getQueueManager } = require('../QueueManager');
 
 /**
  * Worker for converting MOV files to WebM format
@@ -17,6 +18,7 @@ class ConversionWorker {
         this.connection = this.queueConfig.getConnection();
         this.worker = null;
         this.queue = null;
+        this.queueManager = getQueueManager();
     }
 
     /**
@@ -39,10 +41,10 @@ class ConversionWorker {
                 removeOnComplete: { count: 100 },
                 removeOnFail: { count: 50 },
                 // Stalled job handling (jobs that were active when worker crashed)
-                lockDuration: 60000, // 60 seconds - renew lock every minute
-                lockRenewTime: 30000, // Renew lock every 30 seconds
-                stalledInterval: 30000, // Check for stalled jobs every 30 seconds
-                maxStalledCount: 2, // Retry stalled jobs twice before failing
+                lockDuration: 1800000, // 30 minutes (conversion can take long)
+                lockRenewTime: 60000, // Renew lock every minute
+                stalledInterval: 300000, // Check for stalled jobs every 5 minutes
+                maxStalledCount: 1, // Only retry once if genuinely stalled
             }
         );
 
@@ -211,6 +213,27 @@ class ConversionWorker {
             await job.updateProgress(100);
 
             console.log(`✅ Successfully converted video ${videoId} from MOV to WebM`);
+
+            // Queue transcoding job for the converted WebM file
+            try {
+                console.log(`📤 Queueing transcoding job for converted video ${videoId}...`);
+                await this.queueManager.addTranscodingJob({
+                    videoId: video.id,
+                    storageKey: video.storageKey, // Updated storage key (now .webm)
+                    userId: video.userId,
+                });
+                console.log(`✅ Transcoding job queued for converted video ${videoId}`);
+            } catch (queueError) {
+                console.error(`❌ Failed to queue transcoding job after conversion:`, queueError.message);
+                // Don't fail the conversion job if transcoding queue fails
+                // Set video to ready so it can still be watched
+                try {
+                    video.status = 'ready';
+                    await this.videoRepository.update(video);
+                } catch (updateError) {
+                    console.error(`❌ Failed to update video status:`, updateError.message);
+                }
+            }
 
             return {
                 success: true,

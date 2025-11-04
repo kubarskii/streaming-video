@@ -1,19 +1,17 @@
 // Web Worker for Hash Calculation
-// Offloads MD5 hashing to a separate thread to prevent UI blocking
-
-// Import SparkMD5 (needs to be loaded differently in worker context)
-self.importScripts('https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js');
+// Offloads SHA-256 hashing to a separate thread to prevent UI blocking
+// Uses Web Crypto API (available in workers)
 
 self.onmessage = async function(e) {
     const { blob, chunkIndex, action } = e.data;
     
     try {
         if (action === 'calculateHash') {
-            // Calculate hash for a chunk
+            // Calculate SHA-256 hash for a chunk (matches server-side)
             const arrayBuffer = await blob.arrayBuffer();
-            const spark = new self.SparkMD5.ArrayBuffer();
-            spark.append(arrayBuffer);
-            const hash = spark.end();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             
             self.postMessage({
                 action: 'hashComplete',
@@ -22,11 +20,11 @@ self.onmessage = async function(e) {
                 success: true
             });
         } else if (action === 'calculateFileHash') {
-            // Calculate hash for entire file (for small files)
+            // Calculate SHA-256 hash for entire file
             const arrayBuffer = await blob.arrayBuffer();
-            const spark = new self.SparkMD5.ArrayBuffer();
-            spark.append(arrayBuffer);
-            const hash = spark.end();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             
             self.postMessage({
                 action: 'fileHashComplete',

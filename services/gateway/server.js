@@ -1,6 +1,6 @@
 // @ts-check
 // API Gateway Service
-// Single entry point that routes requests to appropriate microservices
+// Handles authentication and routes requests to microservices
 
 require('dotenv').config();
 const http = require('http');
@@ -8,6 +8,14 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
+
+// Authentication
+const DatabaseConfig = require('../../src/infrastructure/config/DatabaseConfig');
+const PrismaUserRepository = require('../../src/infrastructure/persistence/PrismaUserRepository');
+const PasswordHasher = require('../../src/infrastructure/auth/PasswordHasher');
+const JWTService = require('../../src/infrastructure/auth/JWTService');
+const AuthService = require('../../src/application/services/AuthService');
+const AuthController = require('../../src/presentation/controllers/AuthController');
 
 // Configuration
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -17,22 +25,45 @@ const STREAMING_SERVICE_URL = process.env.STREAMING_SERVICE_URL || 'http://local
 console.log('🌐 API GATEWAY');
 console.log('='.repeat(30));
 console.log('');
+console.log(`🔐 Authentication: Handled by Gateway`);
 console.log(`📦 Upload Service: ${UPLOAD_SERVICE_URL}`);
 console.log(`📦 Streaming Service: ${STREAMING_SERVICE_URL}`);
 console.log('');
+
+// Initialize authentication
+let authController, authService, jwtService, prismaClient;
+
+async function initializeAuth() {
+    prismaClient = DatabaseConfig.getPrismaClient();
+    const userRepository = new PrismaUserRepository(prismaClient);
+    const passwordHasher = new PasswordHasher();
+    jwtService = new JWTService();
+    authService = new AuthService(userRepository, passwordHasher, jwtService);
+    authController = new AuthController(authService);
+
+    console.log('✅ Authentication initialized');
+}
 
 // Create proxy middleware
 const uploadProxy = createProxyMiddleware({
     target: UPLOAD_SERVICE_URL,
     changeOrigin: true,
-    logger: console, // Uses console for logging
 });
 
 const streamingProxy = createProxyMiddleware({
     target: STREAMING_SERVICE_URL,
     changeOrigin: true,
-    logger: console, // Uses console for logging
 });
+
+// Middleware to inject user headers before proxying
+function injectUserHeaders(req, res, next) {
+    if (req.user) {
+        req.headers['x-user-id'] = req.user.id;
+        req.headers['x-user-email'] = req.user.email || '';
+        req.headers['x-user-username'] = req.user.username || '';
+    }
+    next();
+}
 
 // Static file serving
 function serveStaticFile(req, res, filePath) {
@@ -72,8 +103,32 @@ function serveStaticFile(req, res, filePath) {
     });
 }
 
+// Authentication middleware
+async function authenticateRequest(req, res, next) {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (token) {
+        try {
+            const payload = await authService.verifyToken(token);
+            if (payload && typeof payload === 'object' && 'userId' in payload) {
+                req.user = {
+                    id: payload.userId,
+                    userId: payload.userId,
+                    email: payload.email,
+                    username: payload.username
+                };
+            }
+        } catch (err) {
+            // Invalid token, continue as unauthenticated
+            // Don't fail the request, just don't set user
+        }
+    }
+
+    next();
+}
+
 // Routing logic
-function routeRequest(req, res) {
+async function routeRequest(req, res) {
     const urlObj = new URL(req.url, `http://${req.headers.host}`);
     const pathname = urlObj.pathname;
 
@@ -85,7 +140,7 @@ function routeRequest(req, res) {
     res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-    // Handle OPTIONS and HEAD preflight requests
+    // Handle OPTIONS preflight requests
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
         return res.end();
@@ -106,50 +161,111 @@ function routeRequest(req, res) {
     }
 
     // ============================================================
+    // AUTHENTICATION ROUTES (Handled by Gateway)
+    // ============================================================
+
+    if (pathname === '/api/auth/register' && req.method === 'POST') {
+        return authController.register(req, res);
+    }
+
+    if (pathname === '/api/auth/login' && req.method === 'POST') {
+        return authController.login(req, res);
+    }
+
+    if (pathname === '/api/auth/logout' && req.method === 'POST') {
+        return authController.logout(req, res);
+    }
+
+    if (pathname === '/api/auth/me' && req.method === 'GET') {
+        // Authenticate first, then call controller
+        await authenticateRequest(req, res, () => {
+            authController.me(req, res);
+        });
+        return;
+    }
+
+    // ============================================================
+    // Authenticate all other API requests
+    // ============================================================
+    if (pathname.startsWith('/api/')) {
+        await authenticateRequest(req, res, () => {
+            // Continue to service routing
+        });
+    }
+
+    // ============================================================
     // STREAMING SERVICE ROUTES
     // ============================================================
 
     // Video streaming
     if (pathname === '/video') {
+        injectUserHeaders(req, res, () => { });
         return streamingProxy(req, res);
     }
 
     // Quality variants
     if (pathname.match(/^\/api\/videos\/[^/]+\/qualities$/)) {
-        return streamingProxy(req, res);
-    }
-
-    // Transcode trigger
-    if (pathname.match(/^\/api\/videos\/[^/]+\/transcode$/)) {
+        injectUserHeaders(req, res, () => { });
         return streamingProxy(req, res);
     }
 
     // View counting
     if (pathname.match(/^\/api\/videos\/[^/]+\/views$/)) {
+        injectUserHeaders(req, res, () => { });
         return streamingProxy(req, res);
     }
 
-    // Likes/Dislikes
+    // ============================================================
+    // UPLOAD SERVICE ROUTES
+    // ============================================================
+
+    // Upload routes
+    if (pathname.startsWith('/api/upload/')) {
+        console.log(`→ Upload Service: ${req.method} ${pathname}`);
+        injectUserHeaders(req, res, () => { });
+        return uploadProxy(req, res);
+    }
+
+    // Video metadata CRUD
+    if (pathname.startsWith('/api/videos')) {
+        console.log(`→ Upload Service: ${req.method} ${pathname}`);
+        injectUserHeaders(req, res, () => { });
+        return uploadProxy(req, res);
+    }
+
+    // Queue management
+    if (pathname.startsWith('/api/queues')) {
+        injectUserHeaders(req, res, () => { });
+        return uploadProxy(req, res);
+    }
+
+    // Channels
+    if (pathname.startsWith('/api/channels')) {
+        injectUserHeaders(req, res, () => { });
+        return uploadProxy(req, res);
+    }
+
+    // Playlists
+    if (pathname.startsWith('/api/playlists')) {
+        injectUserHeaders(req, res, () => { });
+        return uploadProxy(req, res);
+    }
+
+    // Likes
     if (pathname.match(/^\/api\/videos\/[^/]+\/like(s)?$/)) {
-        return streamingProxy(req, res);
+        injectUserHeaders(req, res, () => { });
+        return uploadProxy(req, res);
     }
 
     // Comments
     if (pathname === '/api/comments' || pathname.match(/^\/api\/comments\/[^/]+$/)) {
-        return streamingProxy(req, res);
+        injectUserHeaders(req, res, () => { });
+        return uploadProxy(req, res);
     }
 
     // Subscriptions
     if (pathname === '/api/subscriptions' || pathname.match(/^\/api\/subscriptions\/[^/]+/)) {
-        return streamingProxy(req, res);
-    }
-
-    // ============================================================
-    // UPLOAD SERVICE ROUTES (Default for /api/*)
-    // ============================================================
-
-    // Everything else goes to upload service
-    if (pathname.startsWith('/api/')) {
+        injectUserHeaders(req, res, () => { });
         return uploadProxy(req, res);
     }
 
@@ -186,50 +302,66 @@ function routeRequest(req, res) {
 }
 
 // Create server
-const server = http.createServer(routeRequest);
+async function main() {
+    await initializeAuth();
 
-// Graceful shutdown
-const shutdown = async () => {
-    console.log('\n🛑 Shutting down gateway...');
-    server.close(() => {
-        console.log('✅ Gateway closed');
+    const server = http.createServer(routeRequest);
+
+    // Graceful shutdown
+    const shutdown = async () => {
+        console.log('\n🛑 Shutting down gateway...');
+        server.close(() => {
+            console.log('✅ Gateway closed');
+        });
+        if (prismaClient) {
+            await prismaClient.$disconnect();
+            console.log('✅ Database disconnected');
+        }
         process.exit(0);
+    };
+
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+
+    // Start server
+    server.listen(PORT, '0.0.0.0', () => {
+        console.log(`✅ API Gateway listening on port ${PORT}`);
+        console.log(`🌍 Health check: http://localhost:${PORT}/health`);
+        console.log('');
+        console.log('📊 Routing:');
+        console.log('  🔐 /api/auth/*         → Gateway (Authentication)');
+        console.log('');
+        console.log('  📤 /api/upload/*       → Upload Service');
+        console.log('  📤 /api/videos (CRUD)  → Upload Service');
+        console.log('  📤 /api/channels/*     → Upload Service (temp)');
+        console.log('  📤 /api/playlists/*    → Upload Service (temp)');
+        console.log('  📤 /api/queues/*       → Upload Service');
+        console.log('');
+        console.log('  🎬 /video              → Streaming Service');
+        console.log('  🎬 /api/videos/*/qualities → Streaming Service');
+        console.log('  🎬 /api/videos/*/views → Streaming Service');
+        console.log('');
+        console.log('  💬 /api/videos/*/like  → Upload Service (temp)');
+        console.log('  💬 /api/comments       → Upload Service (temp)');
+        console.log('  💬 /api/subscriptions  → Upload Service (temp)');
+        console.log('');
+        console.log('  📁 /*                  → Static files (public/)');
+        console.log('');
+        console.log('  Note: Social features (likes, comments, subs) should move to separate service');
+        console.log('');
+
+        // Check if public directory exists
+        const publicDir = path.join(process.cwd(), 'public');
+        if (fs.existsSync(publicDir)) {
+            console.log(`📁 Serving static files from: ${publicDir}`);
+        } else {
+            console.log(`⚠️  Public directory not found: ${publicDir}`);
+        }
+        console.log('');
     });
-};
+}
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
-// Start server
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ API Gateway listening on port ${PORT}`);
-    console.log(`🌍 Health check: http://localhost:${PORT}/health`);
-    console.log('');
-    console.log('📊 Routing:');
-    console.log('  /api/auth/*           → Upload Service');
-    console.log('  /api/upload/*         → Upload Service');
-    console.log('  /api/videos (CRUD)    → Upload Service');
-    console.log('  /api/channels/*       → Upload Service');
-    console.log('  /api/playlists/*      → Upload Service');
-    console.log('  /api/queues/*         → Upload Service');
-    console.log('');
-    console.log('  /video                → Streaming Service');
-    console.log('  /api/videos/*/qualities → Streaming Service');
-    console.log('  /api/videos/*/views   → Streaming Service');
-    console.log('  /api/videos/*/like    → Streaming Service');
-    console.log('  /api/comments         → Streaming Service');
-    console.log('  /api/subscriptions    → Streaming Service');
-    console.log('');
-    console.log('  /*                    → Static files (public/)');
-    console.log('');
-
-    // Check if public directory exists
-    const publicDir = path.join(process.cwd(), 'public');
-    if (fs.existsSync(publicDir)) {
-        console.log(`📁 Serving static files from: ${publicDir}`);
-    } else {
-        console.log(`⚠️  Public directory not found: ${publicDir}`);
-    }
-    console.log('');
+main().catch((error) => {
+    console.error('❌ Failed to start gateway:', error);
+    process.exit(1);
 });
-

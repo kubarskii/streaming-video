@@ -350,83 +350,8 @@ class ChunkUploadController {
                 sortedParts
             );
 
-            // Generate thumbnail (same as original controller)
+            // Thumbnail generation will be handled by the queue AFTER transcoding
             let thumbnailUrl = null;
-            const tempVideoPath = path.join(process.cwd(), 'videos', 'temp', `temp_${videoId}${path.extname(session.fileName)}`);
-
-            try {
-
-                const headCommand = new (require('@aws-sdk/client-s3').HeadObjectCommand)({
-                    Bucket: this.storageRepository.bucket,
-                    Key: storageKey,
-                });
-                const headResponse = await this.storageRepository.client.send(headCommand);
-                const totalSize = headResponse.ContentLength;
-
-                const downloadSize = Math.min(50 * 1024 * 1024, totalSize);
-                const rangeEnd = downloadSize - 1;
-
-                const { stream: videoStream } = await this.storageRepository.getObjectStream(
-                    storageKey,
-                    `bytes=0-${rangeEnd}`
-                );
-                const writeStream = fs.createWriteStream(tempVideoPath);
-
-                await pipeline(videoStream, writeStream);
-
-                const ThumbnailGenerator = require('../../infrastructure/media/ThumbnailGenerator');
-                const thumbnailGenerator = new ThumbnailGenerator();
-                const thumbnailTempPath = path.join(process.cwd(), 'videos', 'temp', `thumb_${videoId}.jpg`);
-
-                let extractTimestamp = '00:00:02.000';
-                try {
-                    const fullVideoDuration = await thumbnailGenerator.getVideoDuration(tempVideoPath);
-                    if (fullVideoDuration && fullVideoDuration > 0) {
-                        const estimatedBitrate = (totalSize * 8) / fullVideoDuration;
-                        const bytesDownloaded = fs.statSync(tempVideoPath).size;
-                        const secondsAvailable = (bytesDownloaded * 8) / estimatedBitrate;
-
-                        if (secondsAvailable > 20) {
-                            const safeMiddle = secondsAvailable * 0.5 * 0.8;
-                            extractTimestamp = thumbnailGenerator.formatTimestamp(Math.min(safeMiddle, secondsAvailable - 5));
-                        } else if (secondsAvailable > 5) {
-                            extractTimestamp = '00:00:03.000';
-                        }
-                    }
-                } catch (durationError) {
-                    console.warn('⚠️  Could not calculate safe timestamp');
-                }
-
-                const generatedThumbnailPath = await thumbnailGenerator.generateFromVideo(
-                    tempVideoPath,
-                    thumbnailTempPath,
-                    { size: '640x360', timestamp: extractTimestamp }
-                );
-
-                const fileExt = path.extname(generatedThumbnailPath).toLowerCase();
-                const contentType = fileExt === '.svg' ? 'image/svg+xml' : 'image/jpeg';
-                const thumbnailKey = `thumb_${videoId}${fileExt}`;
-
-                const thumbnailUpload = await this.storageRepository.upload(
-                    generatedThumbnailPath,
-                    thumbnailKey,
-                    {
-                        contentType: contentType,
-                        originalName: `${videoId}_thumbnail${fileExt}`,
-                    }
-                );
-
-                thumbnailUrl = thumbnailUpload.cdnUrl || thumbnailUpload.storageUrl;
-
-                // Clean up temp files
-                try {
-                    if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
-                    if (fs.existsSync(generatedThumbnailPath)) fs.unlinkSync(generatedThumbnailPath);
-                } catch (e) { }
-
-            } catch (thumbnailError) {
-                console.error('❌ Failed to generate thumbnail:', thumbnailError.message);
-            }
 
             // Create video entity
             const Video = require('../../domain/entities/Video');
@@ -449,7 +374,7 @@ class ChunkUploadController {
                 uploadedAt: new Date(),
                 updatedAt: new Date(),
                 userId: req.user.id,
-                thumbnailUrl: thumbnailUrl,
+                thumbnailUrl: null, // Will be generated during transcoding
             });
 
             // Save to database
@@ -476,52 +401,41 @@ class ChunkUploadController {
                 throw dbError;
             }
 
-            // Add transcoding job to queue (non-blocking)
-            try {
-                await this.queueManager.addTranscodingJob({
-                    videoId: savedVideo.id,
-                    storageKey: savedVideo.storageKey,
-                    userId: savedVideo.userId,
-                });
-            } catch (queueError) {
-                console.error(`❌ Failed to queue transcoding job:`, queueError.message);
-                // Set video to ready so users can still watch the original file
-                try {
-                    savedVideo.status = 'ready';
-                    await this.videoService.uploadVideoUseCase.videoRepository.update(savedVideo);
-                } catch (updateError) {
-                    console.error(`❌ Failed to update video status:`, updateError.message);
-                }
-            }
+            // Processing flow:
+            // 1. If MOV → Queue conversion job (converts MOV to WebM)
+            // 2. After conversion (or if not MOV) → Queue transcoding job (creates quality variants)
+            // 3. After transcoding → Queue thumbnail job if needed
 
-            // If no thumbnail, queue thumbnail generation
-            if (!savedVideo.thumbnailUrl) {
-                try {
-                    await this.queueManager.addThumbnailJob({
-                        videoId: savedVideo.id,
-                        storageKey: savedVideo.storageKey,
-                        videoPath: '', // Video is in B2 storage, will be downloaded by worker
-                    });
-                } catch (queueError) {
-                    console.error(`❌ Failed to queue thumbnail job:`, queueError.message);
-                }
-            }
-
-            // If video is MOV format, queue conversion to WebM
             const isMOV = savedVideo.mimeType === 'video/quicktime' ||
                 savedVideo.fileName.toLowerCase().endsWith('.mov');
 
-            if (isMOV) {
-                try {
+            try {
+                if (isMOV) {
+                    // Step 1: Convert MOV to WebM first
                     await this.queueManager.addMovConversionJob({
                         videoId: savedVideo.id,
                         storageKey: savedVideo.storageKey,
                         fileName: savedVideo.fileName,
                         mimeType: savedVideo.mimeType,
                     });
-                    console.log(`📤 MOV conversion job queued for video ${savedVideo.id}`);
-                } catch (queueError) {
-                    console.error(`❌ Failed to queue MOV conversion job:`, queueError.message);
+                    console.log(`📤 MOV conversion job queued for video ${savedVideo.id} (will transcode after conversion)`);
+                } else {
+                    // Not MOV, proceed directly to transcoding
+                    await this.queueManager.addTranscodingJob({
+                        videoId: savedVideo.id,
+                        storageKey: savedVideo.storageKey,
+                        userId: savedVideo.userId,
+                    });
+                    console.log(`📤 Transcoding job queued for video ${savedVideo.id}`);
+                }
+            } catch (queueError) {
+                console.error(`❌ Failed to queue processing job:`, queueError.message);
+                // Set video to ready so users can still watch the original file
+                try {
+                    savedVideo.status = 'ready';
+                    await this.videoService.uploadVideoUseCase.videoRepository.update(savedVideo);
+                } catch (updateError) {
+                    console.error(`❌ Failed to update video status:`, updateError.message);
                 }
             }
 

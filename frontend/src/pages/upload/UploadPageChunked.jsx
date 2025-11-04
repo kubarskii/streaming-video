@@ -23,12 +23,15 @@ export const UploadPageChunked = () => {
     const [uploadSpeed, setUploadSpeed] = useState('0 MB/s');
     const [uploadedChunks, setUploadedChunks] = useState(0);
     const [totalChunks, setTotalChunks] = useState(0);
+    const [activeChunks, setActiveChunks] = useState(0);
+    const [eta, setEta] = useState('');
     const [error, setError] = useState('');
     const [dragActive, setDragActive] = useState(false);
     const fileInputRef = useRef(null);
     const thumbnailInputRef = useRef(null);
     const navigate = useNavigate();
     const abortControllerRef = useRef(null);
+    const redirectTimeoutRef = useRef(null);
 
     // Check if user has a channel
     useEffect(() => {
@@ -50,6 +53,19 @@ export const UploadPageChunked = () => {
 
         checkChannel();
     }, [user]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            // Clear redirect timeout
+            if (redirectTimeoutRef.current) {
+                clearTimeout(redirectTimeoutRef.current);
+            }
+            
+            // Terminate hash worker to prevent memory leak
+            chunkedUploadManagerAdvanced.cleanup();
+        };
+    }, []);
 
     const handleDrag = (e) => {
         e.preventDefault();
@@ -144,57 +160,61 @@ export const UploadPageChunked = () => {
         setUploadSpeed('0 MB/s');
         setUploadedChunks(0);
         setTotalChunks(0);
+        setActiveChunks(0);
+        setEta('');
 
         try {
-            // Use chunked upload for files > 100MB
-            const useChunkedUpload = file.size > 100 * 1024 * 1024;
+            // Always use chunked upload for all file sizes
+            console.log('🚀 Using advanced parallel chunked upload (WebWorker + Optimized)');
 
-            let data;
-            if (useChunkedUpload) {
-                console.log('🚀 Using advanced parallel chunked upload (WebWorker + Optimized)');
-
-                data = await chunkedUploadManagerAdvanced.uploadFile(
-                    file,
-                    {
-                        title: title.trim(),
-                        description: description.trim(),
-                        thumbnail: thumbnail
-                    },
-                    {
-                        onProgress: (progressData) => {
-                            setProgress(progressData.progress);
-                            setUploadSpeed(progressData.speed || '0 MB/s');
-                            setUploadedChunks(progressData.uploadedChunks || 0);
-                            setTotalChunks(progressData.totalChunks || 0);
-                        },
-                        onChunkComplete: (chunk) => {
-                            console.log(`Chunk ${chunk.index + 1} completed`);
-                        },
-                        onError: (error) => {
-                            console.error('Upload error:', error);
-                            setError(error.message || 'Upload failed');
+            const data = await chunkedUploadManagerAdvanced.uploadFile(
+                file,
+                {
+                    title: title.trim(),
+                    description: description.trim(),
+                    thumbnail: thumbnail
+                },
+                {
+                    onProgress: (progressData) => {
+                        setProgress(progressData.progress);
+                        setUploadSpeed(progressData.speed || '0 MB/s');
+                        setUploadedChunks(progressData.uploadedChunks || 0);
+                        setTotalChunks(progressData.totalChunks || 0);
+                        setActiveChunks(progressData.activeChunks || 0);
+                        
+                        // Calculate ETA
+                        if (progressData.speedBytes > 0 && progressData.uploadedBytes < progressData.totalBytes) {
+                            const remainingBytes = progressData.totalBytes - progressData.uploadedBytes;
+                            const secondsRemaining = remainingBytes / progressData.speedBytes;
+                            
+                            if (secondsRemaining < 60) {
+                                setEta(`${Math.ceil(secondsRemaining)}s`);
+                            } else if (secondsRemaining < 3600) {
+                                const minutes = Math.ceil(secondsRemaining / 60);
+                                setEta(`${minutes}m`);
+                            } else {
+                                const hours = Math.floor(secondsRemaining / 3600);
+                                const minutes = Math.ceil((secondsRemaining % 3600) / 60);
+                                setEta(`${hours}h ${minutes}m`);
+                            }
+                        } else {
+                            setEta('');
                         }
+                    },
+                    onChunkComplete: (chunk) => {
+                        console.log(`Chunk ${chunk.index + 1} completed`);
+                    },
+                    onError: (error) => {
+                        console.error('Upload error:', error);
+                        setError(error.message || 'Upload failed');
                     }
-                );
-            } else {
-                console.log('📦 Using standard upload for small file');
-
-                // Use regular upload for smaller files
-                const formData = new FormData();
-                formData.append('video', file);
-                formData.append('title', title.trim());
-                formData.append('description', description.trim());
-                if (thumbnail) {
-                    formData.append('thumbnail', thumbnail);
                 }
-
-                data = await videosAPI.uploadVideo(formData, setProgress, file.size);
-            }
+            );
 
             console.log('✅ Upload complete:', data);
 
             // Redirect to uploaded video
-            setTimeout(() => {
+            redirectTimeoutRef.current = setTimeout(() => {
                 navigate({ to: `/video/${data.video.id}` });
             }, 500);
 
@@ -204,6 +224,8 @@ export const UploadPageChunked = () => {
             setUploading(false);
             setProgress(0);
             setUploadSpeed('0 MB/s');
+            setActiveChunks(0);
+            setEta('');
         }
     };
 
@@ -214,6 +236,8 @@ export const UploadPageChunked = () => {
         setUploading(false);
         setProgress(0);
         setUploadSpeed('0 MB/s');
+        setActiveChunks(0);
+        setEta('');
         setFile(null);
     };
 
@@ -337,12 +361,20 @@ export const UploadPageChunked = () => {
                                         />
                                     </div>
                                     <div className="progress-details">
-                                        <p className="progress-text">{progress}% uploaded</p>
+                                        <p className="progress-text">
+                                            {progress}% uploaded
+                                            {eta && <span className="progress-eta"> • ETA: {eta}</span>}
+                                        </p>
                                         <p className="progress-speed">
-                                            {uploadSpeed}
+                                            ⚡ {uploadSpeed}
                                             {totalChunks > 0 && (
                                                 <span className="progress-chunks">
                                                     {' '}• {uploadedChunks}/{totalChunks} chunks
+                                                    {activeChunks > 0 && (
+                                                        <span className="progress-active">
+                                                            {' '}({activeChunks} active)
+                                                        </span>
+                                                    )}
                                                 </span>
                                             )}
                                         </p>

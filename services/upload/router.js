@@ -1,17 +1,20 @@
 // @ts-check
 // Upload Service Router
-// Routes for upload, auth, and video management
+// NO authentication routes (handled by Gateway)
+// TODO: Separate channels, playlists, social features into dedicated services
 
 const { URL } = require('url');
 
 class UploadServiceRouter {
-    constructor(videoController, authController, chunkUploadController, channelController, playlistController, queueController) {
+    constructor(videoController, chunkUploadController, queueController, channelController, playlistController, videoLikeController, subscriptionController, commentController) {
         this.videoController = videoController;
-        this.authController = authController;
         this.chunkUploadController = chunkUploadController;
+        this.queueController = queueController;
         this.channelController = channelController;
         this.playlistController = playlistController;
-        this.queueController = queueController;
+        this.videoLikeController = videoLikeController;
+        this.subscriptionController = subscriptionController;
+        this.commentController = commentController;
     }
 
     async route(req, res) {
@@ -20,32 +23,9 @@ class UploadServiceRouter {
         const queryParams = Object.fromEntries(urlObj.searchParams);
 
         // ============================================================
-        // AUTH ROUTES
-        // ============================================================
-        if (pathname === '/api/auth/register' && req.method === 'POST') {
-            await this.authController.register(req, res);
-            return true;
-        }
-
-        if (pathname === '/api/auth/login' && req.method === 'POST') {
-            await this.authController.login(req, res);
-            return true;
-        }
-
-        if (pathname === '/api/auth/logout' && req.method === 'POST') {
-            await this.authController.logout(req, res);
-            return true;
-        }
-
-        if (pathname === '/api/auth/me' && req.method === 'GET') {
-            await this.authController.me(req, res);
-            return true;
-        }
-
-        // ============================================================
         // CHUNKED UPLOAD ROUTES
         // ============================================================
-        // Note: All uploads now use chunked upload API
+
         if (pathname === '/api/upload/init' && req.method === 'POST') {
             await this.chunkUploadController.initializeUpload(req, res);
             return true;
@@ -74,8 +54,9 @@ class UploadServiceRouter {
         }
 
         // ============================================================
-        // VIDEO METADATA ROUTES (No streaming)
+        // VIDEO METADATA ROUTES
         // ============================================================
+
         if (pathname === '/api/videos' && req.method === 'GET') {
             await this.videoController.listVideos(req, res, queryParams);
             return true;
@@ -112,8 +93,29 @@ class UploadServiceRouter {
         }
 
         // ============================================================
-        // CHANNEL ROUTES
+        // QUEUE MANAGEMENT ROUTES
         // ============================================================
+
+        if (pathname === '/api/queues/metrics' && req.method === 'GET') {
+            await this.queueController.getQueueMetrics(req, res);
+            return true;
+        }
+
+        if (pathname === '/api/queues/health' && req.method === 'GET') {
+            await this.queueController.getQueueHealth(req, res);
+            return true;
+        }
+
+        if (pathname.match(/^\/api\/queues\/[^/]+\/jobs\/[^/]+\/retry$/) && req.method === 'POST') {
+            const [, , , queueName, , jobId] = pathname.split('/');
+            await this.queueController.retryJob(req, res, queueName, jobId);
+            return true;
+        }
+
+        // ============================================================
+        // CHANNEL ROUTES (TODO: Move to separate service)
+        // ============================================================
+
         if (pathname === '/api/channels' && req.method === 'POST') {
             await this.channelController.createChannel(req, res);
             return true;
@@ -136,8 +138,9 @@ class UploadServiceRouter {
         }
 
         // ============================================================
-        // PLAYLIST ROUTES
+        // PLAYLIST ROUTES (TODO: Move to separate service)
         // ============================================================
+
         if (pathname === '/api/playlists' && req.method === 'GET') {
             await this.playlistController.listPlaylists(req, res, queryParams);
             return true;
@@ -191,21 +194,76 @@ class UploadServiceRouter {
         }
 
         // ============================================================
-        // QUEUE ROUTES
+        // LIKES ROUTES (TODO: Move to social service)
         // ============================================================
-        if (pathname === '/api/queues/metrics' && req.method === 'GET') {
-            await this.queueController.getQueueMetrics(req, res);
+
+        if (pathname.match(/^\/api\/videos\/[^/]+\/like$/) && req.method === 'POST') {
+            const videoId = pathname.split('/')[3];
+            await this.videoLikeController.likeVideo(req, res, videoId);
             return true;
         }
 
-        if (pathname === '/api/queues/health' && req.method === 'GET') {
-            await this.queueController.getQueueHealth(req, res);
+        if (pathname.match(/^\/api\/videos\/[^/]+\/like$/) && req.method === 'DELETE') {
+            const videoId = pathname.split('/')[3];
+            await this.videoLikeController.removeLike(req, res, videoId);
             return true;
         }
 
-        if (pathname.match(/^\/api\/queues\/[^/]+\/jobs\/[^/]+\/retry$/) && req.method === 'POST') {
-            const [, , , queueName, , jobId] = pathname.split('/');
-            await this.queueController.retryJob(req, res, queueName, jobId);
+        if (pathname.match(/^\/api\/videos\/[^/]+\/likes$/) && req.method === 'GET') {
+            const videoId = pathname.split('/')[3];
+            await this.videoLikeController.getLikeStats(req, res, videoId);
+            return true;
+        }
+
+        // ============================================================
+        // SUBSCRIPTION ROUTES (TODO: Move to social service)
+        // ============================================================
+
+        if (pathname === '/api/subscriptions' && req.method === 'GET') {
+            await this.subscriptionController.getUserSubscriptions(req, res);
+            return true;
+        }
+
+        if (pathname === '/api/subscriptions' && req.method === 'POST') {
+            await this.subscriptionController.subscribe(req, res);
+            return true;
+        }
+
+        if (pathname.match(/^\/api\/subscriptions\/[^/]+$/) && req.method === 'DELETE') {
+            const channelId = pathname.split('/')[3];
+            await this.subscriptionController.unsubscribe(req, res, channelId);
+            return true;
+        }
+
+        if (pathname.match(/^\/api\/subscriptions\/[^/]+\/status$/) && req.method === 'GET') {
+            const channelId = pathname.split('/')[3];
+            await this.subscriptionController.checkStatus(req, res, channelId);
+            return true;
+        }
+
+        // ============================================================
+        // COMMENT ROUTES (TODO: Move to social service)
+        // ============================================================
+
+        if (pathname === '/api/comments' && req.method === 'POST') {
+            await this.commentController.createComment(req, res);
+            return true;
+        }
+
+        if (pathname === '/api/comments' && req.method === 'GET') {
+            await this.commentController.getComments(req, res, queryParams);
+            return true;
+        }
+
+        if (pathname.match(/^\/api\/comments\/[^/]+$/) && req.method === 'PATCH') {
+            const commentId = pathname.split('/')[3];
+            await this.commentController.updateComment(req, res, commentId);
+            return true;
+        }
+
+        if (pathname.match(/^\/api\/comments\/[^/]+$/) && req.method === 'DELETE') {
+            const commentId = pathname.split('/')[3];
+            await this.commentController.deleteComment(req, res, commentId);
             return true;
         }
 
@@ -215,4 +273,3 @@ class UploadServiceRouter {
 }
 
 module.exports = UploadServiceRouter;
-

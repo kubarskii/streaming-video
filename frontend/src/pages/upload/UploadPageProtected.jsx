@@ -1,11 +1,11 @@
 // Protected Upload Page Wrapper
 import { ProtectedRoute } from '../../app/ProtectedRoute';
-import { UploadPage } from './UploadPageIntegrated';
+import { UploadPageChunked } from './UploadPageChunked';
 
 export const UploadPageProtected = () => {
     return (
         <ProtectedRoute>
-            <UploadPage />
+            <UploadPageChunked />
         </ProtectedRoute>
     );
 };

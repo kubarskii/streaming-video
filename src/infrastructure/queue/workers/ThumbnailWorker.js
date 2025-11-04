@@ -40,10 +40,10 @@ class ThumbnailWorker {
                 removeOnComplete: { count: 200 },
                 removeOnFail: { count: 50 },
                 // Stalled job handling (jobs that were active when worker crashed)
-                lockDuration: 60000, // 60 seconds - renew lock every minute
-                lockRenewTime: 30000, // Renew lock every 30 seconds
-                stalledInterval: 30000, // Check for stalled jobs every 30 seconds
-                maxStalledCount: 2, // Retry stalled jobs twice before failing
+                lockDuration: 300000, // 5 minutes (thumbnail generation is faster)
+                lockRenewTime: 60000, // Renew lock every minute
+                stalledInterval: 120000, // Check for stalled jobs every 2 minutes
+                maxStalledCount: 1, // Only retry once if genuinely stalled
             }
         );
 

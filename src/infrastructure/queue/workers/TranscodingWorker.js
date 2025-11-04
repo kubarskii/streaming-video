@@ -1,6 +1,7 @@
 const { Worker, Queue } = require('bullmq');
 const QueueConfig = require('../../config/QueueConfig');
 const TranscodeVideoUseCase = require('../../../application/use-cases/TranscodeVideoUseCase');
+const { getQueueManager } = require('../QueueManager');
 
 /**
  * Worker for processing video transcoding jobs
@@ -16,6 +17,7 @@ class TranscodingWorker {
         this.connection = this.queueConfig.getConnection();
         this.worker = null;
         this.queue = null;
+        this.queueManager = getQueueManager();
 
         this.transcodeUseCase = new TranscodeVideoUseCase(
             videoRepository,
@@ -32,7 +34,7 @@ class TranscodingWorker {
         const queueName = QueueConfig.getQueueNames().VIDEO_TRANSCODING;
 
         // Create queue instance for re-enqueuing failed jobs
-        this.queue = new Queue(queueName, { connection: this.connection });
+        this.queue = new Queue(queueName, { connection: /** @type {any} */ (this.connection) });
 
         this.worker = new Worker(
             queueName,
@@ -45,10 +47,10 @@ class TranscodingWorker {
                 removeOnComplete: { count: 100 },
                 removeOnFail: { count: 50 },
                 // Stalled job handling (jobs that were active when worker crashed)
-                lockDuration: 60000, // 60 seconds - renew lock every minute
-                lockRenewTime: 30000, // Renew lock every 30 seconds
-                stalledInterval: 30000, // Check for stalled jobs every 30 seconds
-                maxStalledCount: 2, // Retry stalled jobs twice before failing
+                lockDuration: 3600000 * 3, // 3 hours (transcoding can take long)
+                lockRenewTime: 60000, // Renew lock every minute
+                stalledInterval: 300000, // Check for stalled jobs every 5 minutes
+                maxStalledCount: 1, // Only retry once if genuinely stalled
             }
         );
 
@@ -106,7 +108,7 @@ class TranscodingWorker {
 
     /**
      * Process a transcoding job
-     * @param {Job} job - BullMQ job
+     * @param {any} job - BullMQ job
      */
     async processJob(job) {
         const { videoId } = job.data;
@@ -123,11 +125,30 @@ class TranscodingWorker {
             // Update job progress to 100%
             await job.updateProgress(100);
 
+            // After transcoding completes, queue thumbnail generation if needed
+            try {
+                const video = await this.videoRepository.findById(videoId);
+                if (video && !video.thumbnailUrl) {
+                    console.log(`📤 Queueing thumbnail generation for video ${videoId}...`);
+                    await this.queueManager.addThumbnailJob({
+                        videoId: video.id,
+                        storageKey: video.storageKey,
+                        videoPath: '', // Video is in storage, will be downloaded by worker
+                    });
+                    console.log(`✅ Thumbnail job queued for video ${videoId}`);
+                } else if (video && video.thumbnailUrl) {
+                    console.log(`⏭️  Video ${videoId} already has a thumbnail - skipping`);
+                }
+            } catch (thumbnailQueueError) {
+                console.error(`❌ Failed to queue thumbnail job after transcoding:`, thumbnailQueueError.message);
+                // Don't fail the transcoding job if thumbnail queue fails
+            }
+
             return {
                 success: true,
                 videoId,
-                qualitiesCreated: result?.qualitiesCreated || 0,
-                thumbnailGenerated: result?.thumbnailGenerated || false,
+                qualitiesCreated: Array.isArray(result) ? result.length : 0,
+                thumbnailGenerated: false, // Thumbnail is now queued separately
             };
         } catch (error) {
             console.error(`❌ Transcoding failed for video ${videoId}:`, error);

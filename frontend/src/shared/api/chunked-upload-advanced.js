@@ -1,16 +1,54 @@
 // Shared: Advanced Chunked Upload Manager
-// Includes WebWorker hashing, compression, and optimized performance
+// Includes WebWorker hashing and optimized parallel upload performance
 import api from './client';
-import SparkMD5 from 'spark-md5';
+
+/**
+ * Semaphore for controlling concurrent operations
+ */
+class Semaphore {
+    constructor(max) {
+        this.max = max;
+        this.current = 0;
+        this.queue = [];
+    }
+
+    async acquire() {
+        if (this.current < this.max) {
+            this.current++;
+            return Promise.resolve();
+        }
+
+        return new Promise(resolve => {
+            this.queue.push(resolve);
+        });
+    }
+
+    release() {
+        this.current--;
+        if (this.queue.length > 0 && this.current < this.max) {
+            this.current++;
+            const resolve = this.queue.shift();
+            resolve();
+        }
+    }
+
+    get available() {
+        return this.max - this.current;
+    }
+
+    get waiting() {
+        return this.queue.length;
+    }
+}
 
 class ChunkedUploadManagerAdvanced {
     constructor(options = {}) {
         this.maxConcurrent = options.maxConcurrent || 6;
         this.chunkSize = options.chunkSize || 5 * 1024 * 1024;
         this.retryAttempts = options.retryAttempts || 3;
-        this.retryDelay = options.retryDelay || 1000;
+        this.retryDelayBase = options.retryDelay || 1000;
+        this.retryDelayMax = options.retryDelayMax || 30000; // Max 30s delay
         this.useWebWorker = options.useWebWorker !== false; // Default true
-        this.useCompression = options.useCompression || false;
         this.startTime = null;
         this.hashWorker = null;
         this.workerReady = false;
@@ -57,14 +95,24 @@ class ChunkedUploadManagerAdvanced {
         }
 
         return new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
+            let timeoutId;
+            let messageHandler;
+
+            const cleanup = () => {
+                if (timeoutId) clearTimeout(timeoutId);
+                if (messageHandler && this.hashWorker) {
+                    this.hashWorker.removeEventListener('message', messageHandler);
+                }
+            };
+
+            timeoutId = setTimeout(() => {
+                cleanup();
                 reject(new Error('Hash calculation timeout'));
             }, 30000); // 30 second timeout
 
-            const messageHandler = (e) => {
+            messageHandler = (e) => {
                 if (e.data.chunkIndex === chunkIndex && e.data.action === 'hashComplete') {
-                    clearTimeout(timeoutId);
-                    this.hashWorker.removeEventListener('message', messageHandler);
+                    cleanup();
 
                     if (e.data.success) {
                         resolve(e.data.hash);
@@ -85,18 +133,14 @@ class ChunkedUploadManagerAdvanced {
 
     /**
      * Calculate hash on main thread (fallback)
+     * Uses SHA-256 to match server-side validation
      */
     async calculateHashMainThread(blob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const spark = new SparkMD5.ArrayBuffer();
-                spark.append(e.target.result);
-                resolve(spark.end());
-            };
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(blob);
-        });
+        const arrayBuffer = await blob.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        return hashHex;
     }
 
     /**
@@ -115,36 +159,6 @@ class ChunkedUploadManagerAdvanced {
         return await this.calculateHashMainThread(blob);
     }
 
-    /**
-     * Compress chunk before upload (if enabled)
-     */
-    async compressChunk(blob) {
-        if (!this.useCompression) {
-            return { blob, compressed: false };
-        }
-
-        try {
-            // Check if CompressionStream is available
-            if (typeof CompressionStream !== 'undefined') {
-                const stream = blob.stream();
-                const compressedStream = stream.pipeThrough(
-                    new CompressionStream('gzip')
-                );
-
-                const compressedBlob = await new Response(compressedStream).blob();
-
-                // Only use compression if it actually reduces size
-                if (compressedBlob.size < blob.size * 0.9) { // 10% savings minimum
-                    console.log(`  🗜️  Compressed chunk: ${blob.size} → ${compressedBlob.size} (${((1 - compressedBlob.size / blob.size) * 100).toFixed(1)}% saved)`);
-                    return { blob: compressedBlob, compressed: true };
-                }
-            }
-        } catch (error) {
-            console.warn('⚠️  Compression failed:', error.message);
-        }
-
-        return { blob, compressed: false };
-    }
 
     /**
      * Upload file with parallel chunking (advanced version)
@@ -159,7 +173,7 @@ class ChunkedUploadManagerAdvanced {
             const totalChunks = Math.ceil(file.size / chunkSize);
 
             console.log(`📦 Uploading ${(file.size / 1024 / 1024).toFixed(2)}MB in ${totalChunks} chunks of ${(chunkSize / 1024 / 1024).toFixed(2)}MB each`);
-            console.log(`⚡ Using advanced features: Worker=${this.useWebWorker && this.workerReady}, Compression=${this.useCompression}`);
+            console.log(`⚡ Using Web Worker for hashing: ${this.useWebWorker && this.workerReady}`);
 
             const chunks = [];
             for (let i = 0; i < totalChunks; i++) {
@@ -279,15 +293,18 @@ class ChunkedUploadManagerAdvanced {
     }
 
     /**
-     * Upload chunks in parallel with concurrency control
+     * Upload chunks in parallel with semaphore-based concurrency control
      */
     async uploadChunksParallel(chunks, uploadId, totalChunks, onChunkComplete, onProgressUpdate) {
-        const activeUploads = new Set();
-        const results = [];
-        let chunkIndex = 0;
-
+        // Create semaphore to limit concurrent uploads
+        const semaphore = new Semaphore(this.maxConcurrent);
+        
         // Track per-chunk progress for accurate speed calculation
         const chunkProgressMap = new Map();
+        const results = new Array(chunks.length); // Store results in order
+        const errors = new Map(); // Track errors by chunk index
+        
+        let completedCount = 0;
 
         const onChunkProgress = (progressData) => {
             // Store current chunk progress
@@ -304,7 +321,7 @@ class ChunkedUploadManagerAdvanced {
             // Notify parent with aggregated speed
             if (onProgressUpdate) {
                 onProgressUpdate({
-                    activeChunks: chunkProgressMap.size,
+                    activeChunks: semaphore.max - semaphore.available,
                     totalSpeed,
                     totalSpeedFormatted: this.formatSpeed(totalSpeed),
                     chunkDetails: Array.from(chunkProgressMap.values())
@@ -312,51 +329,67 @@ class ChunkedUploadManagerAdvanced {
             }
         };
 
-        const uploadNext = async () => {
-            if (chunkIndex >= chunks.length) return;
-
-            const chunk = chunks[chunkIndex++];
-            const uploadPromise = this.uploadChunkWithRetry(
-                chunk,
-                uploadId,
-                totalChunks,
-                onChunkProgress
-            )
-                .then(result => {
-                    results.push(result);
-                    // Remove from progress tracking when complete
-                    chunkProgressMap.delete(chunk.index);
+        // Upload a single chunk with semaphore control
+        const uploadChunkWithSemaphore = async (chunk) => {
+            // Acquire semaphore slot (blocks if max concurrent reached)
+            await semaphore.acquire();
+            
+            try {
+                const result = await this.uploadChunkWithRetry(
+                    chunk,
+                    uploadId,
+                    totalChunks,
+                    onChunkProgress
+                );
+                
+                // Store result at correct index
+                results[chunk.index] = result;
+                
+                // Clean up progress tracking
+                chunkProgressMap.delete(chunk.index);
+                
+                // Notify completion
+                if (onChunkComplete) {
                     onChunkComplete(chunk);
-                    activeUploads.delete(uploadPromise);
-                })
-                .catch(error => {
-                    console.error(`❌ Chunk ${chunk.index} failed permanently:`, error.message);
-                    chunkProgressMap.delete(chunk.index);
-                    activeUploads.delete(uploadPromise);
-                    throw error;
-                });
-
-            activeUploads.add(uploadPromise);
-
-            if (activeUploads.size < this.maxConcurrent) {
-                uploadNext();
-            } else {
-                await Promise.race(activeUploads);
-                uploadNext();
+                }
+                
+                completedCount++;
+                return { success: true, chunk, result };
+                
+            } catch (error) {
+                console.error(`❌ Chunk ${chunk.index} failed after all retries:`, error.message);
+                errors.set(chunk.index, error);
+                chunkProgressMap.delete(chunk.index);
+                completedCount++;
+                return { success: false, chunk, error };
+                
+            } finally {
+                // Always release semaphore slot
+                semaphore.release();
             }
         };
 
-        const initialBatch = Math.min(this.maxConcurrent, chunks.length);
-        for (let i = 0; i < initialBatch; i++) {
-            uploadNext();
+        console.log(`  🔄 Starting upload with max ${this.maxConcurrent} concurrent connections`);
+        
+        // Start all uploads (semaphore controls concurrency)
+        const uploadPromises = chunks.map(chunk => uploadChunkWithSemaphore(chunk));
+        
+        // Wait for all uploads to complete
+        await Promise.all(uploadPromises);
+
+        console.log(`  ✅ Completed ${completedCount}/${chunks.length} chunks`);
+
+        // Check if any chunks failed
+        if (errors.size > 0) {
+            const failedIndices = Array.from(errors.keys()).sort((a, b) => a - b).join(', ');
+            throw new Error(`Failed to upload ${errors.size} chunk(s) at indices: [${failedIndices}]. Please retry the upload.`);
         }
 
-        await Promise.all(activeUploads);
         return results;
     }
 
     /**
-     * Upload single chunk with retry logic (advanced)
+     * Upload chunk with exponential backoff retry
      * Uses XMLHttpRequest for accurate progress tracking
      */
     async uploadChunkWithRetry(chunk, uploadId, totalChunks, onChunkProgress) {
@@ -364,65 +397,87 @@ class ChunkedUploadManagerAdvanced {
 
         for (let attempt = 0; attempt < this.retryAttempts; attempt++) {
             try {
-                // Calculate hash (uses worker if available)
+                // Calculate hash of chunk
                 const hash = await this.calculateHash(chunk.blob, chunk.index);
-
-                // Compress chunk if enabled
-                const { blob: chunkBlob, compressed } = await this.compressChunk(chunk.blob);
 
                 // Create form data
                 const formData = new FormData();
-                formData.append('chunk', chunkBlob);
+                formData.append('chunk', chunk.blob);
                 formData.append('chunkIndex', chunk.index.toString());
                 formData.append('chunkHash', hash);
                 formData.append('uploadId', uploadId);
                 formData.append('totalChunks', totalChunks.toString());
-                if (compressed) {
-                    formData.append('compressed', 'true');
-                }
 
                 // Upload chunk using XMLHttpRequest for accurate progress tracking
                 const response = await this.uploadChunkWithXHR(
                     formData,
                     chunk.index,
                     totalChunks,
-                    compressed,
                     onChunkProgress
                 );
 
-                console.log(`  ✓ Chunk ${chunk.index + 1}/${totalChunks} uploaded${compressed ? ' (compressed)' : ''}`);
+                if (attempt > 0) {
+                    console.log(`  ✓ Chunk ${chunk.index + 1}/${totalChunks} uploaded (after ${attempt + 1} attempts)`);
+                } else {
+                    console.log(`  ✓ Chunk ${chunk.index + 1}/${totalChunks} uploaded`);
+                }
                 return response;
 
             } catch (error) {
                 lastError = error;
-                console.warn(`  ⚠️  Chunk ${chunk.index} attempt ${attempt + 1} failed:`, error.message);
-
+                const attemptNum = attempt + 1;
+                
                 if (attempt < this.retryAttempts - 1) {
-                    const delay = this.retryDelay * Math.pow(2, attempt);
-                    console.log(`  ⏳ Retrying in ${delay}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
+                    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
+                    const delay = Math.min(
+                        this.retryDelayBase * Math.pow(2, attempt),
+                        this.retryDelayMax
+                    );
+                    
+                    // Add jitter (±20%) to prevent thundering herd
+                    const jitter = delay * 0.2 * (Math.random() * 2 - 1);
+                    const finalDelay = Math.round(delay + jitter);
+                    
+                    console.warn(`  ⚠️  Chunk ${chunk.index} attempt ${attemptNum}/${this.retryAttempts} failed: ${error.message}`);
+                    console.log(`  ⏳ Retrying in ${(finalDelay / 1000).toFixed(1)}s...`);
+                    
+                    await new Promise(resolve => setTimeout(resolve, finalDelay));
+                } else {
+                    console.error(`  ❌ Chunk ${chunk.index} attempt ${attemptNum}/${this.retryAttempts} failed: ${error.message}`);
                 }
             }
         }
 
-        throw new Error(`Chunk ${chunk.index} failed after ${this.retryAttempts} attempts: ${lastError.message}`);
+        throw new Error(`Chunk ${chunk.index} failed after ${this.retryAttempts} attempts: ${lastError?.message || 'Unknown error'}`);
     }
 
     /**
      * Upload chunk using XMLHttpRequest with progress tracking
      * Returns a promise that resolves with the server response
      */
-    async uploadChunkWithXHR(formData, chunkIndex, totalChunks, compressed, onChunkProgress) {
+    async uploadChunkWithXHR(formData, chunkIndex, totalChunks, onChunkProgress) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             let uploadStartTime = Date.now();
             let lastLoadedBytes = 0;
             let lastUpdateTime = uploadStartTime;
+            let lastProgressEmit = 0;
+            const PROGRESS_THROTTLE = 100; // Emit progress max every 100ms (10 times/sec)
+            
+            // Speed smoothing with moving average
+            const speedSamples = [];
+            const MAX_SPEED_SAMPLES = 5;
 
             // Track upload progress
             xhr.upload.addEventListener('progress', (event) => {
                 if (event.lengthComputable) {
                     const now = Date.now();
+                    
+                    // Throttle progress updates to avoid overwhelming the UI
+                    if (now - lastProgressEmit < PROGRESS_THROTTLE) {
+                        return;
+                    }
+                    
                     const timeDelta = (now - lastUpdateTime) / 1000; // seconds
                     const bytesDelta = event.loaded - lastLoadedBytes;
 
@@ -430,15 +485,26 @@ class ChunkedUploadManagerAdvanced {
                     let chunkSpeed = 0;
                     if (timeDelta > 0 && bytesDelta > 0) {
                         chunkSpeed = bytesDelta / timeDelta; // bytes per second
+                        
+                        // Add to samples for moving average (smoother display)
+                        speedSamples.push(chunkSpeed);
+                        if (speedSamples.length > MAX_SPEED_SAMPLES) {
+                            speedSamples.shift();
+                        }
                     }
+                    
+                    // Use moving average for smoother speed display
+                    const avgSpeed = speedSamples.length > 0
+                        ? speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length
+                        : 0;
 
                     const chunkProgress = {
                         chunkIndex,
                         loaded: event.loaded,
                         total: event.total,
                         percentage: Math.round((event.loaded / event.total) * 100),
-                        speed: chunkSpeed,
-                        speedFormatted: this.formatSpeed(chunkSpeed)
+                        speed: avgSpeed, // Use smoothed speed
+                        speedFormatted: this.formatSpeed(avgSpeed)
                     };
 
                     if (onChunkProgress) {
@@ -447,6 +513,7 @@ class ChunkedUploadManagerAdvanced {
 
                     lastLoadedBytes = event.loaded;
                     lastUpdateTime = now;
+                    lastProgressEmit = now;
                 }
             });
 
@@ -665,8 +732,7 @@ export const chunkedUploadManagerAdvanced = new ChunkedUploadManagerAdvanced({
     chunkSize: 5 * 1024 * 1024,
     retryAttempts: 3,
     retryDelay: 1000,
-    useWebWorker: true,     // Enable Web Worker for hashing
-    useCompression: false   // Disable compression by default (video is already compressed)
+    useWebWorker: true     // Enable Web Worker for hashing
 });
 
 export default chunkedUploadManagerAdvanced;

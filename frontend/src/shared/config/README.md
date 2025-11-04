@@ -157,28 +157,20 @@ SHOW_UPLOAD_METHOD: true  // Show which method is used
 ```
 **Best for:** Development and debugging.
 
-## 🔄 Switching Upload Implementation
+## 🔄 Upload Implementation
 
-### Option 1: Replace Current UploadPage
+The application uses a single, optimized upload implementation:
 
-```bash
-# Backup current
-mv src/pages/upload/UploadPage.jsx src/pages/upload/UploadPage.simple.jsx
-
-# Use integrated version
-mv src/pages/upload/UploadPageIntegrated.jsx src/pages/upload/UploadPage.jsx
-```
-
-### Option 2: Manual Integration
-
-Copy the upload logic from `UploadPageIntegrated.jsx` into your existing `UploadPage.jsx`.
-
-Key sections:
-1. Import feature flags
-2. Import ChunkedUploader
-3. Add `handleChunkedUpload()` function
-4. Update `handleSubmit()` to choose strategy
-5. Add pause/resume controls (optional)
+- **Component:** `UploadPageChunked.jsx`
+- **Upload Manager:** `chunked-upload-advanced.js`
+- **Features:**
+  - Web Worker hashing (non-blocking)
+  - XMLHttpRequest with real-time progress tracking
+  - Parallel chunk uploads (6 concurrent)
+  - Automatic retry with exponential backoff
+  - Memory-efficient with proper cleanup
+  
+All uploads use the advanced chunked implementation for optimal performance and reliability.
 
 ## ⚙️ Advanced Configuration
 
