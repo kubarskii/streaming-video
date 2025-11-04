@@ -10,8 +10,7 @@ body {
   margin: 0;
   padding: 0;
   min-width: 320px;
-  min-height: 100%;
-  height: 100%;
+  min-height: 100vh;
 
   /* Disable iOS tap highlight */
   -webkit-tap-highlight-color: transparent;
@@ -24,7 +23,7 @@ body {
 
 #root {
   /* Allow normal document scrolling */
-  min-height: 100%;
+  min-height: 100vh;
   overflow-x: hidden;
 
   /* iOS momentum scrolling */

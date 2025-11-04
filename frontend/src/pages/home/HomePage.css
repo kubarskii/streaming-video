@@ -3,7 +3,7 @@
   width: 100%;
   max-width: 100%;
   min-height: calc(100vh - 64px);
-  overflow-x: hidden;
+  overflow: visible;
   background: var(--bg-primary);
   padding: 24px;
 }

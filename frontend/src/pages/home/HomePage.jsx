@@ -75,9 +75,9 @@ export const HomePage = () => {
             offsetRef.current = newOffset;
             setOffset(newOffset);
             setLoadingMore(true);
-            fetchVideos(newOffset, searchQueryRef.current, signal);
+            fetchVideos(newOffset, searchQueryRef.current);
         }
-    }, [loadingMore, loading, fetchVideos, signal]);
+    }, [loadingMore, loading, fetchVideos]);
 
     if (loading && videos.length === 0) {
         return (
@@ -156,7 +156,8 @@ export const HomePage = () => {
                             : t('home.all_videos_loaded')}</p>
                     </div>
                 }
-                scrollThreshold={0.8}
+                scrollThreshold={0.9}
+                style={{ overflow: 'visible' }}
             >
                 <VideoCardGrid columns="auto">
                     {videos.map((video) => (
