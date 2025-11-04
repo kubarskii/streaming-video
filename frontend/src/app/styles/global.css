@@ -244,6 +244,9 @@ body {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+  /* Enable smooth scrolling on touch devices */
+  -webkit-overflow-scrolling: touch;
+  position: relative;
 }
 
 /* Loading */

@@ -40,49 +40,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// iOS PWA: Prevent pull-to-refresh while keeping normal scrolling
-let touchStartY = null;
-
-document.addEventListener('touchstart', (e) => {
-  if (e.touches.length === 1) {
-    touchStartY = e.touches[0].clientY;
-  } else {
-    touchStartY = null;
-  }
-}, { passive: true });
-
-document.addEventListener('touchmove', (e) => {
-  if (e.touches.length > 1) {
-    // Allow pinch zoom
-    touchStartY = null;
-    return;
-  }
-
-  if (touchStartY === null) {
-    touchStartY = e.touches[0].clientY;
-  }
-
-  const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-  const currentY = e.touches[0].clientY;
-  if (scrollTop <= 0 && currentY > touchStartY) {
-    e.preventDefault();
-  }
-}, { passive: false });
-
-document.addEventListener('touchend', () => {
-  touchStartY = null;
-}, { passive: true });
-
-// iOS PWA: Prevent double-tap zoom
-let lastTouchEnd = 0;
-document.addEventListener('touchend', (e) => {
-  const now = Date.now();
-  if (now - lastTouchEnd <= 300) {
-    e.preventDefault();
-  }
-  lastTouchEnd = now;
-}, false);
-
 createRoot(document.getElementById('root')).render(
   // <StrictMode>
   <AuthProvider>

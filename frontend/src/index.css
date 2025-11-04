@@ -60,18 +60,19 @@ select {
   font-size: 16px !important;
 }
 
-/* iOS PWA: Better touch handling */
+/* Better touch handling - allow natural scrolling */
 * {
-  touch-action: pan-y;
+  touch-action: manipulation;
 }
 
 /* Allow pinch zoom on images/videos */
 img,
 video {
-  touch-action: pinch-zoom;
+  touch-action: pinch-zoom pan-x pan-y;
 }
 
 body {
   overscroll-behavior-y: contain;
   overflow-y: auto;
+  overflow-x: hidden;
 }

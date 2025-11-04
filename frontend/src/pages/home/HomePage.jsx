@@ -156,7 +156,7 @@ export const HomePage = () => {
                             : t('home.all_videos_loaded')}</p>
                     </div>
                 }
-                scrollableTarget="root"
+                scrollThreshold={0.8}
             >
                 <VideoCardGrid columns="auto">
                     {videos.map((video) => (
