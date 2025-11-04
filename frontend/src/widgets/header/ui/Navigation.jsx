@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../../shared/ui';
 import { UserIcon } from '../../../shared/ui';
 
@@ -8,18 +9,19 @@ import { UserIcon } from '../../../shared/ui';
  * @param {boolean} props.isAuthenticated - Whether user is authenticated
  */
 export const Navigation = ({ isAuthenticated }) => {
+  const { t } = useTranslation();
 
   if (!isAuthenticated) {
     return (
       <div className="header-auth">
         <Link to="/channels">
           <Button variant="ghost" size="small">
-            Channels
+            {t('navigation.channels')}
           </Button>
         </Link>
         <Link to="/login">
           <Button variant="secondary" size="small" icon={<UserIcon size={18} />}>
-            Sign in
+            {t('header.login')}
           </Button>
         </Link>
       </div>
@@ -30,12 +32,12 @@ export const Navigation = ({ isAuthenticated }) => {
     <nav className="header-nav">
       <Link to="/channels">
         <Button variant="ghost" size="small">
-          Channels
+          {t('navigation.channels')}
         </Button>
       </Link>
       <Link to="/subscriptions">
         <Button variant="ghost" size="small">
-          Subscriptions
+          {t('navigation.subscriptions')}
         </Button>
       </Link>
     </nav>

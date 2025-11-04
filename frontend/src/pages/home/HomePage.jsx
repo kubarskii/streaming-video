@@ -1,21 +1,28 @@
 // Pages: Home Page with Infinite Scrolling
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useSearch } from '@tanstack/react-router';
 import InfiniteScroll from 'react-infinite-scroll-component';
+import { useTranslation } from 'react-i18next';
 import { videosAPI } from '../../shared/api/videos';
 import { useAbortController } from '../../shared/lib';
 import { VideoCard, VideoCardGrid, VideoCardSkeleton, Spinner, EmptyState, VideoEmptyIcon, SearchEmptyIcon, Button } from '../../shared/ui';
 import './HomePage.css';
 
 export const HomePage = () => {
+    const { t } = useTranslation();
     const searchParams = useSearch({ from: '/' });
     const searchQuery = searchParams?.q || '';
     const signal = useAbortController();
+    
+    // Use refs to store current values without triggering re-renders
+    const offsetRef = useRef(0);
+    const searchQueryRef = useRef(searchQuery);
 
     const [videos, setVideos] = useState([]);
     const [hasMore, setHasMore] = useState(true);
     const [offset, setOffset] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState(null);
 
     const LIMIT = 20;
@@ -37,20 +44,24 @@ export const HomePage = () => {
 
             setHasMore(data.hasMore);
             setLoading(false);
+            setLoadingMore(false);
         } catch (err) {
             // Ignore abort errors
             if (err.name === 'AbortError' || err.name === 'CanceledError') {
                 return;
             }
             console.error('Error fetching videos:', err);
-            setError('Failed to load videos');
+            setError(t('home.failed_to_load'));
             setLoading(false);
+            setLoadingMore(false);
         }
-    }, []);
+    }, [t]);
 
     useEffect(() => {
         setVideos([]);
         setOffset(0);
+        offsetRef.current = 0;
+        searchQueryRef.current = searchQuery;
         setLoading(true);
         setError(null);
         setHasMore(true);
@@ -58,13 +69,15 @@ export const HomePage = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchQuery]); // Only re-fetch when searchQuery changes, not on every signal change
 
-    const fetchMoreVideos = () => {
-        if (!loading) {
-            const newOffset = offset + LIMIT;
+    const fetchMoreVideos = useCallback(() => {
+        if (!loadingMore && !loading) {
+            const newOffset = offsetRef.current + LIMIT;
+            offsetRef.current = newOffset;
             setOffset(newOffset);
-            fetchVideos(newOffset, searchQuery, signal);
+            setLoadingMore(true);
+            fetchVideos(newOffset, searchQueryRef.current, signal);
         }
-    };
+    }, [loadingMore, loading, fetchVideos, signal]);
 
     if (loading && videos.length === 0) {
         return (
@@ -83,11 +96,11 @@ export const HomePage = () => {
             <div className="error-container">
                 <EmptyState
                     icon={<VideoEmptyIcon />}
-                    title="Failed to load videos"
+                    title={t('home.failed_to_load')}
                     description={error}
                     action={
                         <Button variant="primary" onClick={() => window.location.reload()}>
-                            Retry
+                            {t('common.retry')}
                         </Button>
                     }
                 />
@@ -101,14 +114,14 @@ export const HomePage = () => {
                 {searchQuery ? (
                     <EmptyState
                         icon={<SearchEmptyIcon />}
-                        title="No videos found"
-                        description={`No videos match "${searchQuery}"`}
+                        title={t('home.no_search_results')}
+                        description={t('home.no_search_results_description', { query: searchQuery })}
                     />
                 ) : (
                     <EmptyState
                         icon={<VideoEmptyIcon />}
-                        title="No videos yet"
-                        description="Check back soon for new content!"
+                        title={t('home.no_videos')}
+                        description={t('home.no_videos_description')}
                     />
                 )}
             </div>
@@ -119,8 +132,12 @@ export const HomePage = () => {
         <div className="home-page">
             {searchQuery && (
                 <div className="search-header">
-                    <h2>Search results for "{searchQuery}"</h2>
-                    <p className="results-count">{videos.length} video{videos.length !== 1 ? 's' : ''} found</p>
+                    <h2>{t('home.search_results', { query: searchQuery })}</h2>
+                    <p className="results-count">
+                        {videos.length === 1 
+                            ? t('home.results_count', { count: videos.length })
+                            : t('home.results_count_plural', { count: videos.length })}
+                    </p>
                 </div>
             )}
             <InfiniteScroll
@@ -134,9 +151,12 @@ export const HomePage = () => {
                 }
                 endMessage={
                     <div className="end-message">
-                        <p>{searchQuery ? `That's all we found for "${searchQuery}"` : "You've seen all videos! 🎉"}</p>
+                        <p>{searchQuery 
+                            ? t('home.search_all_loaded', { query: searchQuery }) 
+                            : t('home.all_videos_loaded')}</p>
                     </div>
                 }
+                scrollableTarget="root"
             >
                 <VideoCardGrid columns="auto">
                     {videos.map((video) => (

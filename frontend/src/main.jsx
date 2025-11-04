@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { RouterProvider } from '@tanstack/react-router';
 import { AuthProvider } from './shared/context/AuthContext';
 import { router } from './app/router';
+import './shared/config/i18n'; // Initialize i18n
 import './index.css';
 import './ios-pwa-fixes.css';
 

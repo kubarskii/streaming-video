@@ -2,9 +2,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useAuth } from '../../shared/context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import './AuthPage.css';
 
 export const LoginPage = () => {
+    const { t } = useTranslation();
     const [emailOrUsername, setEmailOrUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -21,7 +23,7 @@ export const LoginPage = () => {
             await login(emailOrUsername, password);
             navigate({ to: '/' });
         } catch (err) {
-            setError(err.response?.data?.error || 'Login failed. Please try again.');
+            setError(err.response?.data?.error || t('auth.login_failed'));
         } finally {
             setLoading(false);
         }
@@ -38,8 +40,8 @@ export const LoginPage = () => {
                         </svg>
                     </div>
 
-                    <h1 className="auth-title">Sign in to ВидеоТрубка</h1>
-                    <p className="auth-subtitle">Continue watching and uploading videos</p>
+                    <h1 className="auth-title">{t('auth.sign_in_title')}</h1>
+                    <p className="auth-subtitle">{t('auth.sign_in_subtitle')}</p>
 
                     <form onSubmit={handleSubmit} className="auth-form">
                         {error && (
@@ -50,7 +52,7 @@ export const LoginPage = () => {
 
                         <div className="form-group">
                             <label htmlFor="emailOrUsername" className="form-label">
-                                Email or Username
+                                {t('auth.email_or_username')}
                             </label>
                             <input
                                 type="text"
@@ -65,7 +67,7 @@ export const LoginPage = () => {
 
                         <div className="form-group">
                             <label htmlFor="password" className="form-label">
-                                Password
+                                {t('auth.password')}
                             </label>
                             <input
                                 type="password"
@@ -82,15 +84,15 @@ export const LoginPage = () => {
                             className="btn btn-primary btn-block"
                             disabled={loading}
                         >
-                            {loading ? 'Signing in...' : 'Sign in'}
+                            {loading ? t('auth.signing_in') : t('auth.sign_in')}
                         </button>
                     </form>
 
                     <div className="auth-footer">
                         <p>
-                            Don't have an account?{' '}
+                            {t('auth.no_account')}{' '}
                             <Link to="/register" className="auth-link">
-                                Sign up
+                                {t('auth.sign_up')}
                             </Link>
                         </p>
                     </div>

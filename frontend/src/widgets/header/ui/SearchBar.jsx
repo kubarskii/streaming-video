@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { SearchIcon } from '../../../shared/ui';
 
 export const SearchBar = () => {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
@@ -20,15 +22,15 @@ export const SearchBar = () => {
         <input
           type="text"
           className="header-search-input"
-          placeholder="Search videos, channels..."
+          placeholder={t('header.search_placeholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search videos and channels"
+          aria-label={t('header.search_placeholder')}
         />
         <button
           type="submit"
           className="header-search-btn"
-          aria-label="Search"
+          aria-label={t('common.search')}
           disabled={!searchQuery.trim()}
         >
           <SearchIcon size={20} />

@@ -45,3 +45,6 @@ export { VideoPlayer } from './VideoPlayer';
 // Icons - Export all icons
 export * from './Icons';
 
+// Language Switcher
+export { LanguageSwitcher } from './LanguageSwitcher';
+

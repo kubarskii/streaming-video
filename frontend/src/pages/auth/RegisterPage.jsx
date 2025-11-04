@@ -1,10 +1,12 @@
 // Pages: Register Page
 import { useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../shared/context/AuthContext';
 import './AuthPage.css';
 
 export const RegisterPage = () => {
+    const { t } = useTranslation();
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -20,7 +22,7 @@ export const RegisterPage = () => {
 
         // Validation
         if (password !== confirmPassword) {
-            setError('Passwords do not match');
+            setError(t('auth.passwords_not_match'));
             return;
         }
 
@@ -35,7 +37,7 @@ export const RegisterPage = () => {
             await register(email, username, password);
             navigate({ to: '/login' });
         } catch (err) {
-            setError(err.response?.data?.error || 'Registration failed. Please try again.');
+            setError(err.response?.data?.error || t('auth.register_failed'));
         } finally {
             setLoading(false);
         }
@@ -52,8 +54,8 @@ export const RegisterPage = () => {
                         </svg>
                     </div>
 
-                    <h1 className="auth-title">Create your account</h1>
-                    <p className="auth-subtitle">Join ВидеоТрубка to start uploading and watching videos</p>
+                    <h1 className="auth-title">{t('auth.sign_up_title')}</h1>
+                    <p className="auth-subtitle">{t('auth.sign_up_subtitle')}</p>
 
                     <form onSubmit={handleSubmit} className="auth-form">
                         {error && (
@@ -64,7 +66,7 @@ export const RegisterPage = () => {
 
                         <div className="form-group">
                             <label htmlFor="email" className="form-label">
-                                Email
+                                {t('auth.email')}
                             </label>
                             <input
                                 type="email"
@@ -79,7 +81,7 @@ export const RegisterPage = () => {
 
                         <div className="form-group">
                             <label htmlFor="username" className="form-label">
-                                Username
+                                {t('auth.username')}
                             </label>
                             <input
                                 type="text"
@@ -98,7 +100,7 @@ export const RegisterPage = () => {
 
                         <div className="form-group">
                             <label htmlFor="password" className="form-label">
-                                Password
+                                {t('auth.password')}
                             </label>
                             <input
                                 type="password"
@@ -116,7 +118,7 @@ export const RegisterPage = () => {
 
                         <div className="form-group">
                             <label htmlFor="confirmPassword" className="form-label">
-                                Confirm Password
+                                {t('auth.confirm_password')}
                             </label>
                             <input
                                 type="password"
@@ -133,15 +135,15 @@ export const RegisterPage = () => {
                             className="btn btn-primary btn-block"
                             disabled={loading}
                         >
-                            {loading ? 'Creating account...' : 'Sign up'}
+                            {loading ? t('auth.signing_up') : t('auth.sign_up')}
                         </button>
                     </form>
 
                     <div className="auth-footer">
                         <p>
-                            Already have an account?{' '}
+                            {t('auth.have_account')}{' '}
                             <Link to="/login" className="auth-link">
-                                Sign in
+                                {t('auth.sign_in')}
                             </Link>
                         </p>
                     </div>
