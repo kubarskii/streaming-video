@@ -1,21 +1,24 @@
-// Profile Videos Page - Manage uploaded videos
+// Profile Videos Page - Manage uploaded videos with card layout
 import { useState, useEffect } from 'react';
+import { useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../shared/context/AuthContext';
 import { useAbortController } from '../../shared/lib';
 import { videosAPI } from '../../shared/api/videos';
 import { playlistsAPI } from '../../shared/api/playlists';
-import { useNavigate } from '@tanstack/react-router';
 import {
-    Button, EmptyState, VideoEmptyIcon, EyeIcon, DeleteIcon,
-    UploadIcon, Modal, TableRowSkeleton
+    Button, EmptyState, VideoEmptyIcon, EyeIcon, DeleteIcon, EditIcon,
+    UploadIcon, Modal, VideoCardSkeleton
 } from '../../shared/ui';
 import { formatViews, formatDate, formatDuration } from '../../shared/lib';
 import styles from './ProfilePage.module.css';
 
 export const ProfileVideosPage = () => {
+    const { t } = useTranslation();
     const { user } = useAuth();
     const navigate = useNavigate();
     const signal = useAbortController();
+
     const [videos, setVideos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -45,7 +48,7 @@ export const ProfileVideosPage = () => {
         } catch (err) {
             if (err.name !== 'AbortError' && err.name !== 'CanceledError') {
                 console.error('Error loading videos:', err);
-                setError('Failed to load videos');
+                setError(t('home.failed_to_load'));
             }
         } finally {
             setLoading(false);
@@ -101,14 +104,6 @@ export const ProfileVideosPage = () => {
             newSelection.add(videoId);
         }
         setSelectedVideos(newSelection);
-    };
-
-    const handleSelectAllVideos = () => {
-        if (selectedVideos.size === filteredVideos.length) {
-            setSelectedVideos(new Set());
-        } else {
-            setSelectedVideos(new Set(filteredVideos.map(v => v.id)));
-        }
     };
 
     const handleOpenAddToPlaylist = () => {
@@ -216,11 +211,18 @@ export const ProfileVideosPage = () => {
                             <div className={styles['studio-bulk-actions']}>
                                 <span className={styles['bulk-count']}>{selectedVideos.size} selected</span>
                                 <Button
-                                    variant="secondary"
+                                    variant="primary"
                                     size="small"
                                     onClick={handleOpenAddToPlaylist}
                                 >
                                     Add to playlist
+                                </Button>
+                                <Button
+                                    variant="secondary"
+                                    size="small"
+                                    onClick={() => setSelectedVideos(new Set())}
+                                >
+                                    Clear
                                 </Button>
                             </div>
                         )}
@@ -229,28 +231,10 @@ export const ProfileVideosPage = () => {
             </div>
 
             {loading ? (
-                <div className={styles['studio-table-container']}>
-                    <table className={styles['studio-table']}>
-                        <thead>
-                            <tr>
-                                <th className={styles['col-checkbox']}></th>
-                                <th className={styles['col-video']}>Video</th>
-                                <th className={styles['col-visibility']}>Visibility</th>
-                                <th className={styles['col-date']}>Date</th>
-                                <th className={styles['col-views']}>Views</th>
-                                <th className={styles['col-actions']}>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {Array.from({ length: 5 }).map((_, index) => (
-                                <tr key={index}>
-                                    <td colSpan={6}>
-                                        <TableRowSkeleton columns={6} />
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className={styles['videos-grid']}>
+                    {Array.from({ length: 8 }).map((_, index) => (
+                        <VideoCardSkeleton key={index} />
+                    ))}
                 </div>
             ) : filteredVideos.length === 0 ? (
                 <EmptyState
@@ -266,106 +250,87 @@ export const ProfileVideosPage = () => {
                     }
                 />
             ) : (
-                <div className={styles['studio-table-container']}>
-                    <table className={styles['studio-table']}>
-                        <thead>
-                            <tr>
-                                <th className={styles['col-checkbox']}>
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedVideos.size === filteredVideos.length && filteredVideos.length > 0}
-                                        onChange={handleSelectAllVideos}
-                                    />
-                                </th>
-                                <th className={styles['col-video']}>Video</th>
-                                <th className={styles['col-visibility']}>Visibility</th>
-                                <th className={styles['col-date']}>Date</th>
-                                <th className={styles['col-views']}>Views</th>
-                                <th className={styles['col-actions']}>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredVideos.map(video => (
-                                <tr key={video.id} className={selectedVideos.has(video.id) ? styles['selected'] : ''}>
-                                    <td className={styles['col-checkbox']}>
+                <div className={styles['videos-grid']}>
+                    {filteredVideos.map(video => (
+                        <div key={video.id} className={styles['video-card']}>
+                            <div className={styles['video-card-checkbox']}>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedVideos.has(video.id)}
+                                    onChange={() => handleToggleVideoSelection(video.id)}
+                                />
+                            </div>
+
+                            <div className={styles['video-card-thumbnail-wrapper']}>
+                                <img
+                                    src={video.thumbnailUrl || '/placeholder-video.png'}
+                                    alt={video.title}
+                                    className={styles['video-card-thumbnail']}
+                                />
+                                {video.durationMs && (
+                                    <div className={styles['video-card-duration']}>
+                                        {formatDuration(video.durationMs)}
+                                    </div>
+                                )}
+                                {uploadingThumbnail === video.id ? (
+                                    <div className={styles['thumbnail-overlay']}>
+                                        <span>Uploading...</span>
+                                    </div>
+                                ) : (
+                                    <label className={styles['thumbnail-upload-btn']} title="Change thumbnail">
+                                        <UploadIcon size={16} />
                                         <input
-                                            type="checkbox"
-                                            checked={selectedVideos.has(video.id)}
-                                            onChange={() => handleToggleVideoSelection(video.id)}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => handleThumbnailChange(video.id, e)}
+                                            style={{ display: 'none' }}
                                         />
-                                    </td>
-                                    <td className={styles['col-video']}>
-                                        <div className={styles['video-row']}>
-                                            <div className={styles['video-thumbnail-wrapper']}>
-                                                <img
-                                                    src={video.thumbnailUrl || '/placeholder-video.png'}
-                                                    alt={video.title}
-                                                    className={styles['video-thumbnail']}
-                                                />
-                                                {uploadingThumbnail === video.id ? (
-                                                    <div className={styles['thumbnail-overlay']}>
-                                                        <span>Uploading...</span>
-                                                    </div>
-                                                ) : (
-                                                    <label className={styles['thumbnail-upload-btn']} title="Change thumbnail">
-                                                        <UploadIcon size={14} />
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            onChange={(e) => handleThumbnailChange(video.id, e)}
-                                                            style={{ display: 'none' }}
-                                                        />
-                                                    </label>
-                                                )}
-                                            </div>
-                                            <div className={styles['video-info']}>
-                                                <div className={styles['video-title']}>{video.title}</div>
-                                                <div className={styles['video-meta']}>
-                                                    {video.durationMs && (
-                                                        <span>{formatDuration(video.durationMs)}</span>
-                                                    )}
-                                                    {video.status && (
-                                                        <span className={`${styles['status-badge']} ${styles['status-' + video.status]}`}>
-                                                            {video.status}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className={styles['col-visibility']}>
-                                        <span className={`${styles['visibility-badge']} ${styles['public']}`}>Public</span>
-                                    </td>
-                                    <td className={styles['col-date']}>
-                                        {video.uploadedAt ? formatDate(video.uploadedAt) : '-'}
-                                    </td>
-                                    <td className={styles['col-views']}>
-                                        {formatViews(video.views || 0)}
-                                    </td>
-                                    <td className={styles['col-actions']}>
-                                        <div className={styles['action-buttons']}>
-                                            <Button
-                                                variant="ghost"
-                                                size="small"
-                                                onClick={() => navigate({ to: `/video/${video.id}` })}
-                                                title="View"
-                                            >
-                                                <EyeIcon size={16} />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="small"
-                                                onClick={() => setDeleteConfirm(video.id)}
-                                                title="Delete"
-                                            >
-                                                <DeleteIcon size={16} />
-                                            </Button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                    </label>
+                                )}
+                            </div>
+
+                            <div className={styles['video-card-info']}>
+                                <div className={styles['video-card-title']}>{video.title}</div>
+                                <div className={styles['video-card-meta']}>
+                                    <span>{formatViews(video.views || 0)} views</span>
+                                    <span>•</span>
+                                    <span>{video.uploadedAt ? formatDate(video.uploadedAt) : '-'}</span>
+                                </div>
+                                {video.status && (
+                                    <span className={`${styles['status-badge']} ${styles['status-' + video.status]}`}>
+                                        {video.status}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className={styles['video-card-actions']}>
+                                <Button
+                                    variant="ghost"
+                                    size="small"
+                                    onClick={() => navigate({ to: `/profile/videos/${video.id}/edit` })}
+                                    title="Edit"
+                                >
+                                    <EditIcon size={16} />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="small"
+                                    onClick={() => navigate({ to: `/video/${video.id}` })}
+                                    title="View"
+                                >
+                                    <EyeIcon size={16} />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="small"
+                                    onClick={() => setDeleteConfirm(video.id)}
+                                    title="Delete"
+                                >
+                                    <DeleteIcon size={16} />
+                                </Button>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 
@@ -472,4 +437,3 @@ export const ProfileVideosPage = () => {
         </div>
     );
 };
-

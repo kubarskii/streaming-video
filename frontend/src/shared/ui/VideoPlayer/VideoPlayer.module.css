@@ -405,6 +405,7 @@
   /* Overflow and sizing handled by Floating UI JavaScript */
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
+  touch-action: manipulation; /* Prevent double-tap zoom and improve touch response */
 }
 
 /* Custom scrollbar for settings dropdown */
@@ -437,6 +438,8 @@
   font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
+  touch-action: manipulation; /* Improve touch response */
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
 }
 
 .settingsItem:hover {
@@ -467,6 +470,8 @@
   font-size: 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   margin-bottom: 4px;
+  touch-action: manipulation; /* Improve touch response */
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
 }
 
 .settingsBack:hover {

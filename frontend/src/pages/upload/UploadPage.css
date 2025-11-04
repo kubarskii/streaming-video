@@ -216,8 +216,6 @@
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
 }
 
 .form-actions .btn {

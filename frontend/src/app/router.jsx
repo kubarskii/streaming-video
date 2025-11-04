@@ -10,6 +10,7 @@ import { ProfileLayout } from '../pages/profile/ProfileLayout';
 import { ProfileVideosPage } from '../pages/profile/ProfileVideosPage';
 import { ProfilePlaylistsPage } from '../pages/profile/ProfilePlaylistsPage';
 import { ProfileChannelPage } from '../pages/profile/ProfileChannelPage';
+import { VideoEditPage } from '../pages/profile/VideoEditPage';
 import { ChannelLayout } from '../pages/channel/ChannelLayout';
 import { ChannelVideosPage } from '../pages/channel/ChannelVideosPage';
 import { ChannelPlaylistsPage } from '../pages/channel/ChannelPlaylistsPage';
@@ -88,6 +89,12 @@ const profileChannelRoute = createRoute({
     component: ProfileChannelPage,
 });
 
+const profileVideoEditRoute = createRoute({
+    getParentRoute: () => profileRoute,
+    path: '/videos/$videoId/edit',
+    component: VideoEditPage,
+});
+
 // Channel routes - with nested routes for separate pages
 const channelRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -146,6 +153,7 @@ const routeTree = rootRoute.addChildren([
         profileVideosRoute,
         profilePlaylistsRoute,
         profileChannelRoute,
+        profileVideoEditRoute,
     ]),
     channelRoute.addChildren([
         channelVideosRoute,

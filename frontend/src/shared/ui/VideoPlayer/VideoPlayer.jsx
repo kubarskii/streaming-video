@@ -944,10 +944,15 @@ export const VideoPlayer = React.forwardRef(({
             }
         };
 
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('touchstart', handleClickOutside);
+        // Use setTimeout to avoid immediate closure on touch screens
+        // This prevents the touchstart/click from closing the menu right after opening
+        const timeoutId = setTimeout(() => {
+            document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('touchstart', handleClickOutside, { passive: true });
+        }, 100);
 
         return () => {
+            clearTimeout(timeoutId);
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('touchstart', handleClickOutside);
         };
@@ -1155,7 +1160,10 @@ export const VideoPlayer = React.forwardRef(({
                                 <button
                                     ref={floatingRefs.setReference}
                                     className={styles.controlButton}
-                                    onClick={() => setShowSettings(!showSettings)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowSettings(!showSettings);
+                                    }}
                                     type="button"
                                 >
                                     <FaCog />
@@ -1166,6 +1174,8 @@ export const VideoPlayer = React.forwardRef(({
                                         ref={floatingRefs.setFloating}
                                         className={styles.settingsDropdown}
                                         style={floatingStyles}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onTouchStart={(e) => e.stopPropagation()}
                                     >
                                         {!showPlaybackRates && !showQualities && (
                                             <>
