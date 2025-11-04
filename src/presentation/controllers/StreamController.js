@@ -314,6 +314,7 @@ class StreamController {
 
     /**
      * Stream file from local filesystem with Range support
+     * iOS Safari requires HEAD request support for video seeking
      */
     streamLocalFile(req, res, filePath, video) {
         if (!fs.existsSync(filePath)) {
@@ -325,6 +326,20 @@ class StreamController {
         const fileSize = stat.size;
         const range = req.headers.range;
         const contentType = video.mimeType || 'video/mp4';
+
+        // Handle HEAD requests - iOS Safari needs this for video seeking
+        if (req.method === 'HEAD') {
+            res.writeHead(200, {
+                'Content-Type': contentType,
+                'Content-Length': fileSize,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=31536000',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+                'Access-Control-Allow-Headers': 'Range',
+            });
+            return res.end();
+        }
 
         if (!range) {
             // Serve entire file
@@ -404,6 +419,7 @@ class StreamController {
 
     /**
      * Stream file from B2 with authentication and Range support
+     * iOS Safari requires HEAD request support for video seeking
      */
     async streamFromB2(req, res, storageKey, video) {
         try {
@@ -414,6 +430,21 @@ class StreamController {
                 // Fallback to URL-based streaming for repositories that don't support it
                 const url = await this.storageRepository.getUrl(storageKey);
                 return this.streamFromUrl(req, res, url, video);
+            }
+
+            // Handle HEAD requests - iOS Safari needs this for video seeking
+            if (req.method === 'HEAD') {
+                const metadata = await this.storageRepository.getMetadata(storageKey);
+                res.writeHead(200, {
+                    'Content-Type': metadata.contentType || (video?.mimeType || 'video/mp4'),
+                    'Content-Length': metadata.size,
+                    'Accept-Ranges': 'bytes',
+                    'Cache-Control': 'public, max-age=31536000',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Range',
+                });
+                return res.end();
             }
 
             // Get authenticated stream from B2
