@@ -11,14 +11,7 @@ body {
   padding: 0;
   min-width: 320px;
   min-height: 100vh;
-  
-  /* iOS PWA Optimizations */
-  /* Prevent iOS bounce/rubber-band scrolling */
-  position: fixed;
-  overflow: hidden;
-  width: 100%;
-  height: 100%;
-  
+
   /* Disable iOS tap highlight */
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
@@ -29,15 +22,10 @@ body {
 }
 
 #root {
-  /* Enable scrolling within the app container */
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow-y: auto;
+  /* Allow normal document scrolling */
+  min-height: 100vh;
   overflow-x: hidden;
-  
+
   /* iOS momentum scrolling */
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
@@ -82,7 +70,7 @@ video {
   touch-action: pinch-zoom;
 }
 
-/* Disable pull-to-refresh on the entire app */
 body {
   overscroll-behavior-y: contain;
+  overflow-y: auto;
 }
