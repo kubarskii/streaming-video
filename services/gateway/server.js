@@ -80,10 +80,12 @@ function routeRequest(req, res) {
     // CORS headers - allow the requesting origin
     const origin = req.headers.origin || '*';
     res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
 
+    // Handle OPTIONS and HEAD preflight requests
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
         return res.end();

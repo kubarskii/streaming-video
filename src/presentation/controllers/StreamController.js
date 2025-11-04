@@ -129,8 +129,11 @@ class StreamController {
      */
     async streamVideo(req, res, fileKey) {
         try {
+            // Log request method for debugging iOS seeking
+            console.log(`[StreamController] ${req.method} request for: ${fileKey}`);
+
             // Check stream mode from environment (redirect = unlimited scale)
-            const streamMode = process.env.STREAM_MODE || 'redirect'; // 'redirect' or 'proxy'
+            const streamMode = process.env.STREAM_MODE || 'proxy'; // 'redirect' or 'proxy'
 
             // First, check if this is a quality variant
             let videoQuality = null;

@@ -11,13 +11,78 @@ body {
   padding: 0;
   min-width: 320px;
   min-height: 100vh;
+  
+  /* iOS PWA Optimizations */
+  /* Prevent iOS bounce/rubber-band scrolling */
+  position: fixed;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  
+  /* Disable iOS tap highlight */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  
+  /* Smooth text rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
-  min-height: 100vh;
+  /* Enable scrolling within the app container */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  /* iOS momentum scrolling */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  
+  /* Safe area for notch/home indicator */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
+}
+
+/* iOS PWA: Prevent text selection on interactive elements */
+button,
+a,
+input[type="submit"],
+input[type="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* iOS PWA: Prevent zoom on input focus */
+input,
+textarea,
+select {
+  font-size: 16px !important;
+}
+
+/* iOS PWA: Better touch handling */
+* {
+  touch-action: pan-y;
+}
+
+/* Allow pinch zoom on images/videos */
+img,
+video {
+  touch-action: pinch-zoom;
+}
+
+/* Disable pull-to-refresh on the entire app */
+body {
+  overscroll-behavior-y: contain;
 }

@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
+      // Ensure service worker is copied to build output
+      copyPublicDir: true,
     },
     server: {
       port: 5173,

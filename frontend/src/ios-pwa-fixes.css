@@ -1,0 +1,316 @@
+/**
+ * iOS PWA Animation & Performance Fixes
+ * 
+ * This file contains iOS-specific optimizations to prevent conflicts
+ * between native iOS animations and app animations.
+ */
+
+/* ========================================
+   Hardware Acceleration for Smooth Animations
+   ======================================== */
+
+/* Force hardware acceleration on all animated elements */
+[class*="transition"],
+[class*="animation"],
+[style*="transition"],
+[style*="animation"] {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-perspective: 1000px;
+  perspective: 1000px;
+}
+
+/* ========================================
+   Prevent iOS Rubber Band / Bounce Effect
+   ======================================== */
+
+/* Prevent bounce on main scrollable containers */
+.video-page-container,
+.comments-section,
+.playlist-content,
+[class*="scroll"] {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ========================================
+   iOS Safe Area Support
+   ======================================== */
+
+/* Ensure video player respects safe areas */
+.video-player-container {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+
+.video-controls-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
+}
+
+/* Mobile header with safe area */
+.header-mobile,
+.header-container {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+
+/* Bottom sheets and modals */
+.bottom-sheet-container,
+.modal-content {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+
+/* ========================================
+   Prevent iOS Scroll Momentum Issues
+   ======================================== */
+
+/* Fix for iOS scroll momentum interfering with drag gestures */
+.bottom-sheet-content,
+.mobile-playlist-content {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ========================================
+   iOS Video Player Optimizations
+   ======================================== */
+
+/* Prevent iOS from interfering with custom video controls */
+video {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Ensure video player controls don't trigger iOS gestures */
+.video-controls,
+.video-overlay {
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+/* ========================================
+   Smooth Animations on iOS
+   ======================================== */
+
+/* Override animations to use transform for better iOS performance */
+@supports (-webkit-overflow-scrolling: touch) {
+  /* Use transform instead of top/left for iOS */
+  .bottom-sheet-container[data-open="true"],
+  .mobile-playlist-sheet[data-open="true"] {
+    transform: translate3d(0, 0, 0) !important;
+  }
+  
+  /* Optimize fade animations */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+  
+  /* Optimize slide animations */
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 10px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+}
+
+/* ========================================
+   Prevent iOS Text Size Adjustment
+   ======================================== */
+
+/* Prevent iOS from adjusting text size in landscape */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ========================================
+   iOS Button & Link Optimizations
+   ======================================== */
+
+/* Remove iOS button styling */
+button,
+input[type="submit"],
+input[type="button"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Prevent iOS link preview on long press */
+a,
+button {
+  -webkit-touch-callout: none;
+}
+
+/* ========================================
+   iOS Keyboard Handling
+   ======================================== */
+
+/* Prevent viewport zoom when keyboard opens */
+input,
+textarea,
+select {
+  font-size: max(16px, 1rem); /* iOS zooms if < 16px */
+}
+
+/* Ensure textarea doesn't get cut off by iOS keyboard */
+textarea:focus,
+input:focus {
+  scroll-margin-bottom: 150px; /* Space for iOS keyboard */
+}
+
+/* ========================================
+   iOS Modal & Overlay Fixes
+   ======================================== */
+
+/* Prevent body scroll when modal is open on iOS */
+body.modal-open,
+body.sheet-open {
+  position: fixed;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Ensure modals are above iOS status bar */
+.modal-overlay,
+.bottom-sheet-overlay {
+  z-index: 999999;
+}
+
+/* ========================================
+   iOS Fullscreen Video Support
+   ======================================== */
+
+/* Support iOS fullscreen video */
+.video-player-container:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+}
+
+.video-player-container:-webkit-full-screen video {
+  width: 100%;
+  height: 100%;
+}
+
+/* ========================================
+   Reduce Motion for iOS Accessibility
+   ======================================== */
+
+/* Respect iOS "Reduce Motion" setting */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ========================================
+   iOS Dark Mode Support
+   ======================================== */
+
+/* Respect iOS dark mode preference */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+  }
+}
+
+/* ========================================
+   iOS Notch & Home Indicator Support
+   ======================================== */
+
+/* Ensure content doesn't hide behind notch */
+@supports (padding: max(0px)) {
+  .app-header,
+  .header-container {
+    padding-left: max(env(safe-area-inset-left), 0px);
+    padding-right: max(env(safe-area-inset-right), 0px);
+  }
+  
+  .app-footer,
+  .bottom-nav {
+    padding-left: max(env(safe-area-inset-left), 0px);
+    padding-right: max(env(safe-area-inset-right), 0px);
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+}
+
+/* ========================================
+   iOS Performance Optimizations
+   ======================================== */
+
+/* Use will-change for better animation performance */
+.video-player video,
+.bottom-sheet-container,
+.modal-content {
+  will-change: transform;
+}
+
+/* Remove will-change after animation to save memory */
+.video-player video:not(:hover),
+.bottom-sheet-container:not([data-open="true"]),
+.modal-content:not(.active) {
+  will-change: auto;
+}
+
+/* ========================================
+   iOS Specific Bug Fixes
+   ======================================== */
+
+/* Fix for iOS Safari video playback button */
+video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+/* Fix for iOS input shadow */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Fix iOS select styling */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Prevent iOS from adding rounded corners to inputs */
+input,
+textarea,
+button {
+  border-radius: 0;
+}
+
+/* Re-add custom border radius where needed */
+.custom-input,
+.custom-button {
+  border-radius: 0.375rem;
+}
+
