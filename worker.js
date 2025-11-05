@@ -13,7 +13,7 @@
 
 require('dotenv').config();
 const WorkerManager = require('./src/infrastructure/queue/workers/WorkerManager');
-const { PrismaClient } = require('@prisma/client');
+const DatabaseConfig = require('./src/infrastructure/config/DatabaseConfig');
 
 // Import repositories
 const PrismaVideoRepository = require('./src/infrastructure/persistence/PrismaVideoRepository');
@@ -36,8 +36,8 @@ async function main() {
     console.log(`📦 Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
     console.log(`📦 Storage Mode: ${process.env.STORAGE_MODE || 'local'}\n`);
 
-    // Initialize Prisma client
-    const prisma = new PrismaClient();
+    // Use singleton Prisma client to avoid connection pool exhaustion
+    const prisma = DatabaseConfig.getPrismaClient();
 
     try {
         // Test database connection
