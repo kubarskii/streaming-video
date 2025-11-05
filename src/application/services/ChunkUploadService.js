@@ -68,42 +68,22 @@ class ChunkUploadService {
      * Mark chunk as uploaded (with B2 part metadata)
      */
     async markChunkUploaded(uploadId, chunkIndex, partMetadata = null) {
-        const session = await this.getSession(uploadId);
-        if (!session) {
-            throw new Error('Upload session not found');
-        }
+        // Use atomic repository method to prevent race conditions
+        const updatedSession = await this.uploadSessionRepository.addUploadedChunk(
+            uploadId,
+            chunkIndex,
+            partMetadata
+        );
 
-        if (!session.uploadedChunks.includes(chunkIndex)) {
-            session.uploadedChunks.push(chunkIndex);
-            session.uploadedChunks.sort((a, b) => a - b);
-
-            // Store B2 part metadata if provided
-            if (partMetadata) {
-                if (!session.metadata.b2Parts) {
-                    session.metadata.b2Parts = [];
-                }
-
-                // Only store essential data (etag and partNumber)
-                // This prevents memory bloat for large files
-                session.metadata.b2Parts.push({
-                    etag: partMetadata.etag,
-                    partNumber: partMetadata.partNumber
-                });
-
-                // Sanity check: prevent unbounded metadata growth
-                const metadataSize = JSON.stringify(session.metadata).length;
-                if (metadataSize > 1024 * 1024) { // 1MB limit
-                    console.warn(`⚠️  Session ${uploadId} metadata exceeds 1MB (${metadataSize} bytes)`);
-                }
+        // Sanity check: prevent unbounded metadata growth
+        if (updatedSession.metadata) {
+            const metadataSize = JSON.stringify(updatedSession.metadata).length;
+            if (metadataSize > 1024 * 1024) { // 1MB limit
+                console.warn(`⚠️  Session ${uploadId} metadata exceeds 1MB (${metadataSize} bytes)`);
             }
-
-            await this.uploadSessionRepository.update(uploadId, {
-                uploadedChunks: session.uploadedChunks,
-                metadata: session.metadata,
-            });
         }
 
-        return session;
+        return updatedSession;
     }
 
     /**

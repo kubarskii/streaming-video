@@ -3,13 +3,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuth } from '../../shared/context/AuthContext';
+import { ProtectedRoute } from '../../app/ProtectedRoute';
 import { videosAPI } from '../../shared/api/videos';
 import { channelsAPI } from '../../shared/api/channels';
 import chunkedUploadManagerAdvanced from '../../shared/api/chunked-upload-advanced';
 import { Button, EmptyState } from '../../shared/ui';
 import './UploadPage.css';
 
-export const UploadPageChunked = () => {
+const UploadPageChunkedContent = () => {
     const { user } = useAuth();
     const [channel, setChannel] = useState(null);
     const [checkingChannel, setCheckingChannel] = useState(true);
@@ -19,6 +20,7 @@ export const UploadPageChunked = () => {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [uploading, setUploading] = useState(false);
+    const [isPaused, setIsPaused] = useState(false);
     const [progress, setProgress] = useState(0);
     const [uploadSpeed, setUploadSpeed] = useState('0 MB/s');
     const [uploadedChunks, setUploadedChunks] = useState(0);
@@ -27,6 +29,8 @@ export const UploadPageChunked = () => {
     const [eta, setEta] = useState('');
     const [error, setError] = useState('');
     const [dragActive, setDragActive] = useState(false);
+    const [showResumePrompt, setShowResumePrompt] = useState(false);
+    const [savedUploadState, setSavedUploadState] = useState(null);
     const fileInputRef = useRef(null);
     const thumbnailInputRef = useRef(null);
     const navigate = useNavigate();
@@ -54,6 +58,16 @@ export const UploadPageChunked = () => {
         checkChannel();
     }, [user]);
 
+    // Check for saved upload state on mount
+    useEffect(() => {
+        const savedState = chunkedUploadManagerAdvanced.constructor.loadStateFromStorage();
+        if (savedState) {
+            console.log('💾 Found saved upload state:', savedState);
+            setSavedUploadState(savedState);
+            setShowResumePrompt(true);
+        }
+    }, []);
+
     // Cleanup on unmount
     useEffect(() => {
         return () => {
@@ -61,7 +75,7 @@ export const UploadPageChunked = () => {
             if (redirectTimeoutRef.current) {
                 clearTimeout(redirectTimeoutRef.current);
             }
-            
+
             // Terminate hash worker to prevent memory leak
             chunkedUploadManagerAdvanced.cleanup();
         };
@@ -181,12 +195,12 @@ export const UploadPageChunked = () => {
                         setUploadedChunks(progressData.uploadedChunks || 0);
                         setTotalChunks(progressData.totalChunks || 0);
                         setActiveChunks(progressData.activeChunks || 0);
-                        
+
                         // Calculate ETA
                         if (progressData.speedBytes > 0 && progressData.uploadedBytes < progressData.totalBytes) {
                             const remainingBytes = progressData.totalBytes - progressData.uploadedBytes;
                             const secondsRemaining = remainingBytes / progressData.speedBytes;
-                            
+
                             if (secondsRemaining < 60) {
                                 setEta(`${Math.ceil(secondsRemaining)}s`);
                             } else if (secondsRemaining < 3600) {
@@ -211,6 +225,15 @@ export const UploadPageChunked = () => {
                 }
             );
 
+            // Check if upload was paused
+            if (data.paused) {
+                console.log('⏸️  Upload paused');
+                setIsPaused(true);
+                setUploading(false);
+                setActiveChunks(0);
+                return;
+            }
+
             console.log('✅ Upload complete:', data);
 
             // Redirect to uploaded video
@@ -222,6 +245,52 @@ export const UploadPageChunked = () => {
             console.error('Upload error:', err);
             setError(err.message || err.response?.data?.error || 'Upload failed. Please try again.');
             setUploading(false);
+            setIsPaused(false);
+            setProgress(0);
+            setUploadSpeed('0 MB/s');
+            setActiveChunks(0);
+            setEta('');
+        }
+    };
+
+    const handlePause = () => {
+        console.log('⏸️  Pausing upload...');
+        chunkedUploadManagerAdvanced.pause();
+        setIsPaused(true);
+        setUploading(false);
+        setActiveChunks(0);
+    };
+
+    const handleResume = async () => {
+        console.log('▶️  Resuming upload...');
+        setIsPaused(false);
+        setUploading(true);
+        setError('');
+
+        try {
+            const data = await chunkedUploadManagerAdvanced.resume();
+
+            // Check if upload was paused again
+            if (data.paused) {
+                console.log('⏸️  Upload paused');
+                setIsPaused(true);
+                setUploading(false);
+                setActiveChunks(0);
+                return;
+            }
+
+            console.log('✅ Upload complete:', data);
+
+            // Redirect to uploaded video
+            redirectTimeoutRef.current = setTimeout(() => {
+                navigate({ to: `/video/${data.video.id}` });
+            }, 500);
+
+        } catch (err) {
+            console.error('Upload error:', err);
+            setError(err.message || err.response?.data?.error || 'Upload failed. Please try again.');
+            setUploading(false);
+            setIsPaused(false);
             setProgress(0);
             setUploadSpeed('0 MB/s');
             setActiveChunks(0);
@@ -230,15 +299,33 @@ export const UploadPageChunked = () => {
     };
 
     const handleCancel = () => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
+        chunkedUploadManagerAdvanced.pause();
+        chunkedUploadManagerAdvanced.constructor.clearSavedState();
         setUploading(false);
+        setIsPaused(false);
         setProgress(0);
         setUploadSpeed('0 MB/s');
         setActiveChunks(0);
         setEta('');
         setFile(null);
+        setUploadedChunks(0);
+        setTotalChunks(0);
+    };
+
+    const handleContinueSavedUpload = () => {
+        if (!savedUploadState) return;
+
+        // User needs to select the file again (we can't store File objects)
+        setShowResumePrompt(false);
+        setError(`To continue your upload, please select the file "${savedUploadState.fileName}" again`);
+        setTitle(savedUploadState.metadata.title || '');
+        setDescription(savedUploadState.metadata.description || '');
+    };
+
+    const handleDiscardSavedUpload = () => {
+        chunkedUploadManagerAdvanced.constructor.clearSavedState();
+        setSavedUploadState(null);
+        setShowResumePrompt(false);
     };
 
     const formatFileSize = (bytes) => {
@@ -288,6 +375,33 @@ export const UploadPageChunked = () => {
             <div className="upload-container">
                 <h1 className="upload-title">Upload Video</h1>
                 <p className="upload-subtitle">Share your video with the world (up to 10GB)</p>
+
+                {showResumePrompt && savedUploadState && (
+                    <div className="upload-info" style={{ marginBottom: '1.5rem', background: '#e8f4f8' }}>
+                        <p style={{ marginBottom: '1rem' }}>
+                            💾 You have an incomplete upload: <strong>{savedUploadState.fileName}</strong>
+                            {' '}({formatFileSize(savedUploadState.fileSize)})
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                            <button
+                                type="button"
+                                onClick={handleContinueSavedUpload}
+                                className="btn btn-primary"
+                                style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}
+                            >
+                                Continue Upload
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDiscardSavedUpload}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}
+                            >
+                                Start Fresh
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit} className="upload-form">
                     {error && (
@@ -352,7 +466,7 @@ export const UploadPageChunked = () => {
                                 )}
                             </div>
 
-                            {uploading && (
+                            {(uploading || isPaused) && (
                                 <div className="upload-progress">
                                     <div className="progress-bar">
                                         <div
@@ -362,20 +476,26 @@ export const UploadPageChunked = () => {
                                     </div>
                                     <div className="progress-details">
                                         <p className="progress-text">
-                                            {progress}% uploaded
-                                            {eta && <span className="progress-eta"> • ETA: {eta}</span>}
+                                            {isPaused ? '⏸️ Paused - ' : ''}{progress}% uploaded
+                                            {!isPaused && eta && <span className="progress-eta"> • ETA: {eta}</span>}
                                         </p>
                                         <p className="progress-speed">
-                                            ⚡ {uploadSpeed}
-                                            {totalChunks > 0 && (
-                                                <span className="progress-chunks">
-                                                    {' '}• {uploadedChunks}/{totalChunks} chunks
-                                                    {activeChunks > 0 && (
-                                                        <span className="progress-active">
-                                                            {' '}({activeChunks} active)
+                                            {isPaused ? (
+                                                <>📊 {uploadedChunks}/{totalChunks} chunks completed</>
+                                            ) : (
+                                                <>
+                                                    ⚡ {uploadSpeed}
+                                                    {totalChunks > 0 && (
+                                                        <span className="progress-chunks">
+                                                            {' '}• {uploadedChunks}/{totalChunks} chunks
+                                                            {activeChunks > 0 && (
+                                                                <span className="progress-active">
+                                                                    {' '}({activeChunks} active)
+                                                                </span>
+                                                            )}
                                                         </span>
                                                     )}
-                                                </span>
+                                                </>
                                             )}
                                         </p>
                                     </div>
@@ -398,7 +518,7 @@ export const UploadPageChunked = () => {
                                     onChange={(e) => setTitle(e.target.value)}
                                     placeholder="Enter video title"
                                     required
-                                    disabled={uploading}
+                                    disabled={uploading || isPaused}
                                     maxLength="100"
                                 />
                             </div>
@@ -414,7 +534,7 @@ export const UploadPageChunked = () => {
                                     onChange={(e) => setDescription(e.target.value)}
                                     placeholder="Tell viewers about your video"
                                     rows="4"
-                                    disabled={uploading}
+                                    disabled={uploading || isPaused}
                                     maxLength="5000"
                                 />
                             </div>
@@ -455,7 +575,7 @@ export const UploadPageChunked = () => {
                                         type="button"
                                         onClick={() => thumbnailInputRef.current?.click()}
                                         className="btn btn-secondary"
-                                        disabled={uploading}
+                                        disabled={uploading || isPaused}
                                     >
                                         Choose Thumbnail Image
                                     </button>
@@ -463,26 +583,72 @@ export const UploadPageChunked = () => {
                             </div>
 
                             <div className="form-actions">
-                                <button
-                                    type="button"
-                                    onClick={uploading ? handleCancel : () => navigate({ to: '/' })}
-                                    className="btn btn-secondary"
-                                >
-                                    {uploading ? 'Cancel Upload' : 'Cancel'}
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary"
-                                    disabled={uploading}
-                                >
-                                    {uploading ? 'Uploading...' : 'Upload Video'}
-                                </button>
+                                {isPaused ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleCancel}
+                                            className="btn btn-secondary"
+                                        >
+                                            Cancel Upload
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleResume}
+                                            className="btn btn-primary"
+                                        >
+                                            ▶️ Resume Upload
+                                        </button>
+                                    </>
+                                ) : uploading ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleCancel}
+                                            className="btn btn-secondary"
+                                        >
+                                            Cancel Upload
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handlePause}
+                                            className="btn btn-warning"
+                                        >
+                                            ⏸️ Pause
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate({ to: '/' })}
+                                            className="btn btn-secondary"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            className="btn btn-primary"
+                                        >
+                                            Upload Video
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </>
                     )}
                 </form>
             </div>
         </div>
+    );
+};
+
+// Export the protected version
+export const UploadPageChunked = () => {
+    return (
+        <ProtectedRoute>
+            <UploadPageChunkedContent />
+        </ProtectedRoute>
     );
 };
 

@@ -5,8 +5,8 @@ const QueueConfig = require('../../config/QueueConfig');
 const { getQueueManager } = require('../QueueManager');
 
 /**
- * Worker for converting MOV files to WebM format
- * Converts MOV files to WebM for better browser compatibility
+ * Worker for converting MOV files to MP4 format
+ * Converts MOV files to MP4 for better compatibility
  */
 class ConversionWorker {
     constructor(videoRepository, storageRepository, videoTranscoder) {
@@ -66,7 +66,7 @@ class ConversionWorker {
 
                 console.log(`🔄 Re-enqueueing failed job: ${job.id} (attempt ${job.attemptsMade})`);
                 try {
-                    await this.queue.add('convert-mov-to-webm', job.data, {
+                    await this.queue.add('convert-mov-to-mp4', job.data, {
                         attempts: 3,
                         backoff: {
                             type: 'exponential',
@@ -102,17 +102,17 @@ class ConversionWorker {
 
     /**
      * Process a MOV conversion job
-     * @param {Job} job - BullMQ job
+     * @param {any} job - BullMQ job
      */
     async processJob(job) {
         const { videoId, storageKey, fileName, mimeType } = job.data;
 
         let tempDir = null;
         let originalPath = null;
-        let webmPath = null;
+        let mp4Path = null;
 
         try {
-            console.log(`🎬 Converting MOV to WebM for video: ${videoId}`);
+            console.log(`🎬 Converting MOV to MP4 for video: ${videoId}`);
             console.log(`   Storage key: ${storageKey}`);
             console.log(`   MIME type: ${mimeType}`);
 
@@ -125,14 +125,14 @@ class ConversionWorker {
                 throw new Error(`Video not found: ${videoId}`);
             }
 
-            // Skip if already converted (check if fileName already ends with .webm)
-            if (fileName.toLowerCase().endsWith('.webm') || mimeType === 'video/webm') {
-                console.log(`⏭️  Video ${videoId} is already in WebM format - skipping`);
+            // Skip if already in MP4 format
+            if (fileName.toLowerCase().endsWith('.mp4') || mimeType === 'video/mp4') {
+                console.log(`⏭️  Video ${videoId} is already in MP4 format - skipping`);
                 return {
                     success: true,
                     skipped: true,
                     videoId,
-                    message: 'Already in WebM format',
+                    message: 'Already in MP4 format',
                 };
             }
 
@@ -155,36 +155,40 @@ class ConversionWorker {
             // Pipe the stream to file
             await new Promise((resolve, reject) => {
                 stream.pipe(writeStream);
-                stream.on('error', reject);
-                writeStream.on('finish', resolve);
-                writeStream.on('error', reject);
+                stream.on('error', (err) => reject(err));
+                writeStream.on('finish', () => resolve());
+                writeStream.on('error', (err) => reject(err));
             });
 
             await job.updateProgress(40);
 
-            // Convert MOV to WebM
-            console.log(`🔄 Converting to WebM...`);
-            const webmFileName = fileName.replace(/\.(mov|MOV)$/, '.webm');
-            webmPath = path.join(tempDir, webmFileName);
+            // Convert MOV to MP4
+            console.log(`🔄 Converting to MP4...`);
+            const mp4FileName = fileName.replace(/\.(mov|MOV)$/, '.mp4');
+            mp4Path = path.join(tempDir, mp4FileName);
 
-            await this.videoTranscoder.convertToWebm(originalPath, webmPath, {
-                crf: 32, // Quality (lower = better, range: 4-63)
+            // Use standard MP4 conversion with H.264 codec
+            await this.videoTranscoder.convertToMp4(originalPath, mp4Path, {
+                videoCodec: 'libx264',
+                audioCodec: 'aac',
+                crf: 23, // Quality (lower = better, 18-28 is good range)
+                preset: 'medium', // Encoding speed vs compression
                 audioBitrate: '128k'
             });
 
             await job.updateProgress(70);
 
-            // Upload WebM file to storage
-            console.log(`📤 Uploading WebM file to storage...`);
-            const webmStorageKey = storageKey.replace(/\.(mov|MOV)$/, '.webm');
-            const webmFileSize = fs.statSync(webmPath).size;
+            // Upload MP4 file to storage
+            console.log(`📤 Uploading MP4 file to storage...`);
+            const mp4StorageKey = storageKey.replace(/\.(mov|MOV)$/, '.mp4');
+            const mp4FileSize = fs.statSync(mp4Path).size;
 
             const uploadResult = await this.storageRepository.upload(
-                webmPath,
-                webmStorageKey,
+                mp4Path,
+                mp4StorageKey,
                 {
-                    contentType: 'video/webm',
-                    originalName: webmFileName,
+                    contentType: 'video/mp4',
+                    originalName: mp4FileName,
                 }
             );
 
@@ -192,11 +196,11 @@ class ConversionWorker {
 
             // Update video record in database
             console.log(`💾 Updating video record...`);
-            video.fileName = webmFileName;
-            video.storageKey = webmStorageKey;
+            video.fileName = mp4FileName;
+            video.storageKey = mp4StorageKey;
             video.storageUrl = uploadResult.url || video.storageUrl;
-            video.mimeType = 'video/webm';
-            video.sizeBytes = BigInt(webmFileSize);
+            video.mimeType = 'video/mp4';
+            video.sizeBytes = BigInt(mp4FileSize);
 
             await this.videoRepository.update(video);
 
@@ -212,14 +216,14 @@ class ConversionWorker {
 
             await job.updateProgress(100);
 
-            console.log(`✅ Successfully converted video ${videoId} from MOV to WebM`);
+            console.log(`✅ Successfully converted video ${videoId} from MOV to MP4`);
 
-            // Queue transcoding job for the converted WebM file
+            // Queue transcoding job for the converted MP4 file
             try {
                 console.log(`📤 Queueing transcoding job for converted video ${videoId}...`);
                 await this.queueManager.addTranscodingJob({
                     videoId: video.id,
-                    storageKey: video.storageKey, // Updated storage key (now .webm)
+                    storageKey: video.storageKey, // Updated storage key (now .mp4)
                     userId: video.userId,
                 });
                 console.log(`✅ Transcoding job queued for converted video ${videoId}`);
@@ -239,9 +243,9 @@ class ConversionWorker {
                 success: true,
                 videoId,
                 originalFile: fileName,
-                convertedFile: webmFileName,
+                convertedFile: mp4FileName,
                 originalSize: video.sizeBytes.toString(),
-                convertedSize: webmFileSize.toString(),
+                convertedSize: mp4FileSize.toString(),
             };
         } catch (error) {
             console.error(`❌ Conversion failed for video ${videoId}:`, error);
@@ -265,8 +269,8 @@ class ConversionWorker {
                 if (originalPath && fs.existsSync(originalPath)) {
                     fs.unlinkSync(originalPath);
                 }
-                if (webmPath && fs.existsSync(webmPath)) {
-                    fs.unlinkSync(webmPath);
+                if (mp4Path && fs.existsSync(mp4Path)) {
+                    fs.unlinkSync(mp4Path);
                 }
                 if (tempDir && fs.existsSync(tempDir)) {
                     fs.rmSync(tempDir, { recursive: true, force: true });

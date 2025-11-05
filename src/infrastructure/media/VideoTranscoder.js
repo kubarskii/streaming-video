@@ -318,6 +318,52 @@ class VideoTranscoder {
             command.save(outputPath);
         });
     }
+
+    /**
+     * Convert a video file to MP4 format using H.264 video and AAC audio codecs
+     * @param {string} inputPath - Source video path
+     * @param {string} outputPath - Output MP4 path
+     * @param {{videoCodec?: string, audioCodec?: string, crf?: number, preset?: string, audioBitrate?: string}} [options]
+     * @returns {Promise<string>} Resolves with output path when conversion completes
+     */
+    async convertToMp4(inputPath, outputPath, options = {}) {
+        const {
+            videoCodec = 'libx264',
+            audioCodec = 'aac',
+            crf = 23,
+            preset = 'medium',
+            audioBitrate = '128k'
+        } = options;
+
+        return new Promise((resolve, reject) => {
+            const command = ffmpeg(inputPath)
+                // Use inputOptions to tell FFmpeg what to read BEFORE processing
+                .inputOptions([
+                    '-err_detect ignore_err'  // Ignore stream errors
+                ])
+                .outputOptions([
+                    // Map ONLY the streams we want - must come before codec options
+                    '-map 0:v:0',           // Map only first video stream
+                    '-map 0:a:0?',          // Map first audio stream if exists (? = optional)
+                    `-c:v ${videoCodec}`,   // H.264 video codec
+                    `-preset ${preset}`,    // Encoding speed vs compression (ultrafast, fast, medium, slow, veryslow)
+                    `-crf ${crf}`,          // Quality (lower = better, 18-28 is good range)
+                    '-pix_fmt yuv420p',     // Pixel format for compatibility
+                    `-c:a ${audioCodec}`,   // AAC audio codec
+                    `-b:a ${audioBitrate}`, // Audio bitrate
+                    '-movflags +faststart', // Enable fast start for web playback
+                    '-map_metadata -1',     // Strip all metadata
+                    '-max_muxing_queue_size 1024' // Increase muxing queue for large files
+                ])
+                .format('mp4')
+                .on('end', () => resolve(outputPath))
+                .on('error', (err) => {
+                    reject(new Error(`MP4 conversion failed: ${err.message}`));
+                });
+
+            command.save(outputPath);
+        });
+    }
 }
 
 module.exports = VideoTranscoder;

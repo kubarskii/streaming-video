@@ -53,6 +53,11 @@ class ChunkedUploadManagerAdvanced {
         this.hashWorker = null;
         this.workerReady = false;
 
+        // Pause/resume state
+        this.isPaused = false;
+        this.abortController = null;
+        this.currentUploadState = null;
+
         // Initialize Web Worker if supported and enabled
         if (this.useWebWorker && typeof Worker !== 'undefined') {
             this.initHashWorker();
@@ -161,12 +166,95 @@ class ChunkedUploadManagerAdvanced {
 
 
     /**
+     * Pause the current upload
+     */
+    pause() {
+        if (!this.isPaused && this.abortController) {
+            console.log('⏸️  Pausing upload...');
+            this.isPaused = true;
+            this.abortController.abort();
+
+            // Save state to localStorage for persistence
+            this.saveStateToStorage();
+        }
+    }
+
+    /**
+     * Save upload state to localStorage
+     */
+    saveStateToStorage() {
+        if (!this.currentUploadState) return;
+
+        const { file, metadata, session } = this.currentUploadState;
+
+        // Store minimal state (can't store File object, only metadata)
+        const stateToSave = {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            metadata: metadata,
+            uploadId: session.uploadId,
+            timestamp: Date.now()
+        };
+
+        localStorage.setItem('pausedUpload', JSON.stringify(stateToSave));
+        console.log('💾 Upload state saved to localStorage');
+    }
+
+    /**
+     * Load upload state from localStorage
+     */
+    static loadStateFromStorage() {
+        try {
+            const saved = localStorage.getItem('pausedUpload');
+            if (!saved) return null;
+
+            const state = JSON.parse(saved);
+
+            // Check if state is recent (within 24 hours)
+            const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+            if (Date.now() - state.timestamp > maxAge) {
+                localStorage.removeItem('pausedUpload');
+                return null;
+            }
+
+            return state;
+        } catch (error) {
+            console.error('Failed to load upload state:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Clear saved upload state
+     */
+    static clearSavedState() {
+        localStorage.removeItem('pausedUpload');
+        console.log('🗑️  Saved upload state cleared');
+    }
+
+    /**
+     * Resume a paused upload
+     */
+    async resume() {
+        if (this.isPaused && this.currentUploadState) {
+            console.log('▶️  Resuming upload...');
+            this.isPaused = false;
+
+            // Restart the upload with saved state
+            return this.continueUpload(this.currentUploadState);
+        }
+    }
+
+    /**
      * Upload file with parallel chunking (advanced version)
      */
     async uploadFile(file, metadata = {}, callbacks = {}) {
         const { onProgress, onChunkComplete, onError } = callbacks;
 
         this.startTime = Date.now();
+        this.isPaused = false;
+        this.abortController = new AbortController();
 
         try {
             const chunkSize = this.calculateOptimalChunkSize(file.size);
@@ -200,6 +288,17 @@ class ChunkedUploadManagerAdvanced {
                     }
                 });
             }
+
+            // Store upload state for pause/resume
+            this.currentUploadState = {
+                file,
+                metadata,
+                callbacks,
+                chunks,
+                session,
+                chunkSize,
+                totalChunks
+            };
 
             let uploadedChunks = session.resumableChunks?.length || 0;
             let uploadedBytes = uploadedChunks * chunkSize;
@@ -258,13 +357,24 @@ class ChunkedUploadManagerAdvanced {
                                 chunkDetails: progressUpdate.chunkDetails
                             });
                         }
-                    }
+                    },
+                    this.abortController.signal
                 );
+            }
+
+            // Check if paused before finalizing
+            if (this.isPaused) {
+                console.log('⏸️  Upload paused');
+                return { paused: true, uploadId: session.uploadId };
             }
 
             console.log('🏁 Finalizing upload...');
 
             const finalResult = await this.finalizeUpload(session.uploadId, file.name, metadata);
+
+            // Clear state on success
+            this.currentUploadState = null;
+            ChunkedUploadManagerAdvanced.clearSavedState();
 
             if (onProgress) {
                 onProgress({
@@ -284,6 +394,12 @@ class ChunkedUploadManagerAdvanced {
             return finalResult;
 
         } catch (error) {
+            // Don't treat pause as an error
+            if (error.name === 'AbortError' && this.isPaused) {
+                console.log('⏸️  Upload paused');
+                return { paused: true, uploadId: this.currentUploadState?.session?.uploadId };
+            }
+
             console.error('❌ Upload failed:', error);
             if (onError) {
                 onError(error);
@@ -293,18 +409,40 @@ class ChunkedUploadManagerAdvanced {
     }
 
     /**
+     * Continue a paused or incomplete upload
+     */
+    async continueUpload(savedState) {
+        const { file, metadata, callbacks } = savedState;
+
+        // Reinitialize abort controller
+        this.abortController = new AbortController();
+        this.isPaused = false;
+
+        // Call uploadFile which will automatically resume from where it left off
+        return this.uploadFile(file, metadata, callbacks);
+    }
+
+    /**
      * Upload chunks in parallel with semaphore-based concurrency control
      */
-    async uploadChunksParallel(chunks, uploadId, totalChunks, onChunkComplete, onProgressUpdate) {
+    async uploadChunksParallel(chunks, uploadId, totalChunks, onChunkComplete, onProgressUpdate, abortSignal) {
         // Create semaphore to limit concurrent uploads
         const semaphore = new Semaphore(this.maxConcurrent);
-        
+
         // Track per-chunk progress for accurate speed calculation
         const chunkProgressMap = new Map();
         const results = new Array(chunks.length); // Store results in order
         const errors = new Map(); // Track errors by chunk index
-        
+
         let completedCount = 0;
+        let aborted = false;
+
+        // Listen for abort signal
+        if (abortSignal) {
+            abortSignal.addEventListener('abort', () => {
+                aborted = true;
+            });
+        }
 
         const onChunkProgress = (progressData) => {
             // Store current chunk progress
@@ -331,38 +469,55 @@ class ChunkedUploadManagerAdvanced {
 
         // Upload a single chunk with semaphore control
         const uploadChunkWithSemaphore = async (chunk) => {
+            // Check if aborted before starting
+            if (aborted) {
+                return { success: false, chunk, aborted: true };
+            }
+
             // Acquire semaphore slot (blocks if max concurrent reached)
             await semaphore.acquire();
-            
+
+            // Check again after acquiring (abort may have happened while waiting)
+            if (aborted) {
+                semaphore.release();
+                return { success: false, chunk, aborted: true };
+            }
+
             try {
                 const result = await this.uploadChunkWithRetry(
                     chunk,
                     uploadId,
                     totalChunks,
-                    onChunkProgress
+                    onChunkProgress,
+                    abortSignal
                 );
-                
+
                 // Store result at correct index
                 results[chunk.index] = result;
-                
+
                 // Clean up progress tracking
                 chunkProgressMap.delete(chunk.index);
-                
+
                 // Notify completion
                 if (onChunkComplete) {
                     onChunkComplete(chunk);
                 }
-                
+
                 completedCount++;
                 return { success: true, chunk, result };
-                
+
             } catch (error) {
+                // Check if it was an abort
+                if (error.name === 'AbortError' || aborted) {
+                    return { success: false, chunk, aborted: true };
+                }
+
                 console.error(`❌ Chunk ${chunk.index} failed after all retries:`, error.message);
                 errors.set(chunk.index, error);
                 chunkProgressMap.delete(chunk.index);
                 completedCount++;
                 return { success: false, chunk, error };
-                
+
             } finally {
                 // Always release semaphore slot
                 semaphore.release();
@@ -370,14 +525,22 @@ class ChunkedUploadManagerAdvanced {
         };
 
         console.log(`  🔄 Starting upload with max ${this.maxConcurrent} concurrent connections`);
-        
+
         // Start all uploads (semaphore controls concurrency)
         const uploadPromises = chunks.map(chunk => uploadChunkWithSemaphore(chunk));
-        
+
         // Wait for all uploads to complete
         await Promise.all(uploadPromises);
 
         console.log(`  ✅ Completed ${completedCount}/${chunks.length} chunks`);
+
+        // Check if aborted
+        if (aborted) {
+            console.log('⏸️  Upload aborted');
+            const abortError = new Error('Upload paused by user');
+            abortError.name = 'AbortError';
+            throw abortError;
+        }
 
         // Check if any chunks failed
         if (errors.size > 0) {
@@ -392,10 +555,17 @@ class ChunkedUploadManagerAdvanced {
      * Upload chunk with exponential backoff retry
      * Uses XMLHttpRequest for accurate progress tracking
      */
-    async uploadChunkWithRetry(chunk, uploadId, totalChunks, onChunkProgress) {
+    async uploadChunkWithRetry(chunk, uploadId, totalChunks, onChunkProgress, abortSignal) {
         let lastError;
 
         for (let attempt = 0; attempt < this.retryAttempts; attempt++) {
+            // Check if aborted
+            if (abortSignal && abortSignal.aborted) {
+                const abortError = new Error('Upload paused by user');
+                abortError.name = 'AbortError';
+                throw abortError;
+            }
+
             try {
                 // Calculate hash of chunk
                 const hash = await this.calculateHash(chunk.blob, chunk.index);
@@ -413,7 +583,8 @@ class ChunkedUploadManagerAdvanced {
                     formData,
                     chunk.index,
                     totalChunks,
-                    onChunkProgress
+                    onChunkProgress,
+                    abortSignal
                 );
 
                 if (attempt > 0) {
@@ -426,21 +597,21 @@ class ChunkedUploadManagerAdvanced {
             } catch (error) {
                 lastError = error;
                 const attemptNum = attempt + 1;
-                
+
                 if (attempt < this.retryAttempts - 1) {
                     // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
                     const delay = Math.min(
                         this.retryDelayBase * Math.pow(2, attempt),
                         this.retryDelayMax
                     );
-                    
+
                     // Add jitter (±20%) to prevent thundering herd
                     const jitter = delay * 0.2 * (Math.random() * 2 - 1);
                     const finalDelay = Math.round(delay + jitter);
-                    
+
                     console.warn(`  ⚠️  Chunk ${chunk.index} attempt ${attemptNum}/${this.retryAttempts} failed: ${error.message}`);
                     console.log(`  ⏳ Retrying in ${(finalDelay / 1000).toFixed(1)}s...`);
-                    
+
                     await new Promise(resolve => setTimeout(resolve, finalDelay));
                 } else {
                     console.error(`  ❌ Chunk ${chunk.index} attempt ${attemptNum}/${this.retryAttempts} failed: ${error.message}`);
@@ -455,7 +626,7 @@ class ChunkedUploadManagerAdvanced {
      * Upload chunk using XMLHttpRequest with progress tracking
      * Returns a promise that resolves with the server response
      */
-    async uploadChunkWithXHR(formData, chunkIndex, totalChunks, onChunkProgress) {
+    async uploadChunkWithXHR(formData, chunkIndex, totalChunks, onChunkProgress, abortSignal) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             let uploadStartTime = Date.now();
@@ -463,21 +634,28 @@ class ChunkedUploadManagerAdvanced {
             let lastUpdateTime = uploadStartTime;
             let lastProgressEmit = 0;
             const PROGRESS_THROTTLE = 100; // Emit progress max every 100ms (10 times/sec)
-            
+
             // Speed smoothing with moving average
             const speedSamples = [];
             const MAX_SPEED_SAMPLES = 5;
+
+            // Listen for abort signal
+            if (abortSignal) {
+                abortSignal.addEventListener('abort', () => {
+                    xhr.abort();
+                });
+            }
 
             // Track upload progress
             xhr.upload.addEventListener('progress', (event) => {
                 if (event.lengthComputable) {
                     const now = Date.now();
-                    
+
                     // Throttle progress updates to avoid overwhelming the UI
                     if (now - lastProgressEmit < PROGRESS_THROTTLE) {
                         return;
                     }
-                    
+
                     const timeDelta = (now - lastUpdateTime) / 1000; // seconds
                     const bytesDelta = event.loaded - lastLoadedBytes;
 
@@ -485,14 +663,14 @@ class ChunkedUploadManagerAdvanced {
                     let chunkSpeed = 0;
                     if (timeDelta > 0 && bytesDelta > 0) {
                         chunkSpeed = bytesDelta / timeDelta; // bytes per second
-                        
+
                         // Add to samples for moving average (smoother display)
                         speedSamples.push(chunkSpeed);
                         if (speedSamples.length > MAX_SPEED_SAMPLES) {
                             speedSamples.shift();
                         }
                     }
-                    
+
                     // Use moving average for smoother speed display
                     const avgSpeed = speedSamples.length > 0
                         ? speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length
@@ -548,7 +726,9 @@ class ChunkedUploadManagerAdvanced {
 
             // Handle abort
             xhr.addEventListener('abort', () => {
-                reject(new Error('Upload aborted'));
+                const abortError = new Error('Upload paused by user');
+                abortError.name = 'AbortError';
+                reject(abortError);
             });
 
             // Get auth token from localStorage or session
@@ -671,14 +851,36 @@ class ChunkedUploadManagerAdvanced {
      * Finalize upload
      */
     async finalizeUpload(uploadId, fileName, metadata) {
-        const response = await api.post('/upload/finalize', {
-            uploadId,
-            fileName,
-            title: metadata.title,
-            description: metadata.description
-        });
+        try {
+            const response = await api.post('/upload/finalize', {
+                uploadId,
+                fileName,
+                title: metadata.title,
+                description: metadata.description
+            });
 
-        return response.data;
+            return response.data;
+        } catch (error) {
+            // Enhanced error logging for debugging
+            console.error('❌ Finalize upload error:', {
+                uploadId,
+                fileName,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                errorData: error.response?.data,
+                message: error.message
+            });
+
+            // Throw a more descriptive error
+            const errorMessage = error.response?.data?.error || error.message || 'Finalization failed';
+            const errorDetails = error.response?.data;
+
+            if (errorDetails && (errorDetails.uploaded !== undefined || errorDetails.total !== undefined)) {
+                throw new Error(`${errorMessage} (${errorDetails.uploaded}/${errorDetails.total} chunks uploaded)`);
+            }
+
+            throw new Error(errorMessage);
+        }
     }
 
     /**

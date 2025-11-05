@@ -380,7 +380,7 @@ class StreamController {
             return res.end();
         }
 
-        let start = match[1] ? parseInt(match[1], 10) : 0;
+        const start = match[1] ? parseInt(match[1], 10) : 0;
         let end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
 
         if (isNaN(start) || isNaN(end) || start >= fileSize) {

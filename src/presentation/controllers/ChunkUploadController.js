@@ -323,7 +323,21 @@ class ChunkUploadController {
                 return this.sendJson(res, 404, { error: 'Upload session not found' });
             }
 
+            // Enhanced logging for debugging
+            console.log(`🔍 Finalize check for ${uploadId}:`, {
+                uploadedChunks: session.uploadedChunks.length,
+                totalChunks: session.totalChunks,
+                uploadedChunksArray: session.uploadedChunks,
+                b2PartsCount: session.metadata?.b2Parts?.length || 0
+            });
+
             if (session.uploadedChunks.length !== session.totalChunks) {
+                console.error(`❌ Chunk count mismatch:`, {
+                    uploaded: session.uploadedChunks.length,
+                    total: session.totalChunks,
+                    missing: session.totalChunks - session.uploadedChunks.length
+                });
+                
                 return this.sendJson(res, 400, {
                     error: 'Not all chunks uploaded',
                     uploaded: session.uploadedChunks.length,

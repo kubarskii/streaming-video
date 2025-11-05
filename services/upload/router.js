@@ -18,9 +18,24 @@ class UploadServiceRouter {
     }
 
     async route(req, res) {
-        const urlObj = new URL(req.url, `http://${req.headers.host}`);
-        const pathname = urlObj.pathname;
-        const queryParams = Object.fromEntries(urlObj.searchParams);
+        // Parse URL with error handling
+        let urlObj, pathname, queryParams;
+        try {
+            // Sanitize URL - handle double slashes and empty paths
+            let sanitizedUrl = req.url || '/';
+            if (sanitizedUrl === '//' || sanitizedUrl === '') {
+                sanitizedUrl = '/';
+            }
+
+            urlObj = new URL(sanitizedUrl, `http://${req.headers.host}`);
+            pathname = urlObj.pathname;
+            queryParams = Object.fromEntries(urlObj.searchParams);
+        } catch (error) {
+            console.error(`❌ Invalid URL: "${req.url}"`, error.message);
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid URL' }));
+            return false;
+        }
 
         // ============================================================
         // CHUNKED UPLOAD ROUTES

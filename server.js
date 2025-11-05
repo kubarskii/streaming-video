@@ -306,6 +306,24 @@ async function startServer() {
             process.exit(0);
         });
 
+        // Handle server errors
+        server.on('error', (error) => {
+            console.error('❌ Server error:', error);
+        });
+
+        // Handle unhandled rejections
+        process.on('unhandledRejection', (reason, promise) => {
+            console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+            // Don't exit - just log it
+        });
+
+        // Handle uncaught exceptions
+        process.on('uncaughtException', (error) => {
+            console.error('❌ Uncaught Exception:', error);
+            console.error('Stack:', error.stack);
+            // Don't exit - just log it and continue
+        });
+
         // Start listening
         server.listen(PORT, HOST, () => {
             console.log('');

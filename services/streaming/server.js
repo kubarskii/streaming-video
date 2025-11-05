@@ -148,47 +148,73 @@ async function main() {
     const { router, jwtService, prismaClient, streamController, redisCache } = await initializeContainer();
 
     const server = http.createServer(async (req, res) => {
-        // Apply CORS
-        corsMiddleware(req, res, async () => {
-            // Optional auth (for streaming we may not require auth)
-            const token = req.headers.authorization?.replace('Bearer ', '');
-            if (token) {
-                try {
-                    const payload = jwtService.verifyToken(token);
-                    if (payload && typeof payload === 'object' && 'userId' in payload) {
-                        // @ts-ignore - Adding user property to request
-                        // Map userId to id for compatibility with controllers
-                        req.user = {
-                            id: payload.userId,
-                            userId: payload.userId,
-                            email: payload.email,
-                            username: payload.username
-                        };
+        try {
+            // Apply CORS
+            corsMiddleware(req, res, async () => {
+                // Optional auth (for streaming we may not require auth)
+                const token = req.headers.authorization?.replace('Bearer ', '');
+                if (token) {
+                    try {
+                        const payload = jwtService.verifyToken(token);
+                        if (payload && typeof payload === 'object' && 'userId' in payload) {
+                            // @ts-ignore - Adding user property to request
+                            // Map userId to id for compatibility with controllers
+                            req.user = {
+                                id: payload.userId,
+                                userId: payload.userId,
+                                email: payload.email,
+                                username: payload.username
+                            };
+                        }
+                    } catch (err) {
+                        // Invalid token, continue as unauthenticated
                     }
-                } catch (err) {
-                    // Invalid token, continue as unauthenticated
-                }
-            }
-
-            // Route request
-            const handled = await router.route(req, res);
-
-            if (!handled) {
-                // Health check
-                if (req.url === '/health') {
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    return res.end(JSON.stringify({
-                        status: 'healthy',
-                        service: SERVICE_NAME,
-                        timestamp: new Date().toISOString()
-                    }));
                 }
 
-                // Not found
-                res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Not found' }));
+                // Route request
+                const handled = await router.route(req, res);
+
+                if (!handled) {
+                    // Health check
+                    if (req.url === '/health') {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({
+                            status: 'healthy',
+                            service: SERVICE_NAME,
+                            timestamp: new Date().toISOString()
+                        }));
+                    }
+
+                    // Not found
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Not found' }));
+                }
+            });
+        } catch (error) {
+            console.error('❌ Request handling error:', error);
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
             }
-        });
+        }
+    });
+
+    // Handle server errors
+    server.on('error', (error) => {
+        console.error('❌ Server error:', error);
+    });
+
+    // Handle unhandled rejections
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+        // Don't exit - just log it
+    });
+
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+        console.error('❌ Uncaught Exception:', error);
+        console.error('Stack:', error.stack);
+        // Don't exit - just log it and continue
     });
 
     // Graceful shutdown

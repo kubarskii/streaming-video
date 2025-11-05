@@ -129,8 +129,22 @@ async function authenticateRequest(req, res, next) {
 
 // Routing logic
 async function routeRequest(req, res) {
-    const urlObj = new URL(req.url, `http://${req.headers.host}`);
-    const pathname = urlObj.pathname;
+    // Parse URL with error handling
+    let urlObj, pathname;
+    try {
+        // Sanitize URL - handle double slashes and empty paths
+        let sanitizedUrl = req.url || '/';
+        if (sanitizedUrl === '//' || sanitizedUrl === '') {
+            sanitizedUrl = '/';
+        }
+        
+        urlObj = new URL(sanitizedUrl, `http://${req.headers.host}`);
+        pathname = urlObj.pathname;
+    } catch (error) {
+        console.error(`❌ Invalid URL: "${req.url}" from ${req.headers['user-agent'] || 'unknown'}`, error.message);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Invalid URL' }));
+    }
 
     // CORS headers - allow the requesting origin
     const origin = req.headers.origin || '*';
@@ -275,7 +289,7 @@ async function routeRequest(req, res) {
 
     // Serve static files from public directory
     const publicDir = path.join(process.cwd(), 'public');
-    let requestedPath = pathname === '/' ? '/index.html' : pathname;
+    const requestedPath = pathname === '/' ? '/index.html' : pathname;
 
     // Security: prevent directory traversal
     const safePath = path.normalize(requestedPath).replace(/^(\.\.[\/\\])+/, '');
@@ -306,6 +320,22 @@ async function main() {
     await initializeAuth();
 
     const server = http.createServer(routeRequest);
+
+    // Handle server errors
+    server.on('error', (error) => {
+        console.error('❌ Server error:', error);
+    });
+
+    // Handle unhandled rejections
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    });
+
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+        console.error('❌ Uncaught Exception:', error);
+        // Don't exit on uncaught exceptions - log and continue
+    });
 
     // Graceful shutdown
     const shutdown = async () => {

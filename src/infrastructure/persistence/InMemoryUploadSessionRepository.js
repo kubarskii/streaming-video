@@ -18,7 +18,15 @@ class InMemoryUploadSessionRepository {
     }
 
     async findById(id) {
-        return this.sessions.get(id) || null;
+        const session = this.sessions.get(id);
+        if (!session) return null;
+        
+        // Return a deep copy to prevent reference issues
+        return {
+            ...session,
+            uploadedChunks: [...session.uploadedChunks],
+            metadata: session.metadata ? JSON.parse(JSON.stringify(session.metadata)) : {}
+        };
     }
 
     async findByUser(userId) {
@@ -36,13 +44,64 @@ class InMemoryUploadSessionRepository {
             throw new Error('Session not found');
         }
 
-        const updated = { ...session, ...data };
+        // Deep merge to handle nested objects and arrays properly
+        const updated = {
+            ...session,
+            ...data,
+            // Ensure uploadedChunks is a new array copy if provided
+            uploadedChunks: data.uploadedChunks ? [...data.uploadedChunks] : session.uploadedChunks,
+            // Deep copy metadata if provided
+            metadata: data.metadata ? JSON.parse(JSON.stringify(data.metadata)) : session.metadata
+        };
+        
         this.sessions.set(id, updated);
-        return updated;
+        
+        // Return a deep copy
+        return {
+            ...updated,
+            uploadedChunks: [...updated.uploadedChunks],
+            metadata: updated.metadata ? JSON.parse(JSON.stringify(updated.metadata)) : {}
+        };
     }
 
     async delete(id) {
         return this.sessions.delete(id);
+    }
+
+    /**
+     * Atomically add a chunk to uploadedChunks array
+     * This prevents race conditions when multiple chunks upload in parallel
+     */
+    async addUploadedChunk(id, chunkIndex, partMetadata = null) {
+        const session = this.sessions.get(id);
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        // Atomic check and add
+        if (!session.uploadedChunks.includes(chunkIndex)) {
+            session.uploadedChunks.push(chunkIndex);
+            session.uploadedChunks.sort((a, b) => a - b);
+        }
+
+        // Add B2 part metadata if provided
+        if (partMetadata) {
+            if (!session.metadata.b2Parts) {
+                session.metadata.b2Parts = [];
+            }
+
+            session.metadata.b2Parts.push({
+                etag: partMetadata.etag,
+                partNumber: partMetadata.partNumber
+            });
+        }
+
+        // Return a deep copy
+        return {
+            ...session,
+            uploadedChunks: [...session.uploadedChunks],
+            metadata: session.metadata ? JSON.parse(JSON.stringify(session.metadata)) : {}
+        };
     }
 
     async getStatistics() {

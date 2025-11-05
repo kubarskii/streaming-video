@@ -189,30 +189,56 @@ async function main() {
     const { router, prismaClient } = await initializeContainer();
 
     const server = http.createServer(async (req, res) => {
-        // Apply CORS
-        corsMiddleware(req, res, async () => {
-            // Extract user from gateway headers
-            extractUserMiddleware(req, res, async () => {
-                // Route request
-                const handled = await router.route(req, res);
+        try {
+            // Apply CORS
+            corsMiddleware(req, res, async () => {
+                // Extract user from gateway headers
+                extractUserMiddleware(req, res, async () => {
+                    // Route request
+                    const handled = await router.route(req, res);
 
-                if (!handled) {
-                    // Health check
-                    if (req.url === '/health') {
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        return res.end(JSON.stringify({
-                            status: 'healthy',
-                            service: SERVICE_NAME,
-                            timestamp: new Date().toISOString()
-                        }));
+                    if (!handled) {
+                        // Health check
+                        if (req.url === '/health') {
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            return res.end(JSON.stringify({
+                                status: 'healthy',
+                                service: SERVICE_NAME,
+                                timestamp: new Date().toISOString()
+                            }));
+                        }
+
+                        // Not found
+                        res.writeHead(404, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Not found' }));
                     }
-
-                    // Not found
-                    res.writeHead(404, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Not found' }));
-                }
+                });
             });
-        });
+        } catch (error) {
+            console.error('❌ Request handling error:', error);
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
+            }
+        }
+    });
+
+    // Handle server errors
+    server.on('error', (error) => {
+        console.error('❌ Server error:', error);
+    });
+
+    // Handle unhandled rejections
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+        // Don't exit - just log it
+    });
+
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+        console.error('❌ Uncaught Exception:', error);
+        console.error('Stack:', error.stack);
+        // Don't exit - just log it and continue
     });
 
     // Graceful shutdown

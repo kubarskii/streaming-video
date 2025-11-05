@@ -78,15 +78,18 @@ class WorkerManager {
         process.on('SIGTERM', () => shutdownHandler('SIGTERM'));
         process.on('SIGINT', () => shutdownHandler('SIGINT'));
 
-        // Handle uncaught errors
-        process.on('uncaughtException', async (error) => {
-            console.error('❌ Uncaught exception:', error);
-            await shutdownHandler('UNCAUGHT_EXCEPTION');
+        // Handle uncaught errors - log but don't shut down workers
+        process.on('uncaughtException', (error) => {
+            console.error('❌ Uncaught exception in worker:', error);
+            console.error('Stack:', error.stack);
+            console.log('⚠️  Workers will continue running...');
+            // Don't shut down - workers should continue processing jobs
         });
 
-        process.on('unhandledRejection', async (reason, promise) => {
-            console.error('❌ Unhandled rejection at:', promise, 'reason:', reason);
-            await shutdownHandler('UNHANDLED_REJECTION');
+        process.on('unhandledRejection', (reason, promise) => {
+            console.error('❌ Unhandled rejection in worker at:', promise, 'reason:', reason);
+            console.log('⚠️  Workers will continue running...');
+            // Don't shut down - workers should continue processing jobs
         });
     }
 
