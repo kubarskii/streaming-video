@@ -84,14 +84,20 @@ class VideoTranscoder {
 
     /**
      * Determine which qualities to generate based on source video resolution
+     * @param {number} sourceWidth - Source video width
      * @param {number} sourceHeight - Source video height
      * @returns {string[]} Array of quality levels to generate
      */
-    determineQualitiesToGenerate(sourceHeight) {
+    determineQualitiesToGenerate(sourceWidth, sourceHeight) {
         const qualities = [];
 
+        // For vertical videos, use width as the reference dimension
+        // For landscape videos, use height as the reference dimension
+        const isVertical = sourceHeight > sourceWidth;
+        const referenceDimension = isVertical ? sourceWidth : sourceHeight;
+
         for (const [quality, preset] of Object.entries(this.qualityPresets)) {
-            if (sourceHeight >= preset.height) {
+            if (referenceDimension >= preset.height) {
                 qualities.push(quality);
             }
         }
@@ -138,6 +144,14 @@ class VideoTranscoder {
         // Calculate output dimensions preserving aspect ratio
         const dimensions = this.calculateDimensions(sourceWidth, sourceHeight, preset.height);
 
+        // Detect if video is vertical (portrait) or horizontal (landscape)
+        const isVertical = sourceHeight > sourceWidth;
+
+        // For vertical videos, scale by width; for landscape videos, scale by height
+        const scaleFilter = isVertical
+            ? `scale=${preset.height}:-2`  // Set width, calculate height
+            : `scale=-2:${preset.height}`; // Set height, calculate width
+
         return new Promise((resolve, reject) => {
             const command = ffmpeg(inputPath)
                 .output(outputPath)
@@ -145,9 +159,9 @@ class VideoTranscoder {
                 .audioCodec('aac')
                 .videoBitrate(preset.bitrate)
                 .audioBitrate(preset.audioBitrate)
-                // Use scale filter to preserve aspect ratio (width=-2 ensures divisible by 2)
+                // Use scale filter to preserve aspect ratio (-2 ensures divisible by 2)
                 .videoFilters([
-                    `scale=-2:${preset.height}`
+                    scaleFilter
                 ])
                 .format('mp4')
                 .outputOptions([
@@ -203,10 +217,11 @@ class VideoTranscoder {
 
         // Get source video metadata
         const metadata = await this.getVideoMetadata(inputPath);
-        console.log(`Source video: ${metadata.width}x${metadata.height}`);
+        const isVertical = metadata.height > metadata.width;
+        console.log(`Source video: ${metadata.width}x${metadata.height}${isVertical ? ' (vertical)' : ' (landscape)'}`);
 
         // Determine which qualities to generate
-        const qualitiesToGenerate = this.determineQualitiesToGenerate(metadata.height);
+        const qualitiesToGenerate = this.determineQualitiesToGenerate(metadata.width, metadata.height);
         console.log(`Generating qualities: ${qualitiesToGenerate.join(', ')}`);
 
         if (qualitiesToGenerate.length === 0) {
