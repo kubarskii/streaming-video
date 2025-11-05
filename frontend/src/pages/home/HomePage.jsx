@@ -17,6 +17,7 @@ export const HomePage = () => {
     // Use refs to store current values without triggering re-renders
     const offsetRef = useRef(0);
     const searchQueryRef = useRef(searchQuery);
+    const containerRef = useRef(null);
 
     const [videos, setVideos] = useState([]);
     const [hasMore, setHasMore] = useState(true);
@@ -70,14 +71,45 @@ export const HomePage = () => {
     }, [searchQuery]); // Only re-fetch when searchQuery changes, not on every signal change
 
     const fetchMoreVideos = useCallback(() => {
-        if (!loadingMore && !loading) {
+        if (!loadingMore && !loading && hasMore) {
             const newOffset = offsetRef.current + LIMIT;
             offsetRef.current = newOffset;
             setOffset(newOffset);
             setLoadingMore(true);
             fetchVideos(newOffset, searchQueryRef.current);
         }
-    }, [loadingMore, loading, fetchVideos]);
+    }, [loadingMore, loading, hasMore, fetchVideos]);
+
+    // Use Intersection Observer to auto-load more content on huge screens
+    useEffect(() => {
+        if (!containerRef.current || loading || videos.length === 0) {
+            return;
+        }
+
+        const sentinel = containerRef.current.querySelector('.loading-more, .end-message');
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const entry = entries[0];
+                // If the sentinel is visible and we have more content to load
+                if (entry.isIntersecting && hasMore && !loading && !loadingMore) {
+                    fetchMoreVideos();
+                }
+            },
+            {
+                root: null, // viewport
+                rootMargin: '200px', // Start loading 200px before sentinel is visible
+                threshold: 0.1
+            }
+        );
+
+        observer.observe(sentinel);
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [videos.length, loading, loadingMore, hasMore, fetchMoreVideos]);
 
     if (loading && videos.length === 0) {
         return (
@@ -129,7 +161,7 @@ export const HomePage = () => {
     }
 
     return (
-        <div className="home-page">
+        <div className="home-page" ref={containerRef}>
             {searchQuery && (
                 <div className="search-header">
                     <h2>{t('home.search_results', { query: searchQuery })}</h2>
