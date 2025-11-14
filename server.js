@@ -228,16 +228,16 @@ async function startServer() {
             try {
                 // Parse pathname early to check if it's a static asset
                 const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
-                
+
                 // Skip auth middleware for static assets and public files
                 // This prevents 403 errors on static assets like JS bundles, CSS, images, etc.
-                const isStaticAsset = pathname.startsWith('/assets/') || 
-                                     pathname.startsWith('/static/') ||
-                                     pathname.match(/\.(css|js|svg|ico|png|jpg|jpeg|gif|woff|woff2|ttf|eot|webp|mp4|webm|json|map)$/i) ||
-                                     pathname === '/favicon.ico' || 
-                                     pathname === '/favicon.svg' ||
-                                     pathname === '/robots.txt' ||
-                                     pathname === '/manifest.json';
+                const isStaticAsset = pathname.startsWith('/assets/') ||
+                    pathname.startsWith('/static/') ||
+                    pathname.match(/\.(css|js|svg|ico|png|jpg|jpeg|gif|woff|woff2|ttf|eot|webp|mp4|webm|json|map)$/i) ||
+                    pathname === '/favicon.ico' ||
+                    pathname === '/favicon.svg' ||
+                    pathname === '/robots.txt' ||
+                    pathname === '/manifest.json';
 
                 // Apply CORS middleware
                 await runMiddleware(req, res, corsMiddleware);
@@ -276,7 +276,7 @@ async function startServer() {
 
                 // Serve static files from public/
                 const safePath = path.join(PUBLIC_DIR, pathname.replace(/^\/+/, ''));
-                
+
                 // Security: Ensure path is within PUBLIC_DIR (prevent directory traversal)
                 const resolvedPath = path.resolve(safePath);
                 const resolvedPublicDir = path.resolve(PUBLIC_DIR);
@@ -284,7 +284,7 @@ async function startServer() {
                     res.writeHead(403, { 'Content-Type': 'text/plain' });
                     return res.end('403 Forbidden');
                 }
-                
+
                 if (fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
                     const contentType = getContentType(safePath);
                     // Add cache headers for static assets
@@ -293,7 +293,7 @@ async function startServer() {
                     }
                     return serveFile(res, safePath, contentType);
                 }
-                
+
                 // Log missing static files in production for debugging
                 if (IS_PRODUCTION && isStaticAsset) {
                     console.warn(`⚠️  Static file not found: ${pathname} (resolved: ${safePath})`);
