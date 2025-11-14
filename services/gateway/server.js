@@ -17,10 +17,16 @@ const JWTService = require('../../src/infrastructure/auth/JWTService');
 const AuthService = require('../../src/application/services/AuthService');
 const AuthController = require('../../src/presentation/controllers/AuthController');
 
+// Routing configuration
+const { matchRoute, routes } = require('./routes');
+
 // Configuration
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const UPLOAD_SERVICE_URL = process.env.UPLOAD_SERVICE_URL || 'http://localhost:3001';
 const STREAMING_SERVICE_URL = process.env.STREAMING_SERVICE_URL || 'http://localhost:3003';
+const SOCIAL_SERVICE_URL = process.env.SOCIAL_SERVICE_URL || 'http://localhost:3002';
+const CHANNEL_SERVICE_URL = process.env.CHANNEL_SERVICE_URL || 'http://localhost:3004';
+const PLAYLIST_SERVICE_URL = process.env.PLAYLIST_SERVICE_URL || 'http://localhost:3005';
 
 console.log('🌐 API GATEWAY');
 console.log('='.repeat(30));
@@ -28,13 +34,16 @@ console.log('');
 console.log(`🔐 Authentication: Handled by Gateway`);
 console.log(`📦 Upload Service: ${UPLOAD_SERVICE_URL}`);
 console.log(`📦 Streaming Service: ${STREAMING_SERVICE_URL}`);
+console.log(`💬 Social Service: ${SOCIAL_SERVICE_URL}`);
+console.log(`📺 Channel Service: ${CHANNEL_SERVICE_URL}`);
+console.log(`📋 Playlist Service: ${PLAYLIST_SERVICE_URL}`);
 console.log('');
 
 // Initialize authentication
 let authController, authService, jwtService, prismaClient;
 
 async function initializeAuth() {
-    prismaClient = DatabaseConfig.getPrismaClient();
+    prismaClient = DatabaseConfig.getPrismaClient({ serviceType: 'gateway' });
     const userRepository = new PrismaUserRepository(prismaClient);
     const passwordHasher = new PasswordHasher();
     jwtService = new JWTService();
@@ -52,6 +61,40 @@ const uploadProxy = createProxyMiddleware({
 
 const streamingProxy = createProxyMiddleware({
     target: STREAMING_SERVICE_URL,
+    changeOrigin: true,
+});
+
+const socialProxy = createProxyMiddleware({
+    target: SOCIAL_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: {
+        // Don't rewrite the path - preserve it as-is
+    },
+    // @ts-ignore - http-proxy-middleware options
+    onError: (err, req, res) => {
+        console.error('❌ Social Service Proxy Error:', err.message);
+        if (!res.headersSent) {
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Social service unavailable' }));
+        }
+    },
+    // @ts-ignore - http-proxy-middleware options
+    onProxyReq: (proxyReq, req, res) => {
+        console.log(`[Gateway→Social] ${req.method} ${req.url}`);
+    },
+    // @ts-ignore - http-proxy-middleware options
+    onProxyRes: (proxyRes, req, res) => {
+        console.log(`[Gateway←Social] ${proxyRes.statusCode} ${req.url}`);
+    },
+});
+
+const channelProxy = createProxyMiddleware({
+    target: CHANNEL_SERVICE_URL,
+    changeOrigin: true,
+});
+
+const playlistProxy = createProxyMiddleware({
+    target: PLAYLIST_SERVICE_URL,
     changeOrigin: true,
 });
 
@@ -137,7 +180,7 @@ async function routeRequest(req, res) {
         if (sanitizedUrl === '//' || sanitizedUrl === '') {
             sanitizedUrl = '/';
         }
-        
+
         urlObj = new URL(sanitizedUrl, `http://${req.headers.host}`);
         pathname = urlObj.pathname;
     } catch (error) {
@@ -146,11 +189,35 @@ async function routeRequest(req, res) {
         return res.end(JSON.stringify({ error: 'Invalid URL' }));
     }
 
-    // CORS headers - allow the requesting origin
-    const origin = req.headers.origin || '*';
-    res.setHeader('Access-Control-Allow-Origin', origin);
+    // CORS headers - use validated CORS middleware logic
+    const allowedOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+        : [];
+    const origin = req.headers.origin;
+
+    if (process.env.NODE_ENV === 'development' && allowedOrigins.length === 0) {
+        if (origin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+        } else {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+    } else {
+        if (origin && allowedOrigins.includes(origin)) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+        } else if (allowedOrigins.length === 0 && origin) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+                success: false,
+                error: {
+                    message: 'Origin not allowed',
+                    code: 'CORS_ERROR'
+                }
+            }));
+        }
+    }
+
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range, X-User-Id, X-User-Email, X-User-Username');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
 
@@ -160,127 +227,113 @@ async function routeRequest(req, res) {
         return res.end();
     }
 
-    // Gateway health check
-    if (pathname === '/health' || pathname === '/api/health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({
-            status: 'healthy',
-            service: 'gateway',
-            timestamp: new Date().toISOString(),
-            upstreams: {
-                upload: UPLOAD_SERVICE_URL,
-                streaming: STREAMING_SERVICE_URL,
+    // Match route using declarative routing configuration
+    const route = matchRoute(pathname, req.method);
+
+    if (route) {
+        console.log(`→ ${route.service.charAt(0).toUpperCase() + route.service.slice(1)} Service: ${req.method} ${pathname} (${route.description})`);
+
+        // Handle gateway routes (handled directly by gateway)
+        if (route.service === 'gateway') {
+            // Health checks
+            if (pathname === '/health' || pathname === '/api/health' || pathname === '/health/quick') {
+                const HealthChecker = require('../../src/infrastructure/health/HealthChecker');
+                const healthChecker = new HealthChecker();
+
+                try {
+                    if (pathname === '/health/quick') {
+                        const result = await healthChecker.quickCheck();
+                        res.writeHead(result.status === 'healthy' ? 200 : 503, {
+                            'Content-Type': 'application/json'
+                        });
+                        return res.end(JSON.stringify({
+                            ...result,
+                            service: 'gateway'
+                        }));
+                    } else {
+                        const result = await healthChecker.runAllChecks(['database']);
+                        res.writeHead(result.status === 'healthy' ? 200 : 503, {
+                            'Content-Type': 'application/json'
+                        });
+                        return res.end(JSON.stringify({
+                            ...result,
+                            service: 'gateway',
+                            upstreams: {
+                                upload: UPLOAD_SERVICE_URL,
+                                streaming: STREAMING_SERVICE_URL,
+                            }
+                        }));
+                    }
+                } catch (error) {
+                    res.writeHead(503, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({
+                        status: 'unhealthy',
+                        service: 'gateway',
+                        error: error.message,
+                        timestamp: new Date().toISOString()
+                    }));
+                }
             }
-        }));
-    }
 
-    // ============================================================
-    // AUTHENTICATION ROUTES (Handled by Gateway)
-    // ============================================================
+            // Auth routes
+            if (pathname === '/api/auth/register' && req.method === 'POST') {
+                return authController.register(req, res);
+            }
 
-    if (pathname === '/api/auth/register' && req.method === 'POST') {
-        return authController.register(req, res);
-    }
+            if (pathname === '/api/auth/login' && req.method === 'POST') {
+                return authController.login(req, res);
+            }
 
-    if (pathname === '/api/auth/login' && req.method === 'POST') {
-        return authController.login(req, res);
-    }
+            if (pathname === '/api/auth/logout' && req.method === 'POST') {
+                return authController.logout(req, res);
+            }
 
-    if (pathname === '/api/auth/logout' && req.method === 'POST') {
-        return authController.logout(req, res);
-    }
+            if (pathname === '/api/auth/me' && req.method === 'GET') {
+                await authenticateRequest(req, res, () => {
+                    authController.me(req, res);
+                });
+                return;
+            }
+        } else {
+            // Authenticate API requests (except gateway routes)
+            if (pathname.startsWith('/api/')) {
+                await authenticateRequest(req, res, () => {
+                    // Continue to service routing
+                });
+            }
 
-    if (pathname === '/api/auth/me' && req.method === 'GET') {
-        // Authenticate first, then call controller
-        await authenticateRequest(req, res, () => {
-            authController.me(req, res);
-        });
-        return;
-    }
-
-    // ============================================================
-    // Authenticate all other API requests
-    // ============================================================
-    if (pathname.startsWith('/api/')) {
-        await authenticateRequest(req, res, () => {
-            // Continue to service routing
-        });
-    }
-
-    // ============================================================
-    // STREAMING SERVICE ROUTES
-    // ============================================================
-
-    // Video streaming
-    if (pathname === '/video') {
-        injectUserHeaders(req, res, () => { });
-        return streamingProxy(req, res);
-    }
-
-    // Quality variants
-    if (pathname.match(/^\/api\/videos\/[^/]+\/qualities$/)) {
-        injectUserHeaders(req, res, () => { });
-        return streamingProxy(req, res);
-    }
-
-    // View counting
-    if (pathname.match(/^\/api\/videos\/[^/]+\/views$/)) {
-        injectUserHeaders(req, res, () => { });
-        return streamingProxy(req, res);
-    }
-
-    // ============================================================
-    // UPLOAD SERVICE ROUTES
-    // ============================================================
-
-    // Upload routes
-    if (pathname.startsWith('/api/upload/')) {
-        console.log(`→ Upload Service: ${req.method} ${pathname}`);
-        injectUserHeaders(req, res, () => { });
-        return uploadProxy(req, res);
-    }
-
-    // Video metadata CRUD
-    if (pathname.startsWith('/api/videos')) {
-        console.log(`→ Upload Service: ${req.method} ${pathname}`);
-        injectUserHeaders(req, res, () => { });
-        return uploadProxy(req, res);
-    }
-
-    // Queue management
-    if (pathname.startsWith('/api/queues')) {
-        injectUserHeaders(req, res, () => { });
-        return uploadProxy(req, res);
-    }
-
-    // Channels
-    if (pathname.startsWith('/api/channels')) {
-        injectUserHeaders(req, res, () => { });
-        return uploadProxy(req, res);
-    }
-
-    // Playlists
-    if (pathname.startsWith('/api/playlists')) {
-        injectUserHeaders(req, res, () => { });
-        return uploadProxy(req, res);
-    }
-
-    // Likes
-    if (pathname.match(/^\/api\/videos\/[^/]+\/like(s)?$/)) {
-        injectUserHeaders(req, res, () => { });
-        return uploadProxy(req, res);
-    }
-
-    // Comments
-    if (pathname === '/api/comments' || pathname.match(/^\/api\/comments\/[^/]+$/)) {
-        injectUserHeaders(req, res, () => { });
-        return uploadProxy(req, res);
-    }
-
-    // Subscriptions
-    if (pathname === '/api/subscriptions' || pathname.match(/^\/api\/subscriptions\/[^/]+/)) {
-        injectUserHeaders(req, res, () => { });
-        return uploadProxy(req, res);
+            // Route to appropriate service proxy
+            injectUserHeaders(req, res, () => {
+                switch (route.service) {
+                    case 'upload':
+                        uploadProxy(req, res);
+                        break;
+                    case 'streaming':
+                        streamingProxy(req, res);
+                        break;
+                    case 'social':
+                        socialProxy(req, res);
+                        break;
+                    case 'channel':
+                        channelProxy(req, res);
+                        break;
+                    case 'playlist':
+                        playlistProxy(req, res);
+                        break;
+                    default:
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Unknown service' }));
+                }
+            });
+            return;
+        }
+    } else {
+        // No route matched - authenticate API requests before checking static files
+        if (pathname.startsWith('/api/')) {
+            await authenticateRequest(req, res, () => {
+                // Continue to static file serving or 404
+            });
+        }
     }
 
     // ============================================================
@@ -312,7 +365,13 @@ async function routeRequest(req, res) {
 
     // Not found
     res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Not found' }));
+    res.end(JSON.stringify({
+        success: false,
+        error: {
+            message: 'Not found',
+            code: 'NOT_FOUND'
+        }
+    }));
 }
 
 // Create server
@@ -358,26 +417,42 @@ async function main() {
         console.log(`✅ API Gateway listening on port ${PORT}`);
         console.log(`🌍 Health check: http://localhost:${PORT}/health`);
         console.log('');
-        console.log('📊 Routing:');
-        console.log('  🔐 /api/auth/*         → Gateway (Authentication)');
+        console.log('📊 Routing Configuration:');
         console.log('');
-        console.log('  📤 /api/upload/*       → Upload Service');
-        console.log('  📤 /api/videos (CRUD)  → Upload Service');
-        console.log('  📤 /api/channels/*     → Upload Service (temp)');
-        console.log('  📤 /api/playlists/*    → Upload Service (temp)');
-        console.log('  📤 /api/queues/*       → Upload Service');
-        console.log('');
-        console.log('  🎬 /video              → Streaming Service');
-        console.log('  🎬 /api/videos/*/qualities → Streaming Service');
-        console.log('  🎬 /api/videos/*/views → Streaming Service');
-        console.log('');
-        console.log('  💬 /api/videos/*/like  → Upload Service (temp)');
-        console.log('  💬 /api/comments       → Upload Service (temp)');
-        console.log('  💬 /api/subscriptions  → Upload Service (temp)');
-        console.log('');
+
+        // Group routes by service
+        const routesByService = {};
+        routes.forEach(route => {
+            if (!routesByService[route.service]) {
+                routesByService[route.service] = [];
+            }
+            routesByService[route.service].push(route);
+        });
+
+        // Display routes by service
+        const serviceIcons = {
+            'gateway': '🔐',
+            'upload': '📤',
+            'streaming': '🎬',
+            'social': '💬',
+            'channel': '📺',
+            'playlist': '📋'
+        };
+
+        Object.keys(routesByService).sort().forEach(service => {
+            const icon = serviceIcons[service] || '📦';
+            console.log(`  ${icon} ${service.toUpperCase()} Service:`);
+            routesByService[service].forEach(route => {
+                const pattern = route.pattern instanceof RegExp
+                    ? route.pattern.toString()
+                    : route.pattern;
+                const methods = route.methods.length > 0 ? ` [${route.methods.join(',')}]` : '';
+                console.log(`    ${pattern}${methods} - ${route.description}`);
+            });
+            console.log('');
+        });
+
         console.log('  📁 /*                  → Static files (public/)');
-        console.log('');
-        console.log('  Note: Social features (likes, comments, subs) should move to separate service');
         console.log('');
 
         // Check if public directory exists

@@ -58,9 +58,10 @@ async function initializeContainer() {
     console.log('='.repeat(SERVICE_NAME.length + 17));
     console.log('');
 
-    // Infrastructure
-    const prismaClient = DatabaseConfig.getPrismaClient();
+    // Infrastructure - Configure connection pool for streaming service
+    const prismaClient = DatabaseConfig.getPrismaClient({ serviceType: 'streaming' });
     const videoRepository = new PrismaVideoRepository(prismaClient);
+    // @ts-ignore - Prisma client type inference issue
     const videoQualityRepository = new PrismaVideoQualityRepository(prismaClient);
     const videoLikeRepository = new PrismaVideoLikeRepository(prismaClient);
     const subscriptionRepository = new PrismaSubscriptionRepository(prismaClient);
@@ -176,25 +177,60 @@ async function main() {
 
                 if (!handled) {
                     // Health check
-                    if (req.url === '/health') {
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        return res.end(JSON.stringify({
-                            status: 'healthy',
-                            service: SERVICE_NAME,
-                            timestamp: new Date().toISOString()
-                        }));
+                    if (req.url === '/health' || req.url === '/health/quick') {
+                        const HealthChecker = require('../../src/infrastructure/health/HealthChecker');
+                        const healthChecker = new HealthChecker();
+
+                        try {
+                            if (req.url === '/health/quick') {
+                                const result = await healthChecker.quickCheck();
+                                res.writeHead(result.status === 'healthy' ? 200 : 503, {
+                                    'Content-Type': 'application/json'
+                                });
+                                return res.end(JSON.stringify(result));
+                            } else {
+                                const result = await healthChecker.runAllChecks(['database', 'redis', 'storage']);
+                                res.writeHead(result.status === 'healthy' ? 200 : 503, {
+                                    'Content-Type': 'application/json'
+                                });
+                                return res.end(JSON.stringify({
+                                    ...result,
+                                    service: SERVICE_NAME
+                                }));
+                            }
+                        } catch (error) {
+                            res.writeHead(503, { 'Content-Type': 'application/json' });
+                            return res.end(JSON.stringify({
+                                status: 'unhealthy',
+                                service: SERVICE_NAME,
+                                error: error.message,
+                                timestamp: new Date().toISOString()
+                            }));
+                        }
                     }
 
                     // Not found
                     res.writeHead(404, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Not found' }));
+                    res.end(JSON.stringify({
+                        success: false,
+                        error: {
+                            message: 'Not found',
+                            code: 'NOT_FOUND'
+                        }
+                    }));
                 }
             });
         } catch (error) {
             console.error('❌ Request handling error:', error);
             if (!res.headersSent) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Internal server error' }));
+                res.end(JSON.stringify({
+                    success: false,
+                    error: {
+                        message: 'Internal server error',
+                        code: 'INTERNAL_ERROR'
+                    }
+                }));
             }
         }
     });
@@ -218,26 +254,55 @@ async function main() {
     });
 
     // Graceful shutdown
+    let isShuttingDown = false;
     const shutdown = async () => {
+        if (isShuttingDown) {
+            console.log('⚠️  Shutdown already in progress...');
+            return;
+        }
+        isShuttingDown = true;
+
         console.log('\n🛑 Shutting down streaming service...');
+
+        // Stop accepting new connections
         server.close(() => {
-            console.log('✅ HTTP server closed');
+            console.log('✅ HTTP server closed (no new connections)');
         });
 
-        // Cleanup stream controller resources
-        if (streamController && streamController.cleanup) {
-            streamController.cleanup();
-            console.log('✅ Stream controller cleaned up');
-        }
+        // Give active requests time to complete (max 30 seconds)
+        const shutdownTimeout = setTimeout(() => {
+            console.log('⚠️  Shutdown timeout reached, forcing exit');
+            process.exit(1);
+        }, 30000);
 
-        // Disconnect Redis cache
-        if (redisCache) {
-            await redisCache.disconnect();
-        }
+        try {
+            // Wait for active requests to complete
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
-        await prismaClient.$disconnect();
-        console.log('✅ Database disconnected');
-        process.exit(0);
+            // Cleanup stream controller resources
+            if (streamController && streamController.cleanup) {
+                streamController.cleanup();
+                console.log('✅ Stream controller cleaned up');
+            }
+
+            // Disconnect Redis cache
+            if (redisCache) {
+                await redisCache.disconnect();
+                console.log('✅ Redis disconnected');
+            }
+
+            // Close database connection
+            await prismaClient.$disconnect();
+            console.log('✅ Database disconnected');
+
+            clearTimeout(shutdownTimeout);
+            console.log('✅ Graceful shutdown complete');
+            process.exit(0);
+        } catch (error) {
+            console.error('❌ Error during shutdown:', error);
+            clearTimeout(shutdownTimeout);
+            process.exit(1);
+        }
     };
 
     process.on('SIGTERM', shutdown);

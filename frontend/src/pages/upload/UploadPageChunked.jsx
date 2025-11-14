@@ -235,6 +235,15 @@ const UploadPageChunkedContent = () => {
             }
 
             console.log('✅ Upload complete:', data);
+            console.log('📦 Upload result data:', JSON.stringify(data, null, 2));
+
+            // Check if we have video data
+            if (!data || !data.video || !data.video.id) {
+                console.error('❌ Upload completed but missing video data:', data);
+                setError('Upload completed but video data is missing. Please check your uploads.');
+                setUploading(false);
+                return;
+            }
 
             // Redirect to uploaded video
             redirectTimeoutRef.current = setTimeout(() => {
@@ -434,10 +443,7 @@ const UploadPageChunkedContent = () => {
 
                             <h3>Drag and drop video file here</h3>
                             <p>or click to browse</p>
-                            <p className="upload-hint">MP4, WebM, MOV, MKV up to 10GB</p>
-                            <p className="upload-hint">
-                                ⚡ Files over 100MB will use high-speed parallel upload
-                            </p>
+                            <p className="upload-hint">MP4, WebM, MOV, AVI, MKV up to 10GB</p>
                         </div>
                     ) : (
                         <div className="file-preview">

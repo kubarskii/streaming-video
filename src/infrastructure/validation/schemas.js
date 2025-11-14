@@ -166,14 +166,23 @@ const videoStatusSchema = z.enum(['pending', 'processing', 'ready', 'failed']);
  * @browserSupport
  *   - MP4 (H.264): ✅ All browsers (recommended)
  *   - WebM: ✅ Chrome, Firefox, Opera, Edge
- *   - MOV: ⚠️ Safari only
- *   - AVI: ❌ Limited support (transcoding recommended)
- *   - MKV: ❌ Very limited support (transcoding recommended)
+ *   - MOV: ⚠️ Safari only (auto-converted to MP4)
+ *   - AVI: ❌ Limited browser support (auto-converted to MP4/WebM)
+ *   - MKV: ❌ Very limited support (auto-converted to MP4/WebM)
  */
 const videoMimeTypeSchema = z.string()
     .regex(/^video\//, 'Must be a video file')
     .refine(
-        (mime) => ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska', 'video/mkv'].includes(mime),
+        (mime) => [
+            'video/mp4', 
+            'video/quicktime', 
+            'video/x-msvideo',  // AVI (standard)
+            'video/avi',        // AVI (alternative)
+            'video/msvideo',    // AVI (older)
+            'video/webm', 
+            'video/x-matroska', 
+            'video/mkv'
+        ].includes(mime),
         'Unsupported video format. Supported: MP4, MOV, AVI, WebM, MKV'
     );
 

@@ -2,6 +2,8 @@
 // Application Layer: Update Comment Use Case
 // Handles updating an existing comment
 
+const ContentSanitizer = require('../../infrastructure/security/ContentSanitizer');
+
 /**
  * Use case for updating a comment
  */
@@ -36,6 +38,12 @@ class UpdateCommentUseCase {
             throw new Error('Comment content is required');
         }
 
+        // Sanitize content to prevent XSS
+        const sanitizedContent = ContentSanitizer.sanitizeComment(content);
+        if (!sanitizedContent || sanitizedContent.length === 0) {
+            throw new Error('Comment content is required');
+        }
+
         // Get existing comment
         const comment = await this.commentRepository.findById(commentId);
         if (!comment) {
@@ -48,7 +56,7 @@ class UpdateCommentUseCase {
         }
 
         // Update comment content
-        comment.content = content.trim();
+        comment.content = sanitizedContent;
         comment.updatedAt = new Date();
 
         // Save updated comment

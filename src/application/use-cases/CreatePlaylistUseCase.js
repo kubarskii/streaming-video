@@ -4,6 +4,7 @@
 
 const { randomUUID } = require('crypto');
 const Playlist = require('../../domain/entities/Playlist');
+const ContentSanitizer = require('../../infrastructure/security/ContentSanitizer');
 
 class CreatePlaylistUseCase {
     /**
@@ -36,11 +37,17 @@ class CreatePlaylistUseCase {
             throw new Error('Playlist title is required');
         }
 
+        // Sanitize user input
+        const sanitizedTitle = ContentSanitizer.sanitizeTitle(title, 'playlistTitle');
+        if (!sanitizedTitle || sanitizedTitle.length === 0) {
+            throw new Error('Playlist title is required');
+        }
+        const sanitizedDescription = ContentSanitizer.sanitizeDescription(description, 'playlistDescription');
+
         const playlistId = randomUUID();
         const now = new Date();
-        const normalizedTitle = title.trim();
 
-        const playlistSlug = await this.ensureUniqueSlug(slug || this.generateSlug(normalizedTitle));
+        const playlistSlug = await this.ensureUniqueSlug(slug || this.generateSlug(sanitizedTitle));
 
         const uniqueVideoIds = Array.from(new Set(videoIds.filter(Boolean)));
         const playlistVideos = [];
@@ -60,8 +67,8 @@ class CreatePlaylistUseCase {
 
         const playlist = new Playlist({
             id: playlistId,
-            title: normalizedTitle,
-            description: description ? description.trim() : null,
+            title: sanitizedTitle,
+            description: sanitizedDescription,
             isPublic: Boolean(isPublic),
             slug: playlistSlug,
             userId,

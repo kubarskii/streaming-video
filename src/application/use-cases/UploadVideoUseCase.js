@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const Video = require('../../domain/entities/Video');
 const VideoStatus = require('../../domain/value-objects/VideoStatus');
+const ContentSanitizer = require('../../infrastructure/security/ContentSanitizer');
 
 class UploadVideoUseCase {
     /**
@@ -285,8 +286,8 @@ class UploadVideoUseCase {
             // Create video entity
             const video = new Video({
                 id: videoId,
-                title: input.title,
-                description: input.description || null,
+                title: ContentSanitizer.sanitizeTitle(input.title, 'title'),
+                description: ContentSanitizer.sanitizeDescription(input.description, 'description'),
                 fileName: workingFileName,
                 storageKey: storageKey,
                 storageUrl: storageUrl,

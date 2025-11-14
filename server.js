@@ -59,7 +59,7 @@ const VideoLikeController = require('./src/presentation/controllers/VideoLikeCon
 const PlaylistController = require('./src/presentation/controllers/PlaylistController');
 const QueueController = require('./src/presentation/controllers/QueueController');
 const ChunkUploadService = require('./src/application/services/ChunkUploadService');
-const InMemoryUploadSessionRepository = require('./src/infrastructure/persistence/InMemoryUploadSessionRepository');
+// Upload session repository - using Prisma for production
 const Router = require('./src/presentation/routes/Router');
 const corsMiddleware = require('./src/presentation/middleware/corsMiddleware');
 const { authMiddleware } = require('./src/presentation/middleware/authMiddleware');
@@ -75,8 +75,8 @@ const SPA_PREFIXES = ['/video/', '/channel/'];
 // Dependency Injection Container
 class Container {
     static async initialize() {
-        // Infrastructure layer
-        const prismaClient = DatabaseConfig.getPrismaClient();
+        // Infrastructure layer - Configure connection pool for monolith
+        const prismaClient = DatabaseConfig.getPrismaClient({ serviceType: 'default' });
         const videoRepository = new PrismaVideoRepository(prismaClient);
         const userRepository = new PrismaUserRepository(prismaClient);
         const channelRepository = new PrismaChannelRepository(prismaClient);
@@ -151,8 +151,9 @@ class Container {
         const playlistController = new PlaylistController(playlistService);
         const queueController = new QueueController();
 
-        // Chunked Upload
-        const uploadSessionRepository = new InMemoryUploadSessionRepository();
+        // Chunked Upload - Use Prisma repository for production reliability
+        const PrismaUploadSessionRepository = require('./src/infrastructure/persistence/PrismaUploadSessionRepository');
+        const uploadSessionRepository = new PrismaUploadSessionRepository(prismaClient);
         const chunkUploadService = new ChunkUploadService(uploadSessionRepository);
         const chunkUploadController = new ChunkUploadController(chunkUploadService, videoService, storageRepository);
 

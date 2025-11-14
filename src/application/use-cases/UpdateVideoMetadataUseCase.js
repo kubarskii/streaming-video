@@ -2,6 +2,8 @@
 // Application: UpdateVideoMetadataUseCase
 // Updates video title and description
 
+const ContentSanitizer = require('../../infrastructure/security/ContentSanitizer');
+
 class UpdateVideoMetadataUseCase {
     constructor(videoRepository) {
         this.videoRepository = videoRepository;
@@ -20,12 +22,16 @@ class UpdateVideoMetadataUseCase {
             throw new Error('Unauthorized: You can only edit your own videos');
         }
 
-        // Update metadata
+        // Update metadata with sanitization
         if (title !== undefined) {
-            video.title = title;
+            const sanitizedTitle = ContentSanitizer.sanitizeTitle(title, 'title');
+            if (!sanitizedTitle || sanitizedTitle.length === 0) {
+                throw new Error('Title cannot be empty');
+            }
+            video.title = sanitizedTitle;
         }
         if (description !== undefined) {
-            video.description = description;
+            video.description = ContentSanitizer.sanitizeDescription(description, 'description');
         }
         video.updatedAt = new Date();
 

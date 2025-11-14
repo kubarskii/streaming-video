@@ -36,8 +36,8 @@ async function main() {
     console.log(`📦 Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
     console.log(`📦 Storage Mode: ${process.env.STORAGE_MODE || 'local'}\n`);
 
-    // Use singleton Prisma client to avoid connection pool exhaustion
-    const prisma = DatabaseConfig.getPrismaClient();
+    // Use singleton Prisma client with worker-optimized connection pool
+    const prisma = DatabaseConfig.getPrismaClient({ serviceType: 'worker' });
 
     try {
         // Test database connection

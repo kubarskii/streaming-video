@@ -24,6 +24,12 @@ class ChunkUploadController {
      * Helper to send JSON response
      */
     sendJson(res, statusCode, data) {
+        // Check if headers already sent
+        if (res.headersSent) {
+            console.warn('⚠️  Attempted to send response after headers were already sent');
+            return;
+        }
+
         res.writeHead(statusCode, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data));
     }
@@ -42,7 +48,7 @@ class ChunkUploadController {
             for await (const chunk of req) {
                 body += chunk.toString();
             }
-            const { fileName, fileSize, mimeType, totalChunks, title, description } = JSON.parse(body);
+            let { fileName, fileSize, mimeType, totalChunks, title, description } = JSON.parse(body);
 
             if (!fileName || !fileSize || !mimeType || !totalChunks) {
                 return this.sendJson(res, 400, { error: 'Missing required fields' });
@@ -52,14 +58,49 @@ class ChunkUploadController {
                 'video/mp4',
                 'video/webm',
                 'video/quicktime',
-                'video/x-msvideo',
+                'video/x-msvideo',    // AVI (standard)
+                'video/avi',          // AVI (alternative)
+                'video/msvideo',      // AVI (older)
                 'video/mpeg',
                 'video/ogg',
-                'video/x-matroska',  // MKV
-                'video/mkv',         // MKV alternative MIME
+                'video/x-matroska',   // MKV
+                'video/mkv',          // MKV alternative MIME
             ];
-            if (!allowedMimeTypes.includes(mimeType)) {
-                return this.sendJson(res, 400, { error: 'Invalid file type' });
+
+            // Fallback: Check file extension if MIME type is missing or generic
+            const fileExtension = fileName.toLowerCase().split('.').pop();
+            const videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'mpeg', 'mpg', 'ogg'];
+
+            // Normalize MIME type from extension if needed
+            if (!mimeType || mimeType === 'application/octet-stream' || !allowedMimeTypes.includes(mimeType)) {
+                const mimeTypeMap = {
+                    'avi': 'video/x-msvideo',
+                    'mp4': 'video/mp4',
+                    'webm': 'video/webm',
+                    'mov': 'video/quicktime',
+                    'mkv': 'video/x-matroska',
+                    'mpeg': 'video/mpeg',
+                    'mpg': 'video/mpeg',
+                    'ogg': 'video/ogg'
+                };
+                if (mimeTypeMap[fileExtension]) {
+                    const originalMimeType = mimeType;
+                    mimeType = mimeTypeMap[fileExtension];
+                    console.log(`📝 Normalized MIME type: ${originalMimeType || 'empty'} → ${mimeType} (from extension .${fileExtension})`);
+                }
+            }
+
+            // Allow if MIME type is in allowed list OR file extension is valid video format
+            const isValidMimeType = allowedMimeTypes.includes(mimeType);
+            const isValidExtension = videoExtensions.includes(fileExtension);
+            const isGenericTypeForVideo = (!mimeType || mimeType === 'application/octet-stream') && isValidExtension;
+
+            if (!isValidMimeType && !isGenericTypeForVideo) {
+                console.log(`❌ Invalid file type: ${mimeType || 'unknown'} (extension: .${fileExtension || 'unknown'})`);
+                return this.sendJson(res, 400, {
+                    error: 'Invalid file type',
+                    details: `MIME type: ${mimeType || 'unknown'}, Extension: .${fileExtension || 'unknown'}`
+                });
             }
 
             const maxSize = 10 * 1024 * 1024 * 1024; // 10GB
@@ -262,15 +303,31 @@ class ChunkUploadController {
             chunkBuffer = null;
 
             // Update session with B2 part info
-            await this.chunkUploadService.markChunkUploaded(uploadId, chunkIndex, {
-                etag: b2Part.etag,
-                partNumber: b2Part.partNumber,
-            });
+            try {
+                console.log(`💾 Marking chunk ${chunkIndex} as uploaded for session ${uploadId}...`);
+                await this.chunkUploadService.markChunkUploaded(uploadId, chunkIndex, {
+                    etag: b2Part.etag,
+                    partNumber: b2Part.partNumber,
+                });
+                console.log(`✅ Chunk ${chunkIndex} marked as uploaded successfully`);
+            } catch (markError) {
+                console.error(`❌ Failed to mark chunk ${chunkIndex} as uploaded:`, markError);
+                // Re-throw to ensure error is handled
+                throw markError;
+            }
 
+            // Verify chunk was saved by reading session
             const updatedSession = await this.chunkUploadService.getSession(uploadId);
+            if (!updatedSession.uploadedChunks.includes(chunkIndex)) {
+                console.error(`⚠️  WARNING: Chunk ${chunkIndex} was not found in session after marking as uploaded!`);
+                console.error(`   Session has chunks: [${updatedSession.uploadedChunks.join(', ')}]`);
+            }
+
             const progress = (updatedSession.uploadedChunks.length / totalChunks) * 100;
 
             const elapsedMs = Date.now() - startTime;
+
+            console.log(`📊 Chunk ${chunkIndex} upload complete: ${updatedSession.uploadedChunks.length}/${totalChunks} chunks uploaded`);
 
             return this.sendJson(res, 200, {
                 chunkIndex,
@@ -332,16 +389,28 @@ class ChunkUploadController {
             });
 
             if (session.uploadedChunks.length !== session.totalChunks) {
+                const missingCount = session.totalChunks - session.uploadedChunks.length;
+                const uploadedSet = new Set(session.uploadedChunks);
+                const missingChunks = [];
+                for (let i = 0; i < session.totalChunks; i++) {
+                    if (!uploadedSet.has(i)) {
+                        missingChunks.push(i);
+                    }
+                }
+
                 console.error(`❌ Chunk count mismatch:`, {
                     uploaded: session.uploadedChunks.length,
                     total: session.totalChunks,
-                    missing: session.totalChunks - session.uploadedChunks.length
+                    missing: missingCount,
+                    missingChunkIndices: missingChunks.slice(0, 20) // Log first 20 missing chunks
                 });
-                
+
                 return this.sendJson(res, 400, {
                     error: 'Not all chunks uploaded',
                     uploaded: session.uploadedChunks.length,
                     total: session.totalChunks,
+                    missing: missingCount,
+                    missingChunkIndices: missingChunks
                 });
             }
 
@@ -498,7 +567,7 @@ class ChunkUploadController {
             return this.sendJson(res, 200, {
                 uploadId: session.id,
                 fileName: session.fileName,
-                fileSize: session.fileSize,
+                fileSize: typeof session.fileSize === 'bigint' ? session.fileSize.toString() : String(session.fileSize || 0),
                 totalChunks: session.totalChunks,
                 uploadedChunks: session.uploadedChunks.length,
                 progress: Math.round(progress * 10) / 10,

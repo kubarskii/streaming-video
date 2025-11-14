@@ -5,8 +5,8 @@ const QueueConfig = require('../../config/QueueConfig');
 const { getQueueManager } = require('../QueueManager');
 
 /**
- * Worker for converting MOV files to MP4 format
- * Converts MOV files to MP4 for better compatibility
+ * Worker for converting MOV and AVI files to MP4 format
+ * Converts MOV and AVI files to MP4 for better browser compatibility
  */
 class ConversionWorker {
     constructor(videoRepository, storageRepository, videoTranscoder) {
@@ -112,8 +112,9 @@ class ConversionWorker {
         let mp4Path = null;
 
         try {
-            console.log(`🎬 Converting MOV to MP4 for video: ${videoId}`);
+            console.log(`🎬 Converting video to MP4 for video: ${videoId}`);
             console.log(`   Storage key: ${storageKey}`);
+            console.log(`   File name: ${fileName}`);
             console.log(`   MIME type: ${mimeType}`);
 
             // Update job progress
@@ -136,6 +137,23 @@ class ConversionWorker {
                 };
             }
 
+            // Check if file needs conversion (MOV or AVI format)
+            const isMOV = fileName.toLowerCase().endsWith('.mov') || mimeType === 'video/quicktime';
+            const isAVI = fileName.toLowerCase().endsWith('.avi') || mimeType === 'video/x-msvideo';
+            
+            if (!isMOV && !isAVI) {
+                console.log(`⏭️  Video ${videoId} is not in MOV or AVI format - skipping`);
+                return {
+                    success: true,
+                    skipped: true,
+                    videoId,
+                    message: 'Not a MOV or AVI file',
+                };
+            }
+
+            const formatType = isMOV ? 'MOV' : 'AVI';
+            console.log(`🔄 Converting ${formatType} to MP4...`);
+
             // Create temp directory for processing
             tempDir = path.join(process.cwd(), 'videos', 'temp', 'conversion', videoId);
             if (!fs.existsSync(tempDir)) {
@@ -144,8 +162,8 @@ class ConversionWorker {
 
             await job.updateProgress(20);
 
-            // Download original MOV file from storage
-            console.log(`📥 Downloading original file from storage...`);
+            // Download original file from storage
+            console.log(`📥 Downloading original ${formatType} file from storage...`);
             originalPath = path.join(tempDir, fileName);
 
             // Use getObjectStream to download the file
@@ -162,9 +180,8 @@ class ConversionWorker {
 
             await job.updateProgress(40);
 
-            // Convert MOV to MP4
-            console.log(`🔄 Converting to MP4...`);
-            const mp4FileName = fileName.replace(/\.(mov|MOV)$/, '.mp4');
+            // Convert MOV/AVI to MP4
+            const mp4FileName = fileName.replace(/\.(mov|MOV|avi|AVI)$/i, '.mp4');
             mp4Path = path.join(tempDir, mp4FileName);
 
             // Use standard MP4 conversion with H.264 codec
@@ -180,7 +197,7 @@ class ConversionWorker {
 
             // Upload MP4 file to storage
             console.log(`📤 Uploading MP4 file to storage...`);
-            const mp4StorageKey = storageKey.replace(/\.(mov|MOV)$/, '.mp4');
+            const mp4StorageKey = storageKey.replace(/\.(mov|MOV|avi|AVI)$/i, '.mp4');
             const mp4FileSize = fs.statSync(mp4Path).size;
 
             const uploadResult = await this.storageRepository.upload(

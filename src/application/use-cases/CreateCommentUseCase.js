@@ -4,6 +4,7 @@
 
 const Comment = require('../../domain/entities/Comment');
 const { randomUUID } = require('crypto');
+const ContentSanitizer = require('../../infrastructure/security/ContentSanitizer');
 
 /**
  * Use case for creating a comment
@@ -41,6 +42,12 @@ class CreateCommentUseCase {
             throw new Error('Comment content is required');
         }
 
+        // Sanitize content to prevent XSS
+        const sanitizedContent = ContentSanitizer.sanitizeComment(content);
+        if (!sanitizedContent || sanitizedContent.length === 0) {
+            throw new Error('Comment content is required');
+        }
+
         // Verify video exists
         const video = await this.videoRepository.findById(videoId);
         if (!video) {
@@ -52,7 +59,7 @@ class CreateCommentUseCase {
             id: randomUUID(),
             videoId,
             userId,
-            content: content.trim(),
+            content: sanitizedContent,
             createdAt: new Date(),
             updatedAt: new Date()
         });

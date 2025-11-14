@@ -29,6 +29,25 @@ function authMiddleware(authService) {
             next();
         } catch (error) {
             console.error('Auth middleware error:', error);
+            // Only continue if it's a token parsing/validation error (allow unauthenticated requests)
+            // For other errors (service errors, database errors), fail the request
+            if (error.name === 'JsonWebTokenError' || 
+                error.name === 'TokenExpiredError' || 
+                error.name === 'NotBeforeError') {
+                // Token errors are expected for unauthenticated requests - allow to continue
+                return next();
+            }
+            // For unexpected errors (database, service errors), fail the request
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ 
+                    success: false,
+                    error: { 
+                        message: 'Authentication service error',
+                        code: 'AUTH_SERVICE_ERROR'
+                    }
+                }));
+            }
             next();
         }
     };

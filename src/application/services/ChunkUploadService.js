@@ -14,6 +14,11 @@ const rmdir = promisify(fs.rmdir);
 class ChunkUploadService {
     constructor(uploadSessionRepository) {
         this.uploadSessionRepository = uploadSessionRepository;
+        // In-memory storage for uploaded chunks (not persisted to DB)
+        // Map<uploadId, Set<chunkIndex>>
+        this.uploadedChunks = new Map();
+        // Map<uploadId, Map<chunkIndex, partMetadata>>
+        this.chunkMetadata = new Map();
     }
 
     /**
@@ -30,7 +35,7 @@ class ChunkUploadService {
             fileSize,
             mimeType,
             totalChunks,
-            uploadedChunks: [],
+            uploadedChunks: [], // Not used anymore, tracked in memory
             metadata,
             status: 'in_progress',
             createdAt: new Date(),
@@ -38,6 +43,10 @@ class ChunkUploadService {
         };
 
         await this.uploadSessionRepository.create(session);
+
+        // Initialize in-memory tracking
+        this.uploadedChunks.set(uploadId, new Set());
+        this.chunkMetadata.set(uploadId, new Map());
 
         return session;
     }
@@ -61,29 +70,88 @@ class ChunkUploadService {
      * Get upload session by ID
      */
     async getSession(uploadId) {
-        return this.uploadSessionRepository.findById(uploadId);
+        const session = await this.uploadSessionRepository.findById(uploadId);
+        if (!session) return null;
+
+        // Merge in-memory uploaded chunks with session data
+        const inMemoryChunks = this.uploadedChunks.get(uploadId);
+        if (inMemoryChunks) {
+            session.uploadedChunks = Array.from(inMemoryChunks).sort((a, b) => a - b);
+        } else {
+            // If session exists in DB but not in memory, initialize empty tracking
+            // This can happen if server was restarted
+            session.uploadedChunks = [];
+            this.uploadedChunks.set(uploadId, new Set());
+            this.chunkMetadata.set(uploadId, new Map());
+        }
+
+        return session;
     }
 
     /**
      * Mark chunk as uploaded (with B2 part metadata)
+     * Stores chunk status in memory only, not in database
      */
     async markChunkUploaded(uploadId, chunkIndex, partMetadata = null) {
-        // Use atomic repository method to prevent race conditions
-        const updatedSession = await this.uploadSessionRepository.addUploadedChunk(
-            uploadId,
-            chunkIndex,
-            partMetadata
-        );
+        // Get or create in-memory tracking for this upload
+        let chunksSet = this.uploadedChunks.get(uploadId);
+        if (!chunksSet) {
+            chunksSet = new Set();
+            this.uploadedChunks.set(uploadId, chunksSet);
+        }
 
-        // Sanity check: prevent unbounded metadata growth
-        if (updatedSession.metadata) {
-            const metadataSize = JSON.stringify(updatedSession.metadata).length;
-            if (metadataSize > 1024 * 1024) { // 1MB limit
-                console.warn(`⚠️  Session ${uploadId} metadata exceeds 1MB (${metadataSize} bytes)`);
+        // Add chunk index to set (Set automatically handles duplicates)
+        chunksSet.add(chunkIndex);
+
+        // Store part metadata if provided
+        if (partMetadata) {
+            let metadataMap = this.chunkMetadata.get(uploadId);
+            if (!metadataMap) {
+                metadataMap = new Map();
+                this.chunkMetadata.set(uploadId, metadataMap);
+            }
+            metadataMap.set(chunkIndex, partMetadata);
+        }
+
+        // Get session from DB and merge with in-memory data
+        const session = await this.uploadSessionRepository.findById(uploadId);
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        // Update session metadata in DB if part metadata provided
+        if (partMetadata) {
+            const metadata = session.metadata || {};
+            if (!metadata.b2Parts) {
+                metadata.b2Parts = [];
+            }
+            
+            // Check if part already exists
+            const partExists = metadata.b2Parts.some(
+                p => p.partNumber === partMetadata.partNumber
+            );
+            
+            if (!partExists) {
+                metadata.b2Parts.push({
+                    etag: partMetadata.etag,
+                    partNumber: partMetadata.partNumber
+                });
+                
+                // Update metadata in DB
+                await this.uploadSessionRepository.update(uploadId, {
+                    metadata: metadata
+                });
             }
         }
 
-        return updatedSession;
+        // Return session with in-memory chunks merged
+        const updatedChunks = Array.from(chunksSet).sort((a, b) => a - b);
+        console.log(`✅ Chunk ${chunkIndex} marked as uploaded in memory (${updatedChunks.length}/${session.totalChunks} chunks total)`);
+
+        return {
+            ...session,
+            uploadedChunks: updatedChunks
+        };
     }
 
     /**
@@ -173,6 +241,10 @@ class ChunkUploadService {
             await rmdir(chunkDir);
             console.log(`🗑️  Cleaned up chunks for upload ${uploadId}`);
         }
+
+        // Clean up in-memory tracking
+        this.uploadedChunks.delete(uploadId);
+        this.chunkMetadata.delete(uploadId);
 
         // Delete session from database
         await this.uploadSessionRepository.delete(uploadId);

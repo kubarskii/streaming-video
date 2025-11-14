@@ -202,14 +202,138 @@ class VideoTranscoder {
     }
 
     /**
+     * Generate HLS stream for a video quality
+     * @param {string} inputPath - Path to source video
+     * @param {string} outputDir - Directory for HLS output
+     * @param {string} quality - Quality level (e.g., "720p")
+     * @param {number} sourceWidth - Source video width
+     * @param {number} sourceHeight - Source video height
+     * @param {Function} onProgress - Progress callback
+     * @returns {Promise<{quality: string, playlistPath: string, width: number, height: number}>}
+     */
+    async generateHLSStream(inputPath, outputDir, quality, sourceWidth, sourceHeight, onProgress = null) {
+        const preset = this.qualityPresets[quality];
+        if (!preset) {
+            throw new Error(`Unknown quality preset: ${quality}`);
+        }
+
+        const dimensions = this.calculateDimensions(sourceWidth, sourceHeight, preset.height);
+        const isVertical = sourceHeight > sourceWidth;
+        const scaleFilter = isVertical
+            ? `scale=${preset.height}:-2`
+            : `scale=-2:${preset.height}`;
+
+        // HLS output paths
+        const playlistPath = path.join(outputDir, `${quality}.m3u8`);
+        const segmentPattern = path.join(outputDir, `${quality}_%03d.ts`);
+
+        return new Promise((resolve, reject) => {
+            const command = ffmpeg(inputPath)
+                .output(playlistPath)
+                .videoCodec('libx264')
+                .audioCodec('aac')
+                .videoBitrate(preset.bitrate)
+                .audioBitrate(preset.audioBitrate)
+                .videoFilters([scaleFilter])
+                .format('hls')
+                .outputOptions([
+                    '-hls_time 10', // 10 second segments
+                    '-hls_list_size 0', // Keep all segments in playlist
+                    '-hls_segment_filename', segmentPattern,
+                    '-preset fast',
+                    '-profile:v main',
+                    '-crf 23',
+                    '-start_number 0'
+                ]);
+
+            if (onProgress) {
+                command.on('progress', (progress) => {
+                    onProgress({
+                        percent: progress.percent || 0,
+                        currentTime: progress.timemark,
+                        targetSize: progress.targetSize,
+                        currentKbps: progress.currentKbps
+                    });
+                });
+            }
+
+            command.on('end', () => {
+                resolve({
+                    quality,
+                    playlistPath,
+                    width: dimensions.width,
+                    height: dimensions.height
+                });
+            });
+
+            command.on('error', (err) => {
+                reject(new Error(`HLS generation failed: ${err.message}`));
+            });
+
+            command.run();
+        });
+    }
+
+    /**
+     * Generate master HLS playlist with all quality variants
+     * @param {string} outputDir - Directory containing quality playlists
+     * @param {Array<{quality: string, width: number, height: number, bitrate: string}>} variants - Quality variants
+     * @param {string} masterPlaylistPath - Path for master playlist
+     * @returns {Promise<string>} Path to master playlist
+     */
+    async generateMasterPlaylist(outputDir, variants, masterPlaylistPath) {
+        let playlistContent = '#EXTM3U\n#EXT-X-VERSION:3\n\n';
+
+        // Sort variants by resolution (ascending)
+        const sortedVariants = [...variants].sort((a, b) => {
+            const heightA = this.qualityPresets[a.quality]?.height || 0;
+            const heightB = this.qualityPresets[b.quality]?.height || 0;
+            return heightA - heightB;
+        });
+
+        for (const variant of sortedVariants) {
+            const preset = this.qualityPresets[variant.quality];
+            const bandwidth = this.estimateBandwidth(preset.bitrate);
+            const playlistUrl = `${variant.quality}.m3u8`;
+
+            playlistContent += `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${variant.width}x${variant.height}\n`;
+            playlistContent += `${playlistUrl}\n\n`;
+        }
+
+        fs.writeFileSync(masterPlaylistPath, playlistContent, 'utf8');
+        return masterPlaylistPath;
+    }
+
+    /**
+     * Estimate bandwidth from bitrate string (e.g., "2800k" -> 2800000)
+     * @param {string} bitrate - Bitrate string
+     * @returns {number} Bandwidth in bits per second
+     */
+    estimateBandwidth(bitrate) {
+        const match = bitrate.match(/^(\d+)([kmg]?)$/i);
+        if (!match) return 1000000; // Default 1Mbps
+
+        const value = parseInt(match[1]);
+        const unit = match[2].toLowerCase();
+
+        switch (unit) {
+            case 'g': return value * 1000000000;
+            case 'm': return value * 1000000;
+            case 'k': return value * 1000;
+            default: return value;
+        }
+    }
+
+    /**
      * Transcode video to all appropriate quality levels
      * @param {string} inputPath - Path to source video
      * @param {string} outputDir - Directory for output videos
      * @param {string} baseFileName - Base name for output files (without extension)
      * @param {Function} onProgress - Progress callback (quality, progress)
+     * @param {boolean} generateHLS - Whether to generate HLS streams in addition to MP4
      * @returns {Promise<Array<{quality: string, path: string, width: number, height: number, sizeBytes: number, bitrate: string}>>}
      */
-    async transcodeToMultipleQualities(inputPath, outputDir, baseFileName, onProgress = null) {
+    async transcodeToMultipleQualities(inputPath, outputDir, baseFileName, onProgress = null, generateHLS = false) {
         // Ensure output directory exists
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
@@ -231,9 +355,11 @@ class VideoTranscoder {
 
         // Transcode to each quality
         const results = [];
+        const hlsVariants = [];
 
         for (const quality of qualitiesToGenerate) {
             const outputPath = path.join(outputDir, `${baseFileName}_${quality}.mp4`);
+            const preset = this.qualityPresets[quality];
 
             console.log(`Transcoding to ${quality}...`);
 
@@ -254,9 +380,54 @@ class VideoTranscoder {
                 });
 
                 console.log(`✅ ${quality} complete: ${(result.sizeBytes / (1024 * 1024)).toFixed(2)} MB (${result.width}x${result.height})`);
+
+                // Generate HLS stream if requested
+                if (generateHLS) {
+                    try {
+                        const hlsResult = await this.generateHLSStream(
+                            inputPath,
+                            outputDir,
+                            quality,
+                            metadata.width,
+                            metadata.height,
+                            onProgress ? (progress) => onProgress(quality, progress) : null
+                        );
+                        hlsVariants.push({
+                            quality: hlsResult.quality,
+                            width: hlsResult.width,
+                            height: hlsResult.height,
+                            bitrate: preset.bitrate,
+                            playlistPath: hlsResult.playlistPath
+                        });
+                        console.log(`✅ HLS ${quality} playlist generated: ${hlsResult.playlistPath}`);
+                    } catch (hlsError) {
+                        console.error(`⚠️  Failed to generate HLS for ${quality}:`, hlsError.message);
+                        // Continue with other qualities
+                    }
+                }
             } catch (error) {
                 console.error(`❌ Failed to transcode to ${quality}:`, error.message);
                 // Continue with other qualities even if one fails
+            }
+        }
+
+        // Generate master playlist if HLS was requested
+        if (generateHLS && hlsVariants.length > 0) {
+            try {
+                const masterPlaylistPath = path.join(outputDir, 'master.m3u8');
+                await this.generateMasterPlaylist(outputDir, hlsVariants, masterPlaylistPath);
+                results.push({
+                    quality: 'hls',
+                    path: masterPlaylistPath,
+                    width: metadata.width,
+                    height: metadata.height,
+                    sizeBytes: 0, // Playlist file is small
+                    bitrate: 'adaptive',
+                    isHLS: true
+                });
+                console.log(`✅ Master HLS playlist generated: ${masterPlaylistPath}`);
+            } catch (masterError) {
+                console.error('⚠️  Failed to generate master playlist:', masterError.message);
             }
         }
 

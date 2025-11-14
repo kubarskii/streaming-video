@@ -5,6 +5,7 @@
 import React, { useEffect, useState, useRef, useImperativeHandle, useCallback } from 'react';
 import { FaCog, FaCheck } from 'react-icons/fa';
 import { useFloating, offset, flip, shift, size, limitShift, autoUpdate } from '@floating-ui/react';
+import Hls from 'hls.js';
 
 // FSD Imports
 import { PLAYER_CONSTANTS, PLAYER_STATES, PLAYER_EVENTS, MIME_TYPES } from '../../../shared/config/videoPlayer.constants';
@@ -673,7 +674,10 @@ export const VideoPlayer = React.forwardRef(({
         }
     }, [autoPlay]);
 
-    // Source changes
+    // HLS instance ref
+    const hlsRef = useRef(null);
+
+    // Source changes with HLS.js support
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -683,22 +687,184 @@ export const VideoPlayer = React.forwardRef(({
         setIsVideoBuffering(false);
         setIsVideoPlaying(false);
 
-        video.load();
+        // Cleanup previous HLS instance
+        if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+        }
 
-        if (autoPlay) {
-            // Use a small delay to ensure video is ready
-            const playTimeout = setTimeout(() => {
+        // Check if source is HLS (.m3u8)
+        const isHLS = src && (src.endsWith('.m3u8') || src.includes('.m3u8'));
+
+        if (isHLS && Hls.isSupported()) {
+            // Convert relative URL to absolute if needed
+            let hlsSrc = src;
+            if (src.startsWith('/')) {
+                // Use current origin for relative URLs
+                hlsSrc = `${window.location.origin}${src}`;
+            }
+
+            // Use HLS.js for HLS streams
+            const hls = new Hls({
+                enableWorker: true,
+                lowLatencyMode: false,
+                backBufferLength: 90,
+                maxBufferLength: 30,
+                maxMaxBufferLength: 600,
+                maxBufferSize: 60 * 1000 * 1000, // 60MB
+                maxBufferHole: 0.5,
+                highBufferWatchdogPeriod: 2,
+                nudgeOffset: 0.1,
+                nudgeMaxRetry: 3,
+                maxFragLoadingTimeOut: 20000,
+                startFragPrefetch: true,
+                testBandwidth: true,
+                progressive: false,
+                debug: false,
+                // Custom loader to proxy all requests through our server
+                loader: class CustomLoader extends Hls.DefaultConfig.loader {
+                    constructor(config) {
+                        super(config);
+                    }
+
+                    load(context, config, callbacks) {
+                        // If the URL is from Backblaze B2, proxy it through our server
+                        if (context.url && context.url.includes('backblazeb2.com')) {
+                            // Extract the storage key from the B2 URL
+                            const urlMatch = context.url.match(/\/file\/[^/]+\/(.+)$/);
+                            if (urlMatch) {
+                                const storageKey = urlMatch[1];
+                                // Use our streaming endpoint
+                                context.url = `${window.location.origin}/video?file=${encodeURIComponent(storageKey)}`;
+                            }
+                        } else if (context.url && !context.url.startsWith('http')) {
+                            // Handle relative URLs in playlist - resolve them relative to the current playlist URL
+                            if (context.url.includes('.ts') || context.url.includes('.m3u8')) {
+                                // If it's a relative path (starts with ./ or just a filename)
+                                if (context.url.startsWith('./') || (!context.url.startsWith('/') && !context.url.startsWith('http'))) {
+                                    // Get the current playlist URL from the response URL or referrer
+                                    const currentUrl = context.responseURL || hlsSrc || window.location.href;
+
+                                    // Extract the file parameter from the current URL
+                                    const currentUrlObj = new URL(currentUrl);
+                                    const currentFile = currentUrlObj.searchParams.get('file');
+
+                                    if (currentFile) {
+                                        // Remove ./ prefix if present
+                                        let segmentName = context.url;
+                                        if (segmentName.startsWith('./')) {
+                                            segmentName = segmentName.substring(2);
+                                        }
+
+                                        // Construct the storage key based on the current playlist's directory
+                                        const currentDir = currentFile.includes('/')
+                                            ? currentFile.substring(0, currentFile.lastIndexOf('/'))
+                                            : '';
+
+                                        const segmentKey = currentDir
+                                            ? `${currentDir}/${segmentName}`
+                                            : segmentName;
+
+                                        // Use our streaming endpoint
+                                        context.url = `${window.location.origin}/video?file=${encodeURIComponent(segmentKey)}`;
+                                    } else {
+                                        // Fallback: try to resolve as absolute path
+                                        const urlObj = new URL(context.url, currentUrl);
+                                        if (urlObj.hostname === window.location.hostname) {
+                                            context.url = urlObj.pathname + urlObj.search;
+                                        }
+                                    }
+                                } else if (context.url.startsWith('/')) {
+                                    // Absolute path on our server
+                                    context.url = `${window.location.origin}${context.url}`;
+                                }
+                            }
+                        }
+                        // Call parent loader
+                        return super.load(context, config, callbacks);
+                    }
+                }
+            });
+
+            hlsRef.current = hls;
+
+            hls.loadSource(hlsSrc);
+            hls.attachMedia(video);
+
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                setIsVideoLoading(false);
+                if (autoPlay) {
+                    const playPromise = video.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(() => {
+                            // Autoplay was prevented
+                        });
+                    }
+                }
+            });
+
+            hls.on(Hls.Events.ERROR, (event, data) => {
+                if (data.fatal) {
+                    switch (data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            console.error('HLS network error, trying to recover...');
+                            hls.startLoad();
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            console.error('HLS media error, trying to recover...');
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            console.error('HLS fatal error, destroying instance');
+                            hls.destroy();
+                            hlsRef.current = null;
+                            setIsVideoLoading(false);
+                            if (onError) {
+                                onError();
+                            }
+                            break;
+                    }
+                }
+            });
+
+            // Cleanup on unmount
+            return () => {
+                if (hlsRef.current) {
+                    hlsRef.current.destroy();
+                    hlsRef.current = null;
+                }
+            };
+        } else if (isHLS && video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Native HLS support (Safari)
+            video.src = src;
+            video.load();
+            if (autoPlay) {
                 const playPromise = video.play();
                 if (playPromise !== undefined) {
                     playPromise.catch(() => {
                         // Autoplay was prevented
                     });
                 }
-            }, 10);
+            }
+        } else {
+            // Standard MP4 or other formats
+            video.load();
 
-            return () => clearTimeout(playTimeout);
+            if (autoPlay) {
+                // Use a small delay to ensure video is ready
+                const playTimeout = setTimeout(() => {
+                    const playPromise = video.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(() => {
+                            // Autoplay was prevented
+                        });
+                    }
+                }, 10);
+
+                return () => clearTimeout(playTimeout);
+            }
         }
-    }, [src, autoPlay]);
+    }, [src, autoPlay, onError]);
 
     // Drag handling (mouse and touch)
     useEffect(() => {

@@ -3,6 +3,7 @@
 
 const { randomUUID } = require('crypto');
 const Channel = require('../../domain/entities/Channel');
+const ContentSanitizer = require('../../infrastructure/security/ContentSanitizer');
 
 class CreateChannelUseCase {
     constructor(channelRepository, userRepository) {
@@ -23,12 +24,19 @@ class CreateChannelUseCase {
             throw new Error('User already has a channel');
         }
 
+        // Sanitize user input
+        const sanitizedName = ContentSanitizer.sanitizeTitle(name, 'channelName');
+        if (!sanitizedName || sanitizedName.length === 0) {
+            throw new Error('Channel name is required');
+        }
+        const sanitizedDescription = ContentSanitizer.sanitizeDescription(description, 'channelDescription');
+
         // Create the channel
         const channel = new Channel({
             id: randomUUID(),
             userId,
-            name,
-            description: description || null,
+            name: sanitizedName,
+            description: sanitizedDescription,
             avatarUrl: avatarUrl || null,
             bannerUrl: bannerUrl || null,
             subscriberCount: 0,

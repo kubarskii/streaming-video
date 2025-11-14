@@ -150,12 +150,16 @@ class StreamController {
                     });
                 }
 
-                // For CDN mode, redirect to direct URL
-                if (streamMode === 'redirect' && this.storageRepository.getUrl) {
+                // Always proxy HLS files to ensure CORS headers are present
+                const ext = path.extname(videoQuality.storageKey || fileKey).toLowerCase();
+                const isHLSFile = ext === '.m3u8' || ext === '.m3u' || ext === '.ts';
+
+                // For CDN mode, redirect to direct URL (but never redirect HLS files)
+                if (streamMode === 'redirect' && !isHLSFile && this.storageRepository.getUrl) {
                     return this.redirectToCDN(req, res, videoQuality.storageKey);
                 }
 
-                // Otherwise proxy through server
+                // Otherwise proxy through server (always for HLS files)
                 return this.streamQualityVariant(req, res, videoQuality);
             }
 
@@ -197,11 +201,16 @@ class StreamController {
             }
 
             // For cloud storage (B2/CDN)
-            if (streamMode === 'redirect') {
+            // Always proxy HLS files to ensure CORS headers are present
+            const ext = path.extname(video.storageKey || fileKey).toLowerCase();
+            const isHLSFile = ext === '.m3u8' || ext === '.m3u' || ext === '.ts';
+            
+            if (streamMode === 'redirect' && !isHLSFile) {
                 // Redirect mode: offload to CDN (unlimited scale)
+                // But never redirect HLS files - they need CORS headers
                 return this.redirectToCDN(req, res, video.storageKey);
             } else {
-                // Proxy mode: stream through server (for private buckets)
+                // Proxy mode: stream through server (for private buckets and HLS files)
                 return this.streamFromB2(req, res, video.storageKey, video);
             }
 
@@ -277,14 +286,110 @@ class StreamController {
                         '.gif': 'image/gif',
                         '.webp': 'image/webp',
                         '.svg': 'image/svg+xml',
+                        // HLS streaming formats
+                        '.m3u8': 'application/vnd.apple.mpegurl',
+                        '.ts': 'video/mp2t',
+                        '.m3u': 'application/vnd.apple.mpegurl',
                     };
                     const contentType = contentTypes[ext] || 'application/octet-stream';
 
-                    res.writeHead(200, {
+                    // HLS files need CORS headers and different cache settings
+                    const headers = {
                         'Content-Type': contentType,
                         'Content-Length': fileSize,
-                        'Cache-Control': 'public, max-age=31536000',
-                    });
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+                        'Access-Control-Allow-Headers': 'Range',
+                    };
+
+                    // HLS playlists should have shorter cache, segments can be cached longer
+                    if (ext === '.m3u8' || ext === '.m3u') {
+                        headers['Cache-Control'] = 'public, max-age=0, must-revalidate'; // Playlists change
+                    } else if (ext === '.ts') {
+                        headers['Cache-Control'] = 'public, max-age=31536000'; // Segments are immutable
+                    } else {
+                        headers['Cache-Control'] = 'public, max-age=31536000';
+                    }
+
+                    // For HLS playlists, read and modify content to replace any B2 URLs
+                    if (ext === '.m3u8' || ext === '.m3u') {
+                        const playlistContent = fs.readFileSync(filePath, 'utf8');
+                        const protocol = req.headers['x-forwarded-proto'] || (req.connection.encrypted ? 'https' : 'http');
+                        const host = req.headers.host || 'localhost:3000';
+                        
+                        // Replace Backblaze B2 URLs with our proxy URLs
+                        let modifiedContent = playlistContent.replace(
+                            /https?:\/\/[^\/]+\/file\/[^\/]+\/([^\s\n]+)/g,
+                            (match, storageKey) => {
+                                // Use our streaming endpoint
+                                return `${protocol}://${host}/video?file=${encodeURIComponent(storageKey)}`;
+                            }
+                        );
+
+                        // Also handle relative paths in playlist
+                        const lines = modifiedContent.split('\n');
+                        
+                        // Extract videoId from fileKey if it's in format "videoId_hls.m3u8" or "videoId_quality.m3u8"
+                        let videoId = null;
+                        const hlsMatch = fileKey.match(/^([^_]+)_hls\.m3u8$/);
+                        if (hlsMatch) {
+                            videoId = hlsMatch[1];
+                        } else {
+                            // Try to extract from other formats like "videoId_240p.m3u8"
+                            const qualityMatch = fileKey.match(/^([^_]+)_[^_]+\.m3u8$/);
+                            if (qualityMatch) {
+                                videoId = qualityMatch[1];
+                            }
+                        }
+                        
+                        // Get the directory of the current playlist to resolve relative paths
+                        const playlistDir = path.dirname(fileKey);
+                        
+                        const modifiedLines = lines.map(line => {
+                            const trimmedLine = line.trim();
+                            // If line is a segment path (ends with .ts or .m3u8) and is relative
+                            if ((trimmedLine.endsWith('.ts') || trimmedLine.endsWith('.m3u8')) && 
+                                !trimmedLine.startsWith('http') && 
+                                !trimmedLine.startsWith('#') &&
+                                trimmedLine.length > 0) {
+                                // Remove ./ prefix if present
+                                let segmentName = trimmedLine;
+                                if (segmentName.startsWith('./')) {
+                                    segmentName = segmentName.substring(2);
+                                }
+                                
+                                // Construct storage key based on the playlist's fileKey
+                                // For master playlist (videoId_hls.m3u8), quality playlists are stored as videoId_240p.m3u8
+                                // For quality playlist (videoId_240p.m3u8), segments are in the same directory
+                                let segmentKey;
+                                
+                                // If we have a videoId and this looks like a quality playlist name (e.g., "240p.m3u8")
+                                if (videoId && segmentName.match(/^\d+p\.m3u8$/)) {
+                                    // Master playlist referencing quality playlist: "240p.m3u8" -> "videoId_240p.m3u8"
+                                    segmentKey = `${videoId}_${segmentName}`;
+                                } else if (playlistDir && playlistDir !== '.') {
+                                    // Quality playlist referencing segment: use directory structure
+                                    segmentKey = `${playlistDir}/${segmentName}`;
+                                } else {
+                                    // Fallback: use segment name as-is
+                                    segmentKey = segmentName;
+                                }
+                                
+                                return `${protocol}://${host}/video?file=${encodeURIComponent(segmentKey)}`;
+                            }
+                            return line;
+                        });
+
+                        modifiedContent = modifiedLines.join('\n');
+
+                        res.writeHead(200, {
+                            ...headers,
+                            'Content-Length': Buffer.byteLength(modifiedContent)
+                        });
+                        return res.end(modifiedContent);
+                    }
+
+                    res.writeHead(200, headers);
 
                     const stream = fs.createReadStream(filePath);
 
@@ -328,32 +433,98 @@ class StreamController {
         const stat = fs.statSync(filePath);
         const fileSize = stat.size;
         const range = req.headers.range;
-        const contentType = video.mimeType || 'video/mp4';
+        
+        // Determine content type - check file extension for HLS files
+        const ext = path.extname(filePath).toLowerCase();
+        let contentType = video?.mimeType || 'video/mp4';
+        
+        // Override for HLS files
+        if (ext === '.m3u8' || ext === '.m3u') {
+            contentType = 'application/vnd.apple.mpegurl';
+        } else if (ext === '.ts') {
+            contentType = 'video/mp2t';
+        }
+
+        // HLS files need CORS headers
+        const baseHeaders = {
+            'Content-Type': contentType,
+            'Accept-Ranges': 'bytes',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': 'Range',
+        };
+
+        // HLS playlists should have shorter cache, segments can be cached longer
+        if (ext === '.m3u8' || ext === '.m3u') {
+            baseHeaders['Cache-Control'] = 'public, max-age=0, must-revalidate';
+        } else if (ext === '.ts') {
+            baseHeaders['Cache-Control'] = 'public, max-age=31536000';
+        } else {
+            baseHeaders['Cache-Control'] = 'public, max-age=31536000';
+        }
 
         // Handle HEAD requests - iOS Safari needs this for video seeking
         if (req.method === 'HEAD') {
             res.writeHead(200, {
-                'Content-Type': contentType,
+                ...baseHeaders,
                 'Content-Length': fileSize,
-                'Accept-Ranges': 'bytes',
-                'Cache-Control': 'public, max-age=31536000',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-                'Access-Control-Allow-Headers': 'Range',
             });
             return res.end();
         }
 
         if (!range) {
+            // For HLS playlists, read and modify content to replace any B2 URLs
+            if (ext === '.m3u8' || ext === '.m3u') {
+                const playlistContent = fs.readFileSync(filePath, 'utf8');
+                const protocol = req.headers['x-forwarded-proto'] || (req.connection.encrypted ? 'https' : 'http');
+                const host = req.headers.host || 'localhost:3000';
+                
+                // Replace Backblaze B2 URLs with our proxy URLs
+                let modifiedContent = playlistContent.replace(
+                    /https?:\/\/[^\/]+\/file\/[^\/]+\/([^\s\n]+)/g,
+                    (match, storageKey) => {
+                        // Use our streaming endpoint
+                        return `${protocol}://${host}/video?file=${encodeURIComponent(storageKey)}`;
+                    }
+                );
+
+                // Also handle relative paths in playlist
+                const lines = modifiedContent.split('\n');
+                const playlistDir = path.dirname(filePath);
+                const modifiedLines = lines.map(line => {
+                    const trimmedLine = line.trim();
+                    // If line is a segment path (ends with .ts or .m3u8) and is relative
+                    if ((trimmedLine.endsWith('.ts') || trimmedLine.endsWith('.m3u8')) && 
+                        !trimmedLine.startsWith('http') && 
+                        !trimmedLine.startsWith('#') &&
+                        trimmedLine.length > 0) {
+                        // Extract the segment filename
+                        const segmentName = trimmedLine;
+                        // Construct full path to segment
+                        const segmentPath = path.join(playlistDir, segmentName);
+                        // Get relative path from videos directory to construct storage key
+                        // Assuming segments are in the same directory structure as playlist
+                        const relativePath = path.relative(process.cwd(), segmentPath);
+                        // Use the relative path as storage key (adjust based on your storage structure)
+                        const segmentKey = relativePath.replace(/\\/g, '/'); // Normalize path separators
+                        return `${protocol}://${host}/video?file=${encodeURIComponent(segmentKey)}`;
+                    }
+                    return line;
+                });
+
+                modifiedContent = modifiedLines.join('\n');
+
+                res.writeHead(200, {
+                    ...baseHeaders,
+                    'Content-Length': Buffer.byteLength(modifiedContent)
+                });
+                return res.end(modifiedContent);
+            }
+
             // Serve entire file
             res.writeHead(200, {
-                'Content-Type': contentType,
+                ...baseHeaders,
                 'Content-Length': fileSize,
-                'Accept-Ranges': 'bytes',
-                'Cache-Control': 'public, max-age=31536000',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-                'Access-Control-Allow-Headers': 'Range',
             });
 
             const stream = fs.createReadStream(filePath);
@@ -394,13 +565,8 @@ class StreamController {
 
         res.writeHead(206, {
             'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
+            ...baseHeaders,
             'Content-Length': chunkSize,
-            'Content-Type': contentType,
-            'Cache-Control': 'public, max-age=31536000',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-            'Access-Control-Allow-Headers': 'Range',
         });
 
         const stream = fs.createReadStream(filePath, { start, end });
@@ -438,27 +604,71 @@ class StreamController {
             // Handle HEAD requests - iOS Safari needs this for video seeking
             if (req.method === 'HEAD') {
                 const metadata = await this.storageRepository.getMetadata(storageKey);
-                res.writeHead(200, {
-                    'Content-Type': metadata.contentType || (video?.mimeType || 'video/mp4'),
+                
+                // Determine content type - check file extension for HLS files
+                const ext = path.extname(storageKey).toLowerCase();
+                let contentType = metadata.contentType || (video?.mimeType || 'video/mp4');
+                
+                // Override for HLS files
+                if (ext === '.m3u8' || ext === '.m3u') {
+                    contentType = 'application/vnd.apple.mpegurl';
+                } else if (ext === '.ts') {
+                    contentType = 'video/mp2t';
+                }
+
+                const headers = {
+                    'Content-Type': contentType,
                     'Content-Length': metadata.size,
                     'Accept-Ranges': 'bytes',
-                    'Cache-Control': 'public, max-age=31536000',
                     'Access-Control-Allow-Origin': '*',
                     'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
                     'Access-Control-Allow-Headers': 'Range',
-                });
+                };
+
+                // HLS playlists should have shorter cache, segments can be cached longer
+                if (ext === '.m3u8' || ext === '.m3u') {
+                    headers['Cache-Control'] = 'public, max-age=0, must-revalidate';
+                } else if (ext === '.ts') {
+                    headers['Cache-Control'] = 'public, max-age=31536000';
+                } else {
+                    headers['Cache-Control'] = 'public, max-age=31536000';
+                }
+
+                res.writeHead(200, headers);
                 return res.end();
             }
 
             // Get authenticated stream from B2
             const result = await this.storageRepository.getObjectStream(storageKey, range);
 
+            // Determine content type - check file extension for HLS files
+            const ext = path.extname(storageKey).toLowerCase();
+            let contentType = result.contentType || (video?.mimeType || 'video/mp4');
+            
+            // Override for HLS files
+            if (ext === '.m3u8' || ext === '.m3u') {
+                contentType = 'application/vnd.apple.mpegurl';
+            } else if (ext === '.ts') {
+                contentType = 'video/mp2t';
+            }
+
             // Build response headers
             const responseHeaders = {
-                'Content-Type': result.contentType || (video?.mimeType || 'video/mp4'),
+                'Content-Type': contentType,
                 'Accept-Ranges': 'bytes',
-                'Cache-Control': 'public, max-age=31536000',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+                'Access-Control-Allow-Headers': 'Range',
             };
+
+            // HLS playlists should have shorter cache, segments can be cached longer
+            if (ext === '.m3u8' || ext === '.m3u') {
+                responseHeaders['Cache-Control'] = 'public, max-age=0, must-revalidate';
+            } else if (ext === '.ts') {
+                responseHeaders['Cache-Control'] = 'public, max-age=31536000';
+            } else {
+                responseHeaders['Cache-Control'] = 'public, max-age=31536000';
+            }
 
             if (result.contentLength) {
                 responseHeaders['Content-Length'] = result.contentLength;
@@ -473,26 +683,120 @@ class StreamController {
             responseHeaders['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS';
             responseHeaders['Access-Control-Allow-Headers'] = 'Range';
 
-            // Write response headers
-            res.writeHead(result.statusCode, responseHeaders);
-
-            // Pipe stream to client
-            // AWS SDK v3 returns a readable stream that we can pipe directly
-            if (result.stream && result.stream.pipe) {
-                // Handle stream errors
-                result.stream.on('error', (error) => {
-                    console.error('Error in B2 stream:', error);
-                    if (!res.headersSent) {
-                        res.writeHead(500, { 'Content-Type': 'text/plain' });
-                        res.end('Stream error');
-                    } else if (res.destroy) {
-                        res.destroy();
-                    }
+            // For HLS playlists, we need to modify the content to replace B2 URLs with our proxy URLs
+            if ((ext === '.m3u8' || ext === '.m3u') && result.stream) {
+                // Read the entire playlist content
+                let playlistContent = '';
+                result.stream.on('data', (chunk) => {
+                    playlistContent += chunk.toString();
                 });
 
-                result.stream.pipe(res);
+                result.stream.on('end', () => {
+                    // Replace Backblaze B2 URLs with our proxy URLs
+                    let modifiedContent = playlistContent.replace(
+                        /https?:\/\/[^\/]+\/file\/[^\/]+\/([^\s\n]+)/g,
+                        (match, storageKey) => {
+                            // Use our streaming endpoint
+                            const protocol = req.headers['x-forwarded-proto'] || (req.connection.encrypted ? 'https' : 'http');
+                            const host = req.headers.host || 'localhost:3000';
+                            return `${protocol}://${host}/video?file=${encodeURIComponent(storageKey)}`;
+                        }
+                    );
+
+                    // Also handle relative paths in playlist
+                    const lines = modifiedContent.split('\n');
+                    const protocol = req.headers['x-forwarded-proto'] || (req.connection.encrypted ? 'https' : 'http');
+                    const host = req.headers.host || 'localhost:3000';
+                    
+                    // Extract videoId from storage key if it's in format "videoId_hls.m3u8" or "videoId_quality.m3u8"
+                    // This helps resolve relative paths in master playlists
+                    let videoId = null;
+                    const hlsMatch = storageKey.match(/^([^_]+)_hls\.m3u8$/);
+                    if (hlsMatch) {
+                        videoId = hlsMatch[1];
+                    } else {
+                        // Try to extract from other formats like "videoId_240p.m3u8"
+                        const qualityMatch = storageKey.match(/^([^_]+)_[^_]+\.m3u8$/);
+                        if (qualityMatch) {
+                            videoId = qualityMatch[1];
+                        }
+                    }
+                    
+                    // Get the directory of the current playlist to resolve relative paths
+                    const playlistDir = path.dirname(storageKey);
+                    
+                    const modifiedLines = lines.map(line => {
+                        const trimmedLine = line.trim();
+                        // If line is a segment path (ends with .ts or .m3u8) and is relative
+                        if ((trimmedLine.endsWith('.ts') || trimmedLine.endsWith('.m3u8')) && 
+                            !trimmedLine.startsWith('http') && 
+                            !trimmedLine.startsWith('#') &&
+                            trimmedLine.length > 0) {
+                            // Remove ./ prefix if present
+                            let segmentName = trimmedLine;
+                            if (segmentName.startsWith('./')) {
+                                segmentName = segmentName.substring(2);
+                            }
+                            
+                            // Construct storage key based on the playlist's storage key
+                            // For master playlist (videoId_hls.m3u8), quality playlists are stored as videoId_240p.m3u8
+                            // For quality playlist (videoId_240p.m3u8), segments are in the same directory
+                            let segmentKey;
+                            
+                            // If we have a videoId and this looks like a quality playlist name (e.g., "240p.m3u8")
+                            if (videoId && segmentName.match(/^\d+p\.m3u8$/)) {
+                                // Master playlist referencing quality playlist: "240p.m3u8" -> "videoId_240p.m3u8"
+                                segmentKey = `${videoId}_${segmentName}`;
+                            } else if (playlistDir && playlistDir !== '.') {
+                                // Quality playlist referencing segment: use directory structure
+                                segmentKey = `${playlistDir}/${segmentName}`;
+                            } else {
+                                // Fallback: use segment name as-is
+                                segmentKey = segmentName;
+                            }
+                            
+                            return `${protocol}://${host}/video?file=${encodeURIComponent(segmentKey)}`;
+                        }
+                        return line;
+                    });
+
+                    const finalContent = modifiedLines.join('\n');
+
+                    // Write headers and modified content
+                    res.writeHead(result.statusCode, {
+                        ...responseHeaders,
+                        'Content-Length': Buffer.byteLength(finalContent)
+                    });
+                    res.end(finalContent);
+                });
+
+                result.stream.on('error', (error) => {
+                    console.error('Error reading B2 playlist:', error);
+                    if (!res.headersSent) {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Error reading playlist');
+                    }
+                });
             } else {
-                throw new Error('Unsupported stream type');
+                // For non-playlist files, pipe stream directly
+                res.writeHead(result.statusCode, responseHeaders);
+
+                if (result.stream && result.stream.pipe) {
+                    // Handle stream errors
+                    result.stream.on('error', (error) => {
+                        console.error('Error in B2 stream:', error);
+                        if (!res.headersSent) {
+                            res.writeHead(500, { 'Content-Type': 'text/plain' });
+                            res.end('Stream error');
+                        } else if (res.destroy) {
+                            res.destroy();
+                        }
+                    });
+
+                    result.stream.pipe(res);
+                } else {
+                    throw new Error('Unsupported stream type');
+                }
             }
 
             // Handle response errors

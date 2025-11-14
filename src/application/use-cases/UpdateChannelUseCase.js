@@ -1,6 +1,8 @@
 // @ts-check
 // Use Case: Update channel information
 
+const ContentSanitizer = require('../../infrastructure/security/ContentSanitizer');
+
 class UpdateChannelUseCase {
     constructor(channelRepository) {
         this.channelRepository = channelRepository;
@@ -18,10 +20,18 @@ class UpdateChannelUseCase {
             throw new Error('Unauthorized: You can only update your own channel');
         }
 
-        // Prepare updates
+        // Prepare updates with sanitization
         const updates = {};
-        if (name !== undefined) updates.name = name;
-        if (description !== undefined) updates.description = description;
+        if (name !== undefined) {
+            const sanitizedName = ContentSanitizer.sanitizeTitle(name, 'channelName');
+            if (!sanitizedName || sanitizedName.length === 0) {
+                throw new Error('Channel name cannot be empty');
+            }
+            updates.name = sanitizedName;
+        }
+        if (description !== undefined) {
+            updates.description = ContentSanitizer.sanitizeDescription(description, 'channelDescription');
+        }
         if (avatarUrl !== undefined) updates.avatarUrl = avatarUrl;
         if (bannerUrl !== undefined) updates.bannerUrl = bannerUrl;
 

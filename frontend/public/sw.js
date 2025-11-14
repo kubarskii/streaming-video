@@ -51,6 +51,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip unsupported request schemes (chrome-extension, etc.)
+  if (url.protocol === 'chrome-extension:' || url.protocol === 'chrome:' || url.protocol === 'moz-extension:') {
+    return;
+  }
+
   // Skip cross-origin requests (except for fonts and CDN assets)
   if (url.origin !== location.origin && !url.pathname.match(/\.(woff2?|ttf|otf)$/)) {
     return;
@@ -61,11 +66,18 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Clone the response before caching
+        // Clone the response before caching (skip unsupported schemes)
+        if (request.url && !request.url.startsWith('chrome-extension:') && !request.url.startsWith('chrome:') && !request.url.startsWith('moz-extension:')) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseToCache);
+            cache.put(request, responseToCache).catch(err => {
+              // Ignore cache errors for unsupported schemes
+              if (!err.message.includes('unsupported')) {
+                console.error('[SW] Cache put error:', err);
+              }
+            });
           });
+        }
           return response;
         })
         .catch(() => {
@@ -76,9 +88,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Video streaming - always fetch from network (don't cache)
+  // Video streaming - don't intercept, let requests pass through normally
+  // This prevents service worker from interfering with HLS streaming and CORS
   if (url.pathname.startsWith('/video')) {
-    event.respondWith(fetch(request));
+    // Don't call event.respondWith() - let the request pass through to the network
     return;
   }
 
@@ -106,11 +119,18 @@ self.addEventListener('fetch', (event) => {
           return response;
         }
 
-        // Clone the response before caching
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, responseToCache);
-        });
+        // Clone the response before caching (skip unsupported schemes)
+        if (request.url && !request.url.startsWith('chrome-extension:') && !request.url.startsWith('chrome:') && !request.url.startsWith('moz-extension:')) {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseToCache).catch(err => {
+              // Ignore cache errors for unsupported schemes
+              if (!err.message.includes('unsupported')) {
+                console.error('[SW] Cache put error:', err);
+              }
+            });
+          });
+        }
 
         return response;
       });

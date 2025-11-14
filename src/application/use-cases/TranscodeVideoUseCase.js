@@ -84,11 +84,16 @@ class TranscodeVideoUseCase {
             let transcodedVideos = [];
 
             try {
+                // Generate both MP4 and HLS streams
+                // HLS enables adaptive bitrate streaming for better user experience
+                // Always generate HLS for adaptive streaming support
+                const generateHLS = true; // Always enabled
                 transcodedVideos = await this.videoTranscoder.transcodeToMultipleQualities(
                     sourceVideoPath,
                     tempDir,
                     baseFileName,
-                    null // Progress callback removed for performance
+                    null, // Progress callback removed for performance
+                    generateHLS
                 );
             } catch (transcodeError) {
                 console.error(`❌ Transcoding failed:`, transcodeError.message);
@@ -118,6 +123,14 @@ class TranscodeVideoUseCase {
                         continue;
                     }
 
+                    // Determine content type based on file extension
+                    let contentType = 'video/mp4';
+                    if (ext === '.m3u8' || ext === '.m3u') {
+                        contentType = 'application/vnd.apple.mpegurl';
+                    } else if (ext === '.ts') {
+                        contentType = 'video/mp2t';
+                    }
+
                     // Upload to storage with retry logic
                     let uploadResult;
                     let uploadAttempts = 0;
@@ -129,7 +142,7 @@ class TranscodeVideoUseCase {
                                 transcoded.path,
                                 storageKey,
                                 {
-                                    contentType: 'video/mp4',
+                                    contentType: contentType,
                                     originalName: path.basename(transcoded.path)
                                 }
                             );
@@ -147,26 +160,30 @@ class TranscodeVideoUseCase {
                         }
                     }
 
-                    // Save quality variant to database
-                    const qualityVariant = {
-                        id: qualityId,
-                        videoId: videoId,
-                        quality: transcoded.quality,
-                        storageKey: storageKey,
-                        storageUrl: uploadResult.storageUrl,
-                        cdnUrl: uploadResult.cdnUrl,
-                        width: transcoded.width,
-                        height: transcoded.height,
-                        sizeBytes: transcoded.sizeBytes,
-                        bitrate: parseInt(transcoded.bitrate) || null,
-                        status: 'ready',
-                        createdAt: new Date(),
-                        updatedAt: new Date()
-                    };
+                    // Save quality variant to database (only for MP4 files, not HLS playlists)
+                    if (ext !== '.m3u8' && ext !== '.m3u' && ext !== '.ts') {
+                        const qualityVariant = {
+                            id: qualityId,
+                            videoId: videoId,
+                            quality: transcoded.quality,
+                            storageKey: storageKey,
+                            storageUrl: uploadResult.storageUrl,
+                            cdnUrl: uploadResult.cdnUrl,
+                            width: transcoded.width,
+                            height: transcoded.height,
+                            sizeBytes: transcoded.sizeBytes,
+                            bitrate: parseInt(transcoded.bitrate) || null,
+                            status: 'ready',
+                            createdAt: new Date(),
+                            updatedAt: new Date()
+                        };
 
-                    const savedQuality = await this.videoQualityRepository.save(qualityVariant);
-                    qualityVariants.push(savedQuality);
-                    console.log(`✅ ${transcoded.quality} saved to DB and available for playback`);
+                        const savedQuality = await this.videoQualityRepository.save(qualityVariant);
+                        qualityVariants.push(savedQuality);
+                        console.log(`✅ ${transcoded.quality} saved to DB and available for playback`);
+                    } else {
+                        console.log(`✅ HLS ${transcoded.quality} file uploaded: ${storageKey}`);
+                    }
 
                     // Clean up temp file
                     if (fs.existsSync(transcoded.path)) {
@@ -184,6 +201,138 @@ class TranscodeVideoUseCase {
                         console.error(`⚠️  Failed to cleanup temp file:`, cleanupError.message);
                     }
                 }
+            }
+
+            // Upload HLS quality playlists, master playlist, and segments if HLS was generated
+            if (tempDir && fs.existsSync(tempDir)) {
+                try {
+                    const fs = require('fs');
+                    const files = fs.readdirSync(tempDir);
+                    console.log(`📁 Checking tempDir for HLS files: ${tempDir}`);
+                    console.log(`📁 Files in tempDir: ${files.join(', ')}`);
+                    
+                    // Find master playlist
+                    const masterPlaylist = files.find(f => f === 'master.m3u8' && fs.statSync(path.join(tempDir, f)).isFile());
+                    if (masterPlaylist) {
+                        try {
+                            const masterPath = path.join(tempDir, masterPlaylist);
+                            const masterStorageKey = `${videoId}_hls.m3u8`;
+                            
+                            console.log(`📤 Uploading HLS master playlist: ${masterPlaylist} -> ${masterStorageKey}`);
+                            
+                            const masterUploadResult = await this.storageRepository.upload(
+                                masterPath,
+                                masterStorageKey,
+                                {
+                                    contentType: 'application/vnd.apple.mpegurl',
+                                    originalName: masterPlaylist
+                                }
+                            );
+                            
+                            console.log(`✅ HLS master playlist uploaded: ${masterStorageKey}`);
+                            
+                            // Update video storage key to point to master playlist if not already set
+                            if (!video.storageKey.endsWith('_hls.m3u8')) {
+                                video.storageKey = masterStorageKey;
+                                video.storageUrl = masterUploadResult.storageUrl;
+                                video.cdnUrl = masterUploadResult.cdnUrl;
+                                video.mimeType = 'application/vnd.apple.mpegurl';
+                                await this.videoRepository.update(video);
+                                console.log(`✅ Updated video storage key to master playlist: ${masterStorageKey}`);
+                            }
+                        } catch (masterError) {
+                            console.error(`❌ Failed to upload HLS master playlist:`, masterError);
+                        }
+                    } else {
+                        console.log(`⚠️  Master playlist not found in ${tempDir}`);
+                    }
+                    
+                    // Find all quality playlists (e.g., 240p.m3u8, 360p.m3u8)
+                    const qualityPlaylists = files.filter(f => 
+                        f.match(/^\d+p\.m3u8$/) && fs.statSync(path.join(tempDir, f)).isFile()
+                    );
+                    
+                    console.log(`📋 Found ${qualityPlaylists.length} quality playlists: ${qualityPlaylists.join(', ')}`);
+                    
+                    for (const playlistFile of qualityPlaylists) {
+                        try {
+                            const playlistPath = path.join(tempDir, playlistFile);
+                            
+                            // Verify file exists and has content
+                            if (!fs.existsSync(playlistPath)) {
+                                console.error(`❌ Playlist file not found: ${playlistPath}`);
+                                continue;
+                            }
+                            
+                            const fileSize = fs.statSync(playlistPath).size;
+                            if (fileSize === 0) {
+                                console.error(`❌ Playlist file is empty: ${playlistPath}`);
+                                continue;
+                            }
+                            
+                            const quality = playlistFile.replace('.m3u8', '');
+                            const storageKey = `${videoId}_${playlistFile}`;
+                            
+                            console.log(`📤 Uploading HLS quality playlist: ${playlistFile} (${fileSize} bytes) -> ${storageKey}`);
+                            
+                            const uploadResult = await this.storageRepository.upload(
+                                playlistPath,
+                                storageKey,
+                                {
+                                    contentType: 'application/vnd.apple.mpegurl',
+                                    originalName: playlistFile
+                                }
+                            );
+                            
+                            console.log(`✅ HLS quality playlist uploaded: ${storageKey} -> ${uploadResult.storageUrl || uploadResult.cdnUrl}`);
+                        } catch (playlistError) {
+                            console.error(`❌ Failed to upload HLS playlist ${playlistFile}:`, playlistError);
+                            console.error(`   Error stack:`, playlistError.stack);
+                        }
+                    }
+                    
+                    // Find all HLS segments (e.g., 240p_000.ts, 240p_001.ts)
+                    const segments = files.filter(f => 
+                        f.match(/^\d+p_\d+\.ts$/) && fs.statSync(path.join(tempDir, f)).isFile()
+                    );
+                    
+                    console.log(`📦 Found ${segments.length} HLS segments`);
+                    
+                    // Upload segments in batches to avoid overwhelming the storage
+                    const batchSize = 10;
+                    for (let i = 0; i < segments.length; i += batchSize) {
+                        const batch = segments.slice(i, i + batchSize);
+                        await Promise.all(batch.map(async (segmentFile) => {
+                            try {
+                                const segmentPath = path.join(tempDir, segmentFile);
+                                const storageKey = `${videoId}_${segmentFile}`;
+                                
+                                await this.storageRepository.upload(
+                                    segmentPath,
+                                    storageKey,
+                                    {
+                                        contentType: 'video/mp2t',
+                                        originalName: segmentFile
+                                    }
+                                );
+                            } catch (segmentError) {
+                                console.error(`❌ Failed to upload HLS segment ${segmentFile}:`, segmentError.message);
+                            }
+                        }));
+                        
+                        console.log(`📤 Uploaded batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(segments.length / batchSize)} (${Math.min(i + batchSize, segments.length)}/${segments.length} segments)`);
+                    }
+                    
+                    if (segments.length > 0) {
+                        console.log(`✅ Uploaded ${segments.length} HLS segments`);
+                    }
+                } catch (hlsUploadError) {
+                    console.error(`⚠️  Failed to upload HLS files:`, hlsUploadError);
+                    console.error(`   Error stack:`, hlsUploadError.stack);
+                    // Continue - HLS is optional
+                }
+            } else {
+                console.log(`⚠️  TempDir does not exist or is not accessible: ${tempDir}`);
             }
 
             // Generate thumbnail from the source video if video doesn't have one

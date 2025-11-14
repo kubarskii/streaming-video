@@ -2,6 +2,8 @@
 // Application: UpdatePlaylistUseCase
 // Handles updates to playlist metadata and visibility
 
+const ContentSanitizer = require('../../infrastructure/security/ContentSanitizer');
+
 class UpdatePlaylistUseCase {
     /**
      * @param {import('../../domain/repositories/IPlaylistRepository')} playlistRepository
@@ -41,11 +43,16 @@ class UpdatePlaylistUseCase {
         }
 
         if (title !== undefined) {
-            playlist.rename(title.trim());
+            const sanitizedTitle = ContentSanitizer.sanitizeTitle(title, 'playlistTitle');
+            if (!sanitizedTitle || sanitizedTitle.length === 0) {
+                throw new Error('Playlist title cannot be empty');
+            }
+            playlist.rename(sanitizedTitle);
         }
 
         if (description !== undefined) {
-            playlist.updateDescription(description !== null ? description.trim() : null);
+            const sanitizedDescription = ContentSanitizer.sanitizeDescription(description, 'playlistDescription');
+            playlist.updateDescription(sanitizedDescription);
         }
 
         if (isPublic !== undefined) {
