@@ -195,27 +195,8 @@ async function routeRequest(req, res) {
         : [];
     const origin = req.headers.origin;
 
-    if (process.env.NODE_ENV === 'development' && allowedOrigins.length === 0) {
-        if (origin) {
-            res.setHeader('Access-Control-Allow-Origin', origin);
-        } else {
-            res.setHeader('Access-Control-Allow-Origin', '*');
-        }
-    } else {
-        if (origin && allowedOrigins.includes(origin)) {
-            res.setHeader('Access-Control-Allow-Origin', origin);
-        } else if (allowedOrigins.length === 0 && origin) {
-            res.writeHead(403, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({
-                success: false,
-                error: {
-                    message: 'Origin not allowed',
-                    code: 'CORS_ERROR'
-                }
-            }));
-        }
-    }
 
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range, X-User-Id, X-User-Email, X-User-Username');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
