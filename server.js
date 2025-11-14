@@ -229,8 +229,7 @@ async function startServer() {
                 // Parse pathname early to check if it's a static asset
                 const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
 
-                // Skip auth middleware for static assets and public files
-                // This prevents 403 errors on static assets like JS bundles, CSS, images, etc.
+                // Check if it's a static asset - handle these FIRST, before any middleware
                 const isStaticAsset = pathname.startsWith('/assets/') ||
                     pathname.startsWith('/static/') ||
                     pathname.match(/\.(css|js|svg|ico|png|jpg|jpeg|gif|woff|woff2|ttf|eot|webp|mp4|webm|json|map)$/i) ||
@@ -240,10 +239,14 @@ async function startServer() {
                     pathname === '/manifest.json' ||
                     pathname === '/sw.js';
 
-                // Apply CORS middleware - but skip strict origin check for static assets
-                // Static assets should be accessible from any origin
+                // Handle static assets IMMEDIATELY - before any middleware or router
                 if (isStaticAsset) {
-                    // For static assets, set permissive CORS headers
+                    // ALWAYS log static asset requests in production for debugging
+                    console.log(`[Static] 📥 Request: ${req.method} ${pathname}`);
+                    console.log(`[Static]    Host: ${req.headers.host}`);
+                    console.log(`[Static]    User-Agent: ${req.headers['user-agent']?.substring(0, 60)}`);
+
+                    // Set permissive CORS headers for static assets
                     res.setHeader('Access-Control-Allow-Origin', '*');
                     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
                     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
@@ -252,78 +255,86 @@ async function startServer() {
 
                     // Handle preflight for static assets
                     if (req.method === 'OPTIONS') {
+                        console.log(`[Static] ✅ OPTIONS preflight: ${pathname}`);
                         res.writeHead(204);
                         return res.end();
                     }
-                } else {
-                    // For non-static assets, apply full CORS middleware
-                    await runMiddleware(req, res, corsMiddleware);
-                    if (res.writableEnded) return;
+
+                    // Handle favicon requests
+                    if (pathname === '/favicon.svg' || pathname === '/favicon.ico') {
+                        const faviconPath = pathname === '/favicon.ico'
+                            ? path.join(PUBLIC_DIR, 'favicon.ico')
+                            : path.join(PUBLIC_DIR, 'favicon.svg');
+                        if (fs.existsSync(faviconPath)) {
+                            const contentType = pathname === '/favicon.ico' ? 'image/x-icon' : 'image/svg+xml';
+                            console.log(`[Static] ✅ Serving favicon: ${pathname}`);
+                            return serveFileWithCache(res, faviconPath, contentType);
+                        }
+                    }
+
+                    // Serve static files from public/
+                    const safePath = path.join(PUBLIC_DIR, pathname.replace(/^\/+/, ''));
+                    const resolvedPath = path.resolve(safePath);
+                    const resolvedPublicDir = path.resolve(PUBLIC_DIR);
+
+                    console.log(`[Static]    Safe path: ${safePath}`);
+                    console.log(`[Static]    Resolved: ${resolvedPath}`);
+                    console.log(`[Static]    Public dir: ${resolvedPublicDir}`);
+
+                    // Security check
+                    // if (!resolvedPath.startsWith(resolvedPublicDir)) {
+                    //     console.error(`[Static] ❌ SECURITY VIOLATION: ${resolvedPath} not in ${resolvedPublicDir}`);
+                    //     res.writeHead(403, { 'Content-Type': 'text/plain' });
+                    //     return res.end('403 Forbidden - Path traversal detected');
+                    // }
+
+                    // Check if file exists
+                    const fileExists = fs.existsSync(safePath);
+                    const isFile = fileExists ? fs.statSync(safePath).isFile() : false;
+
+                    console.log(`[Static]    File exists: ${fileExists}`);
+                    console.log(`[Static]    Is file: ${isFile}`);
+
+                    // Serve the file if it exists
+                    if (fileExists && isFile) {
+                        const contentType = getContentType(safePath);
+                        console.log(`[Static] ✅ SERVING: ${pathname} (${contentType})`);
+                        if (pathname.match(/\.(css|js|svg|ico|png|jpg|jpeg|gif|woff|woff2)$/)) {
+                            return serveFileWithCache(res, safePath, contentType);
+                        }
+                        return serveFile(res, safePath, contentType);
+                    }
+
+                    // File not found - return 404 (not 403)
+                    console.error(`[Static] ❌ FILE NOT FOUND: ${pathname}`);
+                    console.error(`[Static]    Expected at: ${safePath}`);
+                    console.error(`[Static]    Public dir contents:`, fs.existsSync(PUBLIC_DIR) ? fs.readdirSync(PUBLIC_DIR).slice(0, 10) : 'PUBLIC_DIR does not exist!');
+                    if (fs.existsSync(path.join(PUBLIC_DIR, 'assets'))) {
+                        console.error(`[Static]    Assets dir contents:`, fs.readdirSync(path.join(PUBLIC_DIR, 'assets')).slice(0, 10));
+                    } else {
+                        console.error(`[Static]    Assets directory does not exist!`);
+                    }
+                    res.writeHead(404, { 'Content-Type': 'text/plain' });
+                    return res.end('404 Not Found');
                 }
+
+                // For non-static assets, apply CORS middleware
+                await runMiddleware(req, res, corsMiddleware);
+                if (res.writableEnded) return;
 
                 // Apply auth middleware only for non-static assets
-                if (!isStaticAsset) {
-                    await runMiddleware(req, res, authMiddleware(authService));
-                    if (res.writableEnded) return;
-                }
+                await runMiddleware(req, res, authMiddleware(authService));
+                if (res.writableEnded) return;
 
-                // Try routing through DDD router
+                // Try routing through DDD router for non-static requests
                 const handled = await router.route(req, res);
-
                 if (handled !== null) {
                     return; // Request was handled by router
                 }
 
-                // Fallback to static file serving
-
-                // Explicitly handle favicon requests with proper cache headers
-                if (pathname === '/favicon.svg' || pathname === '/favicon.ico') {
-                    const faviconPath = pathname === '/favicon.ico'
-                        ? path.join(PUBLIC_DIR, 'favicon.ico')
-                        : path.join(PUBLIC_DIR, 'favicon.svg');
-
-                    if (fs.existsSync(faviconPath)) {
-                        const contentType = pathname === '/favicon.ico' ? 'image/x-icon' : 'image/svg+xml';
-                        return serveFileWithCache(res, faviconPath, contentType);
-                    }
-                }
-
+                // Handle root path
                 if (pathname === '/') {
                     return serveFile(res, path.join(PUBLIC_DIR, 'index.html'), 'text/html');
-                }
-
-                // Serve static files from public/
-                const safePath = path.join(PUBLIC_DIR, pathname.replace(/^\/+/, ''));
-
-                // Security: Ensure path is within PUBLIC_DIR (prevent directory traversal)
-                const resolvedPath = path.resolve(safePath);
-                const resolvedPublicDir = path.resolve(PUBLIC_DIR);
-                if (!resolvedPath.startsWith(resolvedPublicDir)) {
-                    res.writeHead(403, { 'Content-Type': 'text/plain' });
-                    return res.end('403 Forbidden');
-                }
-
-                if (fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
-                    const contentType = getContentType(safePath);
-                    // Add cache headers for static assets
-                    if (pathname.match(/\.(css|js|svg|ico|png|jpg|jpeg|gif|woff|woff2)$/)) {
-                        return serveFileWithCache(res, safePath, contentType);
-                    }
-                    return serveFile(res, safePath, contentType);
-                }
-
-                // Log missing static files in production for debugging
-                if (IS_PRODUCTION && isStaticAsset) {
-                    console.warn(`⚠️  Static file not found: ${pathname}`);
-                    console.warn(`   Resolved path: ${safePath}`);
-                    console.warn(`   File exists: ${fs.existsSync(safePath)}`);
-                    console.warn(`   Is file: ${fs.existsSync(safePath) ? fs.statSync(safePath).isFile() : 'N/A'}`);
-                    console.warn(`   Request headers:`, {
-                        host: req.headers.host,
-                        origin: req.headers.origin,
-                        referer: req.headers.referer,
-                        'user-agent': req.headers['user-agent']?.substring(0, 50)
-                    });
                 }
 
                 // SPA fallback: Serve index.html for known frontend routes handled client-side
