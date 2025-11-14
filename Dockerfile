@@ -33,10 +33,16 @@ RUN npm ci && \
     npm run build -- --outDir ./dist
 
 # Copy built frontend to root public folder
-RUN cp -r dist /app/public
+# Copy contents of dist to public (not the dist folder itself)
+RUN mkdir -p /app/public && \
+    cp -r dist/* /app/public/ && \
+    chmod -R 755 /app/public
 
 # Debug: Show what was built
-RUN echo "Built files:" && ls -la /app/public/assets/
+RUN echo "=== Built files in /app/public ===" && \
+    ls -la /app/public/ && \
+    echo "=== Assets directory ===" && \
+    ls -la /app/public/assets/ || echo "No assets directory found"
 
 # Install backend dependencies
 WORKDIR /app

@@ -18,6 +18,13 @@ import {
 } from '../../../shared/lib/hooks';
 import { useFullscreenHeader } from '../../../features/video-player/hooks';
 import {
+    useVideoPlaybackState,
+    useUIVisibilityState,
+    useUserPreferencesState,
+    useInteractionState,
+    useUpNextState,
+} from './hooks';
+import {
     formatTime,
     getStorageNumber,
     setStorageItem,
@@ -140,47 +147,12 @@ export const VideoPlayer = React.forwardRef(({
     const [playerState, sendPlayerEvent] = useStateMachine(videoPlayerFSMConfig);
     const isPlaying = isPlayingState(playerState);
 
-    // Native video state tracking (directly from video element)
-    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-    const [isVideoBuffering, setIsVideoBuffering] = useState(false);
-    const [isVideoLoading, setIsVideoLoading] = useState(true);
-
-    // State
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [volume, setVolume] = useState(getStorageNumber(PLAYER_CONSTANTS.STORAGE_KEYS.VOLUME, PLAYER_CONSTANTS.VOLUME_DEFAULT));
-    const [isMuted, setIsMuted] = useState(false);
-    // Initially hide controls if autoPlay is true to prevent overlay conflicts on initial render
-    const [showControls, setShowControls] = useState(!autoPlay);
-    const [showSettings, setShowSettings] = useState(false);
-    const [playbackRate, setPlaybackRate] = useState(PLAYER_CONSTANTS.PLAYBACK_RATE_DEFAULT);
-    const [showPlaybackRates, setShowPlaybackRates] = useState(false);
-    const [showQualities, setShowQualities] = useState(false);
-    const [selectedQuality, setSelectedQuality] = useState(null);
-    const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
-    const [isDragging, setIsDragging] = useState(false);
-    const [hoverTime, setHoverTime] = useState(null);
-    const [hoverPosition, setHoverPosition] = useState(0);
-    const [wasPlayingBeforeDrag, setWasPlayingBeforeDrag] = useState(false);
-
-    // Seek overlay state
-    const [seekOverlayState, setSeekOverlayState] = useState({
-        visible: false,
-        direction: 'forward',
-        count: 1,
-        x: 0,
-        y: 0,
-    });
-
-    // Volume indicator state
-    const [volumeIndicatorVisible, setVolumeIndicatorVisible] = useState(false);
-
-    // Volume slider expand state (for mobile)
-    const [volumeSliderExpanded, setVolumeSliderExpanded] = useState(false);
-
-    // Up Next overlay state
-    const [showUpNext, setShowUpNext] = useState(false);
-    const [upNextCountdown, setUpNextCountdown] = useState(null);
+    // Grouped state management hooks
+    const playback = useVideoPlaybackState();
+    const ui = useUIVisibilityState(!autoPlay);
+    const preferences = useUserPreferencesState();
+    const interaction = useInteractionState();
+    const upNext = useUpNextState();
     const countdownIntervalRef = useRef(null);
 
     // Native fullscreen API (like F11)
@@ -247,16 +219,16 @@ export const VideoPlayer = React.forwardRef(({
 
     // Controls visibility
     const showControlsTemporarily = useCallback(() => {
-        setShowControls(true);
+        ui.setShowControls(true);
         if (controlsTimeoutRef.current) {
             clearTimeout(controlsTimeoutRef.current);
         }
         controlsTimeoutRef.current = setTimeout(() => {
             if (isPlaying) {
-                setShowControls(false);
+                ui.setShowControls(false);
             }
         }, PLAYER_CONSTANTS.CONTROLS_AUTO_HIDE_DELAY);
-    }, [isPlaying]);
+    }, [isPlaying, ui]);
 
     const handleMouseMove = useCallback(() => {
         showControlsTemporarily();
@@ -294,15 +266,15 @@ export const VideoPlayer = React.forwardRef(({
     const seekTo = useCallback((time) => {
         if (!videoRef.current) return;
         videoRef.current.currentTime = time;
-        setCurrentTime(time);
-    }, []);
+        playback.setCurrentTime(time);
+    }, [playback]);
 
     const seekForward = useCallback((seconds = PLAYER_CONSTANTS.SEEK_SHORT) => {
         if (!videoRef.current) return;
-        const newTime = Math.min(videoRef.current.currentTime + seconds, duration);
+        const newTime = Math.min(videoRef.current.currentTime + seconds, playback.duration);
         seekTo(newTime);
         showControlsTemporarily();
-    }, [duration, seekTo, showControlsTemporarily]);
+    }, [playback.duration, seekTo, showControlsTemporarily]);
 
     const seekBackward = useCallback((seconds = PLAYER_CONSTANTS.SEEK_SHORT) => {
         if (!videoRef.current) return;
@@ -317,44 +289,43 @@ export const VideoPlayer = React.forwardRef(({
         const vol = Math.max(PLAYER_CONSTANTS.VOLUME_MIN, Math.min(PLAYER_CONSTANTS.VOLUME_MAX, newVolume));
 
         // Update volume immediately with no debounce
-        setVolume(vol);
+        preferences.setVolume(vol);
         videoRef.current.volume = vol / 100;
-        setStorageItem(PLAYER_CONSTANTS.STORAGE_KEYS.VOLUME, vol);
 
-        if (vol > 0 && isMuted) {
-            setIsMuted(false);
+        if (vol > 0 && preferences.isMuted) {
+            preferences.setMuted(false);
             videoRef.current.muted = false;
         }
 
         // Show indicator immediately - the indicator will handle its own hide timer
-        setVolumeIndicatorVisible(true);
-    }, [isMuted]);
+        ui.setVolumeIndicatorVisible(true);
+    }, [preferences, ui]);
 
     const increaseVolume = useCallback(() => {
-        handleVolumeChange(volume + PLAYER_CONSTANTS.VOLUME_STEP);
-    }, [volume, handleVolumeChange]);
+        handleVolumeChange(preferences.volume + PLAYER_CONSTANTS.VOLUME_STEP);
+    }, [preferences.volume, handleVolumeChange]);
 
     const decreaseVolume = useCallback(() => {
-        handleVolumeChange(volume - PLAYER_CONSTANTS.VOLUME_STEP);
-    }, [volume, handleVolumeChange]);
+        handleVolumeChange(preferences.volume - PLAYER_CONSTANTS.VOLUME_STEP);
+    }, [preferences.volume, handleVolumeChange]);
 
     const toggleMute = useCallback(() => {
         if (!videoRef.current) return;
-        const newMuted = !isMuted;
-        setIsMuted(newMuted);
+        const newMuted = !preferences.isMuted;
+        preferences.setMuted(newMuted);
         videoRef.current.muted = newMuted;
         showControlsTemporarily();
-        setVolumeIndicatorVisible(true);
-    }, [isMuted, showControlsTemporarily]);
+        ui.setVolumeIndicatorVisible(true);
+    }, [preferences, ui, showControlsTemporarily]);
 
     // Playback rate
     const handlePlaybackRateChange = useCallback((rate) => {
         if (!videoRef.current) return;
         videoRef.current.playbackRate = rate;
-        setPlaybackRate(rate);
-        setShowPlaybackRates(false);
-        setShowSettings(false);
-    }, []);
+        preferences.setPlaybackRate(rate);
+        ui.setShowPlaybackRates(false);
+        ui.setShowSettings(false);
+    }, [preferences, ui]);
 
     // Quality switching
     const handleQualityChange = useCallback((quality) => {
@@ -363,9 +334,9 @@ export const VideoPlayer = React.forwardRef(({
         const currentTimeBeforeSwitch = videoRef.current.currentTime;
         const wasPlaying = !videoRef.current.paused;
 
-        setSelectedQuality(quality);
-        setShowQualities(false);
-        setShowSettings(false);
+        preferences.setSelectedQuality(quality);
+        ui.setShowQualities(false);
+        ui.setShowSettings(false);
 
         if (onQualityChange) {
             const handleLoadedData = () => {
@@ -385,84 +356,79 @@ export const VideoPlayer = React.forwardRef(({
 
     // Progress bar handlers
     const handleProgressMouseMove = useCallback((e) => {
-        if (!progressBarRef.current || !duration) return;
+        if (!progressBarRef.current || !playback.duration) return;
         const rect = progressBarRef.current.getBoundingClientRect();
-        updateProgressBarHover(e, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, setHoverTime, setHoverPosition);
-    }, [duration]);
+        updateProgressBarHover(e, rect, playback.duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, interaction.setHoverTime, interaction.setHoverPosition);
+    }, [playback.duration, interaction]);
 
     const handleProgressMouseLeave = useCallback(() => {
-        if (!isDragging) {
-            setHoverTime(null);
-            setHoverPosition(0);
+        if (!interaction.isDragging) {
+            interaction.clearHover();
         }
-    }, [isDragging]);
+    }, [interaction]);
 
     const handleProgressMouseDown = useCallback((e) => {
-        if (!videoRef.current || !duration || !progressBarRef.current) return;
+        if (!videoRef.current || !playback.duration || !progressBarRef.current) return;
         e.preventDefault();
-        setIsDragging(true);
+        interaction.startDrag(!videoRef.current.paused);
         isDraggingRef.current = true;
-        setWasPlayingBeforeDrag(!videoRef.current.paused);
 
         const rect = progressBarRef.current.getBoundingClientRect();
-        const { time } = getProgressBarPosition(e, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
+        const { time } = getProgressBarPosition(e, rect, playback.duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
         seekTo(time);
-    }, [duration, seekTo]);
+    }, [playback.duration, seekTo, interaction]);
 
     const handleProgressChange = useCallback((e) => {
-        if (isDragging || !progressBarRef.current) return;
+        if (interaction.isDragging || !progressBarRef.current) return;
         const rect = progressBarRef.current.getBoundingClientRect();
-        const { time } = getProgressBarPosition(e, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
+        const { time } = getProgressBarPosition(e, rect, playback.duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
         seekTo(time);
-    }, [isDragging, duration, seekTo]);
+    }, [interaction.isDragging, playback.duration, seekTo]);
 
     // Touch handlers for progress bar (mobile support)
     const handleProgressTouchStart = useCallback((e) => {
-        if (!videoRef.current || !duration || !progressBarRef.current) return;
+        if (!videoRef.current || !playback.duration || !progressBarRef.current) return;
         // Note: Don't preventDefault here - React's onTouchStart is passive
-        setIsDragging(true);
+        interaction.startDrag(!videoRef.current.paused);
         isDraggingRef.current = true;
-        setWasPlayingBeforeDrag(!videoRef.current.paused);
 
         const touch = e.touches[0];
         const rect = progressBarRef.current.getBoundingClientRect();
         const touchEvent = { clientX: touch.clientX, clientY: touch.clientY };
-        const { time } = getProgressBarPosition(touchEvent, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
+        const { time } = getProgressBarPosition(touchEvent, rect, playback.duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING);
         seekTo(time);
-    }, [duration, seekTo]);
+    }, [playback.duration, seekTo, interaction]);
 
     const handleProgressTouchMove = useCallback((e) => {
-        if (!isDragging || !progressBarRef.current || !duration) return;
+        if (!interaction.isDragging || !progressBarRef.current || !playback.duration) return;
         e.preventDefault();
 
         const touch = e.touches[0];
         const rect = progressBarRef.current.getBoundingClientRect();
         const touchEvent = { clientX: touch.clientX, clientY: touch.clientY };
-        const time = updateProgressBarHover(touchEvent, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, setHoverTime, setHoverPosition);
+        const time = updateProgressBarHover(touchEvent, rect, playback.duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, interaction.setHoverTime, interaction.setHoverPosition);
 
         if (videoRef.current) {
             seekTo(time);
         }
-    }, [isDragging, duration, seekTo]);
+    }, [interaction, playback.duration, seekTo]);
 
     const handleProgressTouchEnd = useCallback(() => {
-        if (!isDragging) return;
-        setIsDragging(false);
+        if (!interaction.isDragging) return;
+        interaction.endDrag();
         isDraggingRef.current = false;
-        setHoverTime(null);
-        setHoverPosition(0);
-    }, [isDragging]);
+    }, [interaction]);
 
 
     // Handle seek overlay animation end
     const handleSeekOverlayEnd = useCallback(() => {
-        setSeekOverlayState(prev => ({ ...prev, visible: false }));
-    }, []);
+        interaction.setSeekOverlay({ visible: false });
+    }, [interaction]);
 
     // Handle volume indicator hide
     const handleVolumeIndicatorHide = useCallback(() => {
-        setVolumeIndicatorVisible(false);
-    }, []);
+        ui.setVolumeIndicatorVisible(false);
+    }, [ui]);
 
 
     // Keyboard shortcuts
@@ -478,8 +444,8 @@ export const VideoPlayer = React.forwardRef(({
         onFullscreen: toggleFullscreen,
         onNextVideo: onNext,
         onPreviousVideo: onPrevious,
-        onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
-        onEscape: () => setShowKeyboardShortcuts(false),
+        onShowHelp: () => ui.setShowKeyboardShortcuts(!ui.showKeyboardShortcuts),
+        onEscape: () => ui.setShowKeyboardShortcuts(false),
     }, true);
 
     // Video events
@@ -488,14 +454,14 @@ export const VideoPlayer = React.forwardRef(({
             const video = videoRef.current;
             if (!video) return;
 
-            setDuration(video.duration);
-            setIsVideoLoading(false);
+            playback.setDuration(video.duration);
+            playback.setIsVideoLoading(false);
             sendPlayerEvent(PLAYER_EVENTS.LOADED_METADATA);
 
             // Show controls once metadata is loaded (only if NOT autoPlay)
             // If autoPlay, controls will show on mouse move or when user interacts
             if (!autoPlay) {
-                setShowControls(true);
+                ui.setShowControls(true);
             }
 
             // Restore position
@@ -507,15 +473,15 @@ export const VideoPlayer = React.forwardRef(({
             }
         },
         onLoadedData: () => {
-            setIsVideoLoading(false);
-            setIsVideoBuffering(false);
+            playback.setIsVideoLoading(false);
+            playback.setIsVideoBuffering(false);
         },
         onTimeUpdate: () => {
             const video = videoRef.current;
             if (!video) return;
 
             const time = video.currentTime;
-            setCurrentTime(time);
+            playback.setCurrentTime(time);
 
             // Don't save position while dragging - only during normal playback
             // Use ref to avoid recreating this callback on every drag state change
@@ -524,8 +490,8 @@ export const VideoPlayer = React.forwardRef(({
             }
 
             // If we're getting time updates, we're not buffering
-            if (isVideoBuffering) {
-                setIsVideoBuffering(false);
+            if (playback.isVideoBuffering) {
+                playback.setIsVideoBuffering(false);
             }
 
             if (onTimeUpdate) {
@@ -533,37 +499,37 @@ export const VideoPlayer = React.forwardRef(({
             }
         },
         onPlay: () => {
-            setIsVideoPlaying(true);
-            setIsVideoBuffering(false);
+            playback.setIsVideoPlaying(true);
+            playback.setIsVideoBuffering(false);
             sendPlayerEvent(PLAYER_EVENTS.PLAY);
         },
         onPause: () => {
-            setIsVideoPlaying(false);
+            playback.setIsVideoPlaying(false);
             sendPlayerEvent(PLAYER_EVENTS.PAUSE);
         },
         onWaiting: () => {
-            setIsVideoBuffering(true);
+            playback.setIsVideoBuffering(true);
             sendPlayerEvent(PLAYER_EVENTS.WAITING);
         },
         onCanPlay: () => {
-            setIsVideoBuffering(false);
-            setIsVideoLoading(false);
+            playback.setIsVideoBuffering(false);
+            playback.setIsVideoLoading(false);
             sendPlayerEvent(PLAYER_EVENTS.CAN_PLAY);
         },
         onCanPlayThrough: () => {
-            setIsVideoBuffering(false);
-            setIsVideoLoading(false);
+            playback.setIsVideoBuffering(false);
+            playback.setIsVideoLoading(false);
         },
         onSeeking: () => {
-            setIsVideoBuffering(true);
+            playback.setIsVideoBuffering(true);
             sendPlayerEvent(PLAYER_EVENTS.SEEK);
         },
         onSeeked: () => {
-            setIsVideoBuffering(false);
+            playback.setIsVideoBuffering(false);
             sendPlayerEvent(PLAYER_EVENTS.SEEKED);
         },
         onEnded: () => {
-            setIsVideoPlaying(false);
+            playback.setIsVideoPlaying(false);
             clearVideoPosition();
             sendPlayerEvent(PLAYER_EVENTS.ENDED);
 
@@ -580,8 +546,8 @@ export const VideoPlayer = React.forwardRef(({
             }
         },
         onError: () => {
-            setIsVideoLoading(false);
-            setIsVideoBuffering(false);
+            playback.setIsVideoLoading(false);
+            playback.setIsVideoBuffering(false);
             sendPlayerEvent(PLAYER_EVENTS.ERROR);
             if (onError) {
                 onError();
@@ -683,9 +649,9 @@ export const VideoPlayer = React.forwardRef(({
         if (!video) return;
 
         // Reset loading states when source changes
-        setIsVideoLoading(true);
-        setIsVideoBuffering(false);
-        setIsVideoPlaying(false);
+        playback.setIsVideoLoading(true);
+        playback.setIsVideoBuffering(false);
+        playback.setIsVideoPlaying(false);
 
         // Cleanup previous HLS instance
         if (hlsRef.current) {
@@ -792,7 +758,7 @@ export const VideoPlayer = React.forwardRef(({
             hls.attachMedia(video);
 
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                setIsVideoLoading(false);
+                playback.setIsVideoLoading(false);
                 if (autoPlay) {
                     const playPromise = video.play();
                     if (playPromise !== undefined) {
@@ -818,7 +784,7 @@ export const VideoPlayer = React.forwardRef(({
                             console.error('HLS fatal error, destroying instance');
                             hls.destroy();
                             hlsRef.current = null;
-                            setIsVideoLoading(false);
+                            playback.setIsVideoLoading(false);
                             if (onError) {
                                 onError();
                             }
@@ -868,13 +834,13 @@ export const VideoPlayer = React.forwardRef(({
 
     // Drag handling (mouse and touch)
     useEffect(() => {
-        if (!isDragging) return;
+        if (!interaction.isDragging) return;
 
         const handleMouseMove = (e) => {
-            if (!progressBarRef.current || !duration) return;
+            if (!progressBarRef.current || !playback.duration) return;
 
             const rect = progressBarRef.current.getBoundingClientRect();
-            const time = updateProgressBarHover(e, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, setHoverTime, setHoverPosition);
+            const time = updateProgressBarHover(e, rect, playback.duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, interaction.setHoverTime, interaction.setHoverPosition);
 
             if (videoRef.current) {
                 seekTo(time);
@@ -882,12 +848,12 @@ export const VideoPlayer = React.forwardRef(({
         };
 
         const handleTouchMove = (e) => {
-            if (!progressBarRef.current || !duration) return;
+            if (!progressBarRef.current || !playback.duration) return;
 
             const touch = e.touches[0];
             const rect = progressBarRef.current.getBoundingClientRect();
             const touchEvent = { clientX: touch.clientX, clientY: touch.clientY };
-            const time = updateProgressBarHover(touchEvent, rect, duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, setHoverTime, setHoverPosition);
+            const time = updateProgressBarHover(touchEvent, rect, playback.duration, PLAYER_CONSTANTS.PROGRESS_BAR_PADDING, interaction.setHoverTime, interaction.setHoverPosition);
 
             if (videoRef.current) {
                 seekTo(time);
@@ -895,17 +861,13 @@ export const VideoPlayer = React.forwardRef(({
         };
 
         const handleMouseUp = () => {
-            setIsDragging(false);
+            interaction.endDrag();
             isDraggingRef.current = false;
-            setHoverTime(null);
-            setHoverPosition(0);
         };
 
         const handleTouchEnd = () => {
-            setIsDragging(false);
+            interaction.endDrag();
             isDraggingRef.current = false;
-            setHoverTime(null);
-            setHoverPosition(0);
         };
 
         document.addEventListener('mousemove', handleMouseMove);
@@ -919,7 +881,7 @@ export const VideoPlayer = React.forwardRef(({
             document.removeEventListener('touchmove', handleTouchMove);
             document.removeEventListener('touchend', handleTouchEnd);
         };
-    }, [isDragging, duration, seekTo]);
+    }, [interaction.isDragging, playback.duration, seekTo, interaction]);
 
     // Ambient light effect
     useEffect(() => {
@@ -1039,8 +1001,7 @@ export const VideoPlayer = React.forwardRef(({
         // Start countdown if next video available and in fullscreen
         if (nextVideo && onNext && isFullscreen && canPlayNext) {
             let countdown = PLAYER_CONSTANTS.UP_NEXT_AUTOPLAY_COUNTDOWN; // 5 seconds
-            setShowUpNext(true);
-            setUpNextCountdown(countdown);
+            upNext.startCountdown(countdown);
 
             // Clear any existing interval
             if (countdownIntervalRef.current) {
@@ -1055,17 +1016,16 @@ export const VideoPlayer = React.forwardRef(({
                         clearInterval(countdownIntervalRef.current);
                         countdownIntervalRef.current = null;
                     }
-                    setShowUpNext(false);
-                    setUpNextCountdown(null);
+                    upNext.stopCountdown();
                     if (onNext) {
                         onNext();
                     }
                 } else {
-                    setUpNextCountdown(countdown);
+                    upNext.setCountdown(countdown);
                 }
             }, 1000);
         }
-    }, [nextVideo, onNext, isFullscreen, canPlayNext]);
+    }, [nextVideo, onNext, isFullscreen, canPlayNext, upNext]);
 
     // Handle Up Next actions
     const handleUpNextPlayNow = useCallback(() => {
@@ -1073,25 +1033,23 @@ export const VideoPlayer = React.forwardRef(({
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
         }
-        setShowUpNext(false);
-        setUpNextCountdown(null);
+        upNext.stopCountdown();
         if (onNext) {
             onNext();
         }
-    }, [onNext]);
+    }, [onNext, upNext]);
 
     const handleUpNextCancel = useCallback(() => {
         if (countdownIntervalRef.current) {
             clearInterval(countdownIntervalRef.current);
             countdownIntervalRef.current = null;
         }
-        setShowUpNext(false);
-        setUpNextCountdown(null);
-    }, []);
+        upNext.stopCountdown();
+    }, [upNext]);
 
     // Close settings dropdown when clicking outside
     useEffect(() => {
-        if (!showSettings) return;
+        if (!ui.showSettings) return;
 
         const handleClickOutside = (event) => {
             // Check if click is outside both the button and dropdown
@@ -1104,9 +1062,7 @@ export const VideoPlayer = React.forwardRef(({
                 !referenceEl.contains(event.target) &&
                 !floatingEl.contains(event.target)
             ) {
-                setShowSettings(false);
-                setShowPlaybackRates(false);
-                setShowQualities(false);
+                ui.closeSettings();
             }
         };
 
@@ -1122,7 +1078,7 @@ export const VideoPlayer = React.forwardRef(({
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('touchstart', handleClickOutside);
         };
-    }, [showSettings, floatingRefs]);
+    }, [ui.showSettings, floatingRefs, ui]);
 
     // Cleanup countdown interval on unmount
     useEffect(() => {
@@ -1139,7 +1095,7 @@ export const VideoPlayer = React.forwardRef(({
     }));
 
     // Calculate progress percentage
-    const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+    const progressPercentage = playback.duration > 0 ? (playback.currentTime / playback.duration) * 100 : 0;
 
 
     return (
@@ -1149,10 +1105,8 @@ export const VideoPlayer = React.forwardRef(({
                 className={`${styles.player} video-player-substrate ${isFullscreen ? 'fullscreen' : ''} ${className}`}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => {
-                    if (isPlaying) setShowControls(false);
-                    setShowSettings(false);
-                    setShowPlaybackRates(false);
-                    setShowQualities(false);
+                    if (isPlaying) ui.setShowControls(false);
+                    ui.closeAll();
                 }}
                 onTouchStart={handleMouseMove}
             >
@@ -1179,10 +1133,10 @@ export const VideoPlayer = React.forwardRef(({
                     onSeekForward={() => seekForward(PLAYER_CONSTANTS.SEEK_LONG)}
                     onTogglePlay={togglePlayPause}
                     onToggleFullscreen={toggleFullscreen}
-                    showControls={showControls}
+                    showControls={ui.showControls}
                     onShowControls={showControlsTemporarily}
                     onSeekFeedback={(direction, count, x, y) => {
-                        setSeekOverlayState({
+                        interaction.setSeekOverlay({
                             visible: true,
                             direction,
                             count,
@@ -1194,31 +1148,31 @@ export const VideoPlayer = React.forwardRef(({
 
                 {/* Seek Overlay */}
                 <SeekOverlay
-                    direction={seekOverlayState.direction}
+                    direction={interaction.seekOverlay.direction}
                     amount={PLAYER_CONSTANTS.SEEK_LONG}
-                    count={seekOverlayState.count}
-                    visible={seekOverlayState.visible}
-                    x={seekOverlayState.x}
-                    y={seekOverlayState.y}
+                    count={interaction.seekOverlay.count}
+                    visible={interaction.seekOverlay.visible}
+                    x={interaction.seekOverlay.x}
+                    y={interaction.seekOverlay.y}
                     onAnimationEnd={handleSeekOverlayEnd}
                 />
 
                 {/* Buffering Overlay */}
-                <BufferingOverlay visible={isVideoBuffering} />
+                <BufferingOverlay visible={playback.isVideoBuffering} />
 
                 {/* Volume Indicator */}
                 <VolumeIndicator
-                    volume={volume}
-                    muted={isMuted}
-                    visible={volumeIndicatorVisible}
+                    volume={preferences.volume}
+                    muted={preferences.isMuted}
+                    visible={ui.volumeIndicatorVisible}
                     onHide={handleVolumeIndicatorHide}
                 />
 
                 {/* Up Next Overlay (only in fullscreen with countdown) */}
-                {upNextCountdown !== null && showUpNext && isFullscreen && (
+                {upNext.upNextCountdown !== null && upNext.showUpNext && isFullscreen && (
                     <UpNextOverlay
                         visible={true}
-                        countdown={upNextCountdown}
+                        countdown={upNext.upNextCountdown}
                         nextVideo={nextVideo}
                         onCancel={handleUpNextCancel}
                         onPlayNow={handleUpNextPlayNow}
@@ -1226,7 +1180,7 @@ export const VideoPlayer = React.forwardRef(({
                 )}
 
                 {/* Large Play Button Overlay - Show when paused and not buffering/loading */}
-                {!isVideoPlaying && !isVideoBuffering && !isVideoLoading && (
+                {!playback.isVideoPlaying && !playback.isVideoBuffering && !playback.isVideoLoading && (
                     <div className={styles.playOverlay}>
                         <div className={styles.playButtonLarge}>
                             <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
@@ -1237,17 +1191,17 @@ export const VideoPlayer = React.forwardRef(({
                 )}
 
                 {/* Loading Indicator - Show only during initial load */}
-                {isVideoLoading && (
+                {playback.isVideoLoading && (
                     <div className={styles.loadingIndicator}>
                         <Spinner />
                     </div>
                 )}
 
                 {/* Controls */}
-                <div className={`${styles.videoControls} ${showControls ? styles.show : ''}`}>
+                <div className={`${styles.videoControls} ${ui.showControls ? styles.show : ''}`}>
                     {/* Progress Bar */}
                     <div
-                        className={`${styles.progressBarContainer} ${isDragging ? styles.dragging : ''}`}
+                        className={`${styles.progressBarContainer} ${interaction.isDragging ? styles.dragging : ''}`}
                         ref={progressBarRef}
                         onClick={handleProgressChange}
                         onMouseMove={handleProgressMouseMove}
@@ -1257,9 +1211,9 @@ export const VideoPlayer = React.forwardRef(({
                         onTouchEnd={handleProgressTouchEnd}
                     >
                         {/* Time preview tooltip */}
-                        {(hoverTime !== null || isDragging) && (
-                            <Tooltip x={hoverPosition} y={32} visible={true}>
-                                {formatTime(hoverTime || 0)}
+                        {(interaction.hoverTime !== null || interaction.isDragging) && (
+                            <Tooltip x={interaction.hoverPosition} y={32} visible={true}>
+                                {formatTime(interaction.hoverTime || 0)}
                             </Tooltip>
                         )}
                         <div className={styles.progressBarBackground}>
@@ -1271,11 +1225,11 @@ export const VideoPlayer = React.forwardRef(({
                                 }}
                             />
                             {/* Preview indicator */}
-                            {(hoverTime !== null || isDragging) && (
+                            {(interaction.hoverTime !== null || interaction.isDragging) && (
                                 <div
                                     className={styles.progressBarPreview}
                                     style={{
-                                        left: `${hoverPosition}px`,
+                                        left: `${interaction.hoverPosition}px`,
                                         backgroundColor: primaryColor,
                                     }}
                                 />
@@ -1302,18 +1256,18 @@ export const VideoPlayer = React.forwardRef(({
 
                             {/* Volume Control */}
                             <VolumeControl
-                                volume={volume}
-                                muted={isMuted}
+                                volume={preferences.volume}
+                                muted={preferences.isMuted}
                                 onVolumeChange={handleVolumeChange}
                                 onMuteToggle={toggleMute}
-                                onExpandChange={setVolumeSliderExpanded}
+                                onExpandChange={ui.setVolumeSliderExpanded}
                             />
 
                             {/* Time Display */}
                             <TimeDisplay
-                                currentTime={currentTime}
-                                duration={duration}
-                                collapsed={volumeSliderExpanded}
+                                currentTime={playback.currentTime}
+                                duration={playback.duration}
+                                collapsed={ui.volumeSliderExpanded}
                             />
                         </div>
 
@@ -1328,14 +1282,14 @@ export const VideoPlayer = React.forwardRef(({
                                     className={styles.controlButton}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        setShowSettings(!showSettings);
+                                        ui.setShowSettings(!ui.showSettings);
                                     }}
                                     type="button"
                                 >
                                     <FaCog />
                                 </button>
 
-                                {showSettings && (
+                                {ui.showSettings && (
                                     <div
                                         ref={floatingRefs.setFloating}
                                         className={styles.settingsDropdown}
@@ -1343,32 +1297,32 @@ export const VideoPlayer = React.forwardRef(({
                                         onClick={(e) => e.stopPropagation()}
                                         onTouchStart={(e) => e.stopPropagation()}
                                     >
-                                        {!showPlaybackRates && !showQualities && (
+                                        {!ui.showPlaybackRates && !ui.showQualities && (
                                             <>
                                                 <div
                                                     className={styles.settingsItem}
-                                                    onClick={() => setShowPlaybackRates(true)}
+                                                    onClick={() => ui.setShowPlaybackRates(true)}
                                                 >
                                                     <span>Playback speed</span>
-                                                    <span>{playbackRate === 1 ? 'Normal' : `${playbackRate}x`}</span>
+                                                    <span>{preferences.playbackRate === 1 ? 'Normal' : `${preferences.playbackRate}x`}</span>
                                                 </div>
                                                 {qualities && qualities.length > 0 && (
                                                     <div
                                                         className={styles.settingsItem}
-                                                        onClick={() => setShowQualities(true)}
+                                                        onClick={() => ui.setShowQualities(true)}
                                                     >
                                                         <span>Quality</span>
-                                                        <span>{selectedQuality?.label || 'Auto'}</span>
+                                                        <span>{preferences.selectedQuality?.label || 'Auto'}</span>
                                                     </div>
                                                 )}
                                             </>
                                         )}
 
-                                        {showPlaybackRates && (
+                                        {ui.showPlaybackRates && (
                                             <div className={styles.settingsSubmenu}>
                                                 <div
                                                     className={styles.settingsBack}
-                                                    onClick={() => setShowPlaybackRates(false)}
+                                                    onClick={() => ui.setShowPlaybackRates(false)}
                                                 >
                                                     ← Playback speed
                                                 </div>
@@ -1379,17 +1333,17 @@ export const VideoPlayer = React.forwardRef(({
                                                         onClick={() => handlePlaybackRateChange(rate)}
                                                     >
                                                         <span>{rate === 1 ? 'Normal' : `${rate}x`}</span>
-                                                        {playbackRate === rate && <FaCheck />}
+                                                        {preferences.playbackRate === rate && <FaCheck />}
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
 
-                                        {showQualities && (
+                                        {ui.showQualities && (
                                             <div className={styles.settingsSubmenu}>
                                                 <div
                                                     className={styles.settingsBack}
-                                                    onClick={() => setShowQualities(false)}
+                                                    onClick={() => ui.setShowQualities(false)}
                                                 >
                                                     ← Quality
                                                 </div>
@@ -1400,7 +1354,7 @@ export const VideoPlayer = React.forwardRef(({
                                                         onClick={() => handleQualityChange(quality)}
                                                     >
                                                         <span>{quality.label}</span>
-                                                        {selectedQuality?.id === quality.id && <FaCheck />}
+                                                        {preferences.selectedQuality?.id === quality.id && <FaCheck />}
                                                     </div>
                                                 ))}
                                             </div>
@@ -1421,8 +1375,8 @@ export const VideoPlayer = React.forwardRef(({
 
             {/* Keyboard Shortcuts Help */}
             <KeyboardShortcuts
-                show={showKeyboardShortcuts}
-                onClose={() => setShowKeyboardShortcuts(false)}
+                show={ui.showKeyboardShortcuts}
+                onClose={() => ui.setShowKeyboardShortcuts(false)}
             />
         </>
     );
