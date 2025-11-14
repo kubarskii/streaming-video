@@ -1,5 +1,6 @@
 // Service Worker for PWA offline support
-const CACHE_NAME = 'videotrubka-v1';
+// Updated cache version to clear old 403 errors
+const CACHE_NAME = 'videotrubka-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -27,18 +28,19 @@ self.addEventListener('activate', (event) => {
   console.log('[SW] Activating service worker...');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
+      // Delete all old caches (including old version that might have 403 errors)
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('[SW] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
+          console.log('[SW] Deleting cache:', cacheName);
+          return caches.delete(cacheName);
         })
       );
+    }).then(() => {
+      console.log('[SW] All old caches cleared, including any cached 403 errors');
+      // Take control of all pages immediately
+      return self.clients.claim();
     })
   );
-  // Take control of all pages immediately
-  return self.clients.claim();
 });
 
 // Fetch event - network-first strategy for API, cache-first for assets
@@ -95,46 +97,71 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets - Cache first, network fallback
-  event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Return cached version and update in background
-        fetch(request).then((response) => {
-          if (response && response.status === 200) {
+  // Static assets (/assets/) - Network first, don't cache errors
+  // This prevents caching 403 errors and ensures fresh content
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Only cache successful responses (200-299)
+          // Don't cache errors (403, 404, 500, etc.)
+          if (response && response.ok && response.status >= 200 && response.status < 300) {
+            const responseToCache = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, response);
+              cache.put(request, responseToCache).catch(err => {
+                if (!err.message.includes('unsupported')) {
+                  console.error('[SW] Cache put error:', err);
+                }
+              });
+            });
+          } else {
+            // For errors, try cache as fallback, but don't cache the error itself
+            return caches.match(request).then((cachedResponse) => {
+              // Return cached version if available, otherwise return the error
+              return cachedResponse || response;
             });
           }
-        }).catch(() => {
-          // Fetch failed, but we have cache so it's ok
-        });
-        return cachedResponse;
-      }
-
-      // Not in cache, fetch from network
-      return fetch(request).then((response) => {
-        // Check if we received a valid response
-        if (!response || response.status !== 200 || response.type === 'error') {
           return response;
-        }
+        })
+        .catch(() => {
+          // Network failed, try cache
+          return caches.match(request).then((cachedResponse) => {
+            return cachedResponse || new Response('Network error', { status: 503 });
+          });
+        })
+    );
+    return;
+  }
 
-        // Clone the response before caching (skip unsupported schemes)
-        if (request.url && !request.url.startsWith('chrome-extension:') && !request.url.startsWith('chrome:') && !request.url.startsWith('moz-extension:')) {
+  // Other static assets - Network first, cache only successful responses
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        // Only cache successful responses (200-299)
+        // Don't cache errors (403, 404, 500, etc.)
+        if (response && response.ok && response.status >= 200 && response.status < 300) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(request, responseToCache).catch(err => {
-              // Ignore cache errors for unsupported schemes
               if (!err.message.includes('unsupported')) {
                 console.error('[SW] Cache put error:', err);
               }
             });
           });
+        } else {
+          // For errors, try cache as fallback
+          return caches.match(request).then((cachedResponse) => {
+            return cachedResponse || response;
+          });
         }
-
         return response;
-      });
-    })
+      })
+      .catch(() => {
+        // Network failed, try cache
+        return caches.match(request).then((cachedResponse) => {
+          return cachedResponse || new Response('Network error', { status: 503 });
+        });
+      })
   );
 });
 

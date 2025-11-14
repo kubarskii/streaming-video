@@ -237,11 +237,29 @@ async function startServer() {
                     pathname === '/favicon.ico' ||
                     pathname === '/favicon.svg' ||
                     pathname === '/robots.txt' ||
-                    pathname === '/manifest.json';
+                    pathname === '/manifest.json' ||
+                    pathname === '/sw.js';
 
-                // Apply CORS middleware
-                await runMiddleware(req, res, corsMiddleware);
-                if (res.writableEnded) return;
+                // Apply CORS middleware - but skip strict origin check for static assets
+                // Static assets should be accessible from any origin
+                if (isStaticAsset) {
+                    // For static assets, set permissive CORS headers
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+                    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
+                    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Content-Type');
+                    res.setHeader('Access-Control-Max-Age', '86400');
+
+                    // Handle preflight for static assets
+                    if (req.method === 'OPTIONS') {
+                        res.writeHead(204);
+                        return res.end();
+                    }
+                } else {
+                    // For non-static assets, apply full CORS middleware
+                    await runMiddleware(req, res, corsMiddleware);
+                    if (res.writableEnded) return;
+                }
 
                 // Apply auth middleware only for non-static assets
                 if (!isStaticAsset) {
@@ -296,7 +314,16 @@ async function startServer() {
 
                 // Log missing static files in production for debugging
                 if (IS_PRODUCTION && isStaticAsset) {
-                    console.warn(`⚠️  Static file not found: ${pathname} (resolved: ${safePath})`);
+                    console.warn(`⚠️  Static file not found: ${pathname}`);
+                    console.warn(`   Resolved path: ${safePath}`);
+                    console.warn(`   File exists: ${fs.existsSync(safePath)}`);
+                    console.warn(`   Is file: ${fs.existsSync(safePath) ? fs.statSync(safePath).isFile() : 'N/A'}`);
+                    console.warn(`   Request headers:`, {
+                        host: req.headers.host,
+                        origin: req.headers.origin,
+                        referer: req.headers.referer,
+                        'user-agent': req.headers['user-agent']?.substring(0, 50)
+                    });
                 }
 
                 // SPA fallback: Serve index.html for known frontend routes handled client-side
