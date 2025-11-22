@@ -70,15 +70,15 @@ describe('TranscodeVideoUseCase - source validation', () => {
             videoTranscoder
         );
 
-        let downloadCalls = 0;
-        useCase.getSourceVideoPath = async () => {
-            downloadCalls += 1;
-            return downloadCalls === 1 ? firstPath : secondPath;
+        const downloadCalls = [];
+        useCase.getSourceVideoPath = async (_video, options) => {
+            downloadCalls.push(options?.forceUniqueTempFile === true);
+            return downloadCalls.length === 1 ? firstPath : secondPath;
         };
 
         await useCase.execute(video.id);
 
-        assert.strictEqual(downloadCalls, 2, 'should redownload after first validation failure');
+        assert.deepStrictEqual(downloadCalls, [false, true], 'should redownload with unique temp file when probe fails');
         assert.deepStrictEqual(metadataCalls, [firstPath, secondPath], 'should retry metadata probe on new file');
         assert.strictEqual(updatedVideo.status, 'ready');
         assert.strictEqual(updatedVideo.width, 720);

@@ -508,9 +508,11 @@ class TranscodeVideoUseCase {
     /**
      * Get local path to source video (download if needed)
      * @param {Object} video - Video entity
+     * @param {{ forceUniqueTempFile?: boolean }} [options]
      * @returns {Promise<string>} Local path to video file
      */
-    async getSourceVideoPath(video) {
+    async getSourceVideoPath(video, options = {}) {
+        const { forceUniqueTempFile = false } = options;
         // Check if using local storage
         if (this.storageRepository.getFilePath) {
             const localPath = this.storageRepository.getFilePath(video.storageKey);
@@ -526,7 +528,10 @@ class TranscodeVideoUseCase {
         }
 
         // For cloud storage, download video temporarily
-        const tempPath = path.join(process.cwd(), 'videos', 'temp', `source_${video.id}${path.extname(video.fileName)}`);
+        const tempFileName = forceUniqueTempFile
+            ? `source_${video.id}_${Date.now()}${path.extname(video.fileName)}`
+            : `source_${video.id}${path.extname(video.fileName)}`;
+        const tempPath = path.join(process.cwd(), 'videos', 'temp', tempFileName);
 
         // Ensure temp directory exists
         const tempDir = path.dirname(tempPath);
@@ -629,6 +634,7 @@ class TranscodeVideoUseCase {
             return { sourcePath: sourceVideoPath, metadata };
         } catch (error) {
             const isTempSource = sourceVideoPath.includes(`${path.sep}videos${path.sep}temp${path.sep}`);
+            const isProbeParseError = /moov atom not found|Invalid data found when processing input/i.test(error.message || '');
 
             if (allowRetry && isTempSource) {
                 console.warn(`⚠️  Failed to read source video (${error.message}). Retrying download once...`);
@@ -639,7 +645,9 @@ class TranscodeVideoUseCase {
                     console.warn(`⚠️  Failed to delete corrupted source before retry: ${cleanupError.message}`);
                 }
 
-                const redownloadedPath = await this.getSourceVideoPath(video);
+                const redownloadedPath = await this.getSourceVideoPath(video, {
+                    forceUniqueTempFile: isProbeParseError
+                });
                 return this.validateSourceVideo(video, redownloadedPath, false);
             }
 
