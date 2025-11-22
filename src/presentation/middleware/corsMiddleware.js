@@ -3,8 +3,10 @@
 
 function corsMiddleware(req, res, next) {
     // Get allowed origins from environment variable
-    const allowedOrigins = process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    const allowedOriginsRaw = process.env.ALLOWED_ORIGINS;
+    const hasConfiguredOrigins = allowedOriginsRaw !== undefined;
+    const allowedOrigins = hasConfiguredOrigins
+        ? allowedOriginsRaw.split(',').map(o => o.trim()).filter(Boolean)
         : [];
 
     const origin = req.headers.origin;
@@ -20,8 +22,7 @@ function corsMiddleware(req, res, next) {
         }));
     };
 
-    const isAllowedInProduction = () => allowedOrigins.length > 0 && allowedOrigins.includes(origin);
-    const hasConfiguredOrigins = allowedOrigins.length > 0;
+    const isAllowedInProduction = () => allowedOrigins.includes(origin);
 
     if (origin) {
         if (hasConfiguredOrigins) {
