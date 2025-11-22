@@ -21,20 +21,22 @@ function corsMiddleware(req, res, next) {
     };
 
     const isAllowedInProduction = () => allowedOrigins.length > 0 && allowedOrigins.includes(origin);
-    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const hasConfiguredOrigins = allowedOrigins.length > 0;
 
     if (origin) {
-        if (allowedOrigins.length > 0) {
+        if (hasConfiguredOrigins) {
             if (!isAllowedInProduction()) {
                 return rejectOrigin();
             }
             res.setHeader('Access-Control-Allow-Origin', origin);
-        } else if (isDevelopment) {
-            // In development, reflect the origin when no whitelist is configured
-            res.setHeader('Access-Control-Allow-Origin', origin);
         } else {
-            // In production with no configured whitelist, reject to avoid open access
-            return rejectOrigin();
+            // No whitelist configured - allow the request and log a warning so uploads
+            // aren't blocked by a missing ALLOWED_ORIGINS value.
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            if (!corsMiddleware.hasLoggedMissingOriginsWarning && !hasConfiguredOrigins) {
+                console.warn('[CORS] ALLOWED_ORIGINS not configured - allowing all origins by default');
+                corsMiddleware.hasLoggedMissingOriginsWarning = true;
+            }
         }
     } else {
         res.setHeader('Access-Control-Allow-Origin', '*');
