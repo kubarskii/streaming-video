@@ -508,9 +508,11 @@ class TranscodeVideoUseCase {
     /**
      * Get local path to source video (download if needed)
      * @param {Object} video - Video entity
+     * @param {{ forceUniqueTempFile?: boolean }} [options]
      * @returns {Promise<string>} Local path to video file
      */
-    async getSourceVideoPath(video) {
+    async getSourceVideoPath(video, options = {}) {
+        const { forceUniqueTempFile = false } = options;
         // Check if using local storage
         if (this.storageRepository.getFilePath) {
             const localPath = this.storageRepository.getFilePath(video.storageKey);
@@ -526,7 +528,10 @@ class TranscodeVideoUseCase {
         }
 
         // For cloud storage, download video temporarily
-        const tempPath = path.join(process.cwd(), 'videos', 'temp', `source_${video.id}${path.extname(video.fileName)}`);
+        const tempFileName = forceUniqueTempFile
+            ? `source_${video.id}_${Date.now()}${path.extname(video.fileName)}`
+            : `source_${video.id}${path.extname(video.fileName)}`;
+        const tempPath = path.join(process.cwd(), 'videos', 'temp', tempFileName);
 
         // Ensure temp directory exists
         const tempDir = path.dirname(tempPath);
@@ -543,17 +548,50 @@ class TranscodeVideoUseCase {
 
         const https = require('https');
         const http = require('http');
-        const protocol = url.startsWith('https') ? https : http;
+        const maxRedirects = 3;
 
-        return new Promise((resolve, reject) => {
-            const file = fs.createWriteStream(tempPath);
-            let downloadedBytes = 0;
+        const downloadWithRedirects = (downloadUrl, redirectCount = 0) => new Promise((resolve, reject) => {
+            const protocol = downloadUrl.startsWith('https') ? https : http;
+            const request = protocol.get(downloadUrl, { headers: { 'Accept-Encoding': 'identity' } }, (response) => {
+                // Handle redirects for CDN-backed storage URLs
+                if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
+                    if (redirectCount >= maxRedirects) {
+                        response.resume();
+                        return reject(new Error('Too many redirects while downloading source video'));
+                    }
 
-            const request = protocol.get(url, (response) => {
-                if (response.statusCode !== 200) {
-                    reject(new Error(`Failed to download video: HTTP ${response.statusCode}`));
-                    return;
+                    const location = response.headers.location;
+                    if (!location) {
+                        response.resume();
+                        return reject(new Error('Redirect received without Location header'));
+                    }
+
+                    const nextUrl = new URL(location, downloadUrl).toString();
+                    response.resume();
+                    return resolve(downloadWithRedirects(nextUrl, redirectCount + 1));
                 }
+
+                if (response.statusCode !== 200) {
+                    response.resume();
+                    return reject(new Error(`Failed to download video: HTTP ${response.statusCode}`));
+                }
+
+                const contentType = response.headers['content-type'] || '';
+                const isBinary = contentType.startsWith('application/octet-stream');
+                const isVideo = contentType.startsWith('video/');
+                if (contentType && !(isBinary || isVideo)) {
+                    response.resume();
+                    return reject(new Error(`Unexpected content type for source video: ${contentType}`));
+                }
+
+                const contentEncoding = (response.headers['content-encoding'] || '').toLowerCase();
+                if (contentEncoding && contentEncoding !== 'identity') {
+                    response.resume();
+                    return reject(new Error(`Unsupported content encoding for source video: ${contentEncoding}`));
+                }
+
+                const file = fs.createWriteStream(tempPath);
+                let downloadedBytes = 0;
 
                 const totalBytes = parseInt(response.headers['content-length'] || '0');
                 console.log(`📥 Downloading ${(totalBytes / 1024 / 1024).toFixed(2)} MB...`);
@@ -562,6 +600,19 @@ class TranscodeVideoUseCase {
                     downloadedBytes += chunk.length;
                 });
 
+                const cleanupOnError = (err) => {
+                    try {
+                        if (fs.existsSync(tempPath)) {
+                            fs.unlinkSync(tempPath);
+                        }
+                    } catch (cleanupError) {
+                        console.error('Failed to cleanup after download error:', cleanupError);
+                    }
+                    reject(err instanceof Error ? err : new Error(String(err)));
+                };
+
+                response.on('error', cleanupOnError);
+
                 response.pipe(file);
 
                 file.on('finish', () => {
@@ -569,12 +620,12 @@ class TranscodeVideoUseCase {
 
                     // Validate download completeness
                     if (downloadedBytes === 0) {
-                        fs.unlinkSync(tempPath);
+                        try { fs.unlinkSync(tempPath); } catch (_) {}
                         return reject(new Error('Downloaded source video is empty'));
                     }
 
                     if (totalBytes > 0 && downloadedBytes !== totalBytes) {
-                        fs.unlinkSync(tempPath);
+                        try { fs.unlinkSync(tempPath); } catch (_) {}
                         return reject(new Error(`Download incomplete: expected ${totalBytes} bytes, received ${downloadedBytes}`));
                     }
 
@@ -582,10 +633,7 @@ class TranscodeVideoUseCase {
                     resolve(tempPath);
                 });
 
-                file.on('error', (err) => {
-                    fs.unlinkSync(tempPath);
-                    reject(err);
-                });
+                file.on('error', cleanupOnError);
             });
 
             request.on('error', (err) => {
@@ -605,6 +653,8 @@ class TranscodeVideoUseCase {
                 reject(new Error('Download timeout: file too large or connection too slow'));
             });
         });
+
+        return downloadWithRedirects(url);
     }
 
     /**
@@ -629,6 +679,7 @@ class TranscodeVideoUseCase {
             return { sourcePath: sourceVideoPath, metadata };
         } catch (error) {
             const isTempSource = sourceVideoPath.includes(`${path.sep}videos${path.sep}temp${path.sep}`);
+            const isProbeParseError = /moov atom not found|Invalid data found when processing input/i.test(error.message || '');
 
             if (allowRetry && isTempSource) {
                 console.warn(`⚠️  Failed to read source video (${error.message}). Retrying download once...`);
@@ -639,7 +690,9 @@ class TranscodeVideoUseCase {
                     console.warn(`⚠️  Failed to delete corrupted source before retry: ${cleanupError.message}`);
                 }
 
-                const redownloadedPath = await this.getSourceVideoPath(video);
+                const redownloadedPath = await this.getSourceVideoPath(video, {
+                    forceUniqueTempFile: isProbeParseError
+                });
                 return this.validateSourceVideo(video, redownloadedPath, false);
             }
 
