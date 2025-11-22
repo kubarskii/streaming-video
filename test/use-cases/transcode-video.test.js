@@ -151,6 +151,73 @@ describe('TranscodeVideoUseCase - source validation', () => {
         fs.rmSync(path.dirname(secondPath), { recursive: true, force: true });
     });
 
+    test('retries transcoding with rewritten mp4 when ffmpeg hits a moov parse error', async () => {
+        const sourcePath = createTempFile('samsung_source.mp4', 'orig');
+        const rewrittenPath = sourcePath.replace('.mp4', '_rewrap.mp4');
+        fs.writeFileSync(rewrittenPath, 'rewrapped');
+
+        const video = {
+            id: 'video-retry-transcode',
+            title: 'Galaxy Recording',
+            fileName: 'galaxy.mp4',
+            storageKey: 'storage/galaxy.mp4',
+            storageUrl: 'https://cdn.example.com/galaxy.mp4',
+            mimeType: 'video/mp4',
+            status: 'pending',
+            thumbnailUrl: 'already-set.jpg'
+        };
+
+        let updatedVideo;
+        const videoRepository = {
+            findById: async () => ({ ...video }),
+            update: async (payload) => { updatedVideo = { ...payload }; return updatedVideo; }
+        };
+
+        const videoQualityRepository = {
+            deleteByVideoId: async () => 0,
+            save: async (variant) => variant
+        };
+
+        const storageRepository = {
+            upload: async () => ({ storageUrl: 'https://cdn.example.com/output.mp4' }),
+            delete: async () => {},
+            getFilePath: undefined
+        };
+
+        const transcodeCalls = [];
+        const videoTranscoder = {
+            getVideoMetadata: async () => ({ width: 1920, height: 1080, duration: 1.2, bitrate: 2000000 }),
+            rewriteMp4Container: async () => rewrittenPath,
+            transcodeToMultipleQualities: async (inputPath) => {
+                transcodeCalls.push(inputPath);
+                if (transcodeCalls.length === 1) {
+                    const err = new Error('moov atom not found');
+                    throw err;
+                }
+
+                return [];
+            }
+        };
+
+        const useCase = new TranscodeVideoUseCase(
+            videoRepository,
+            videoQualityRepository,
+            storageRepository,
+            videoTranscoder
+        );
+
+        useCase.getSourceVideoPath = async () => sourcePath;
+
+        await useCase.execute(video.id);
+
+        assert.deepStrictEqual(transcodeCalls, [sourcePath, rewrittenPath], 'should retry transcode against rewritten file');
+        assert.strictEqual(updatedVideo.status, 'ready');
+        assert.strictEqual(updatedVideo.width, 1920);
+        assert.strictEqual(updatedVideo.height, 1080);
+
+        fs.rmSync(path.dirname(sourcePath), { recursive: true, force: true });
+    });
+
     test('follows redirects and only accepts video-like content when downloading sources', async (t) => {
         const server = http.createServer((req, res) => {
             if (req.url === '/redirect') {

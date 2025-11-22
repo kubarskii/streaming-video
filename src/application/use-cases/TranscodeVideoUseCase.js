@@ -85,18 +85,51 @@ class TranscodeVideoUseCase {
             const baseFileName = path.parse(video.fileName).name;
             let transcodedVideos = [];
 
+            const isMp4Like = ['.mp4', '.mov', '.m4v'].includes(path.extname(video.fileName || sourceVideoPath).toLowerCase());
+            const shouldRetryOnParseError = (errorMessage) => /moov atom not found|Invalid data found when processing input/i.test(errorMessage || '');
+            let transcodeSourcePath = sourceVideoPath;
+
+            const attemptTranscode = async (inputPath, allowRewrite = true) => {
+                try {
+                    // Generate both MP4 and HLS streams
+                    // HLS enables adaptive bitrate streaming for better user experience
+                    // Always generate HLS for adaptive streaming support
+                    const generateHLS = true; // Always enabled
+                    return await this.videoTranscoder.transcodeToMultipleQualities(
+                        inputPath,
+                        tempDir,
+                        baseFileName,
+                        null, // Progress callback removed for performance
+                        generateHLS
+                    );
+                } catch (transcodeError) {
+                    const message = transcodeError?.message || '';
+                    if (allowRewrite && isMp4Like && shouldRetryOnParseError(message)) {
+                        try {
+                            const rewrittenSource = await this.videoTranscoder.rewriteMp4Container(inputPath);
+
+                            if (rewrittenSource && rewrittenSource !== inputPath && fs.existsSync(rewrittenSource)) {
+                                transcodeSourcePath = rewrittenSource;
+                                try {
+                                    fs.unlinkSync(inputPath);
+                                } catch (cleanupError) {
+                                    console.warn(`⚠️  Failed to remove original source after transcode rewrite: ${cleanupError.message}`);
+                                }
+
+                                return attemptTranscode(rewrittenSource, false);
+                            }
+                        } catch (rewriteError) {
+                            console.warn(`⚠️  Failed to rewrite container after transcode error: ${rewriteError.message}`);
+                        }
+                    }
+
+                    throw transcodeError;
+                }
+            };
+
             try {
-                // Generate both MP4 and HLS streams
-                // HLS enables adaptive bitrate streaming for better user experience
-                // Always generate HLS for adaptive streaming support
-                const generateHLS = true; // Always enabled
-                transcodedVideos = await this.videoTranscoder.transcodeToMultipleQualities(
-                    sourceVideoPath,
-                    tempDir,
-                    baseFileName,
-                    null, // Progress callback removed for performance
-                    generateHLS
-                );
+                transcodedVideos = await attemptTranscode(sourceVideoPath);
+                sourceVideoPath = transcodeSourcePath;
             } catch (transcodeError) {
                 console.error(`❌ Transcoding failed:`, transcodeError.message);
                 // If transcoding completely fails, we'll still try to save the original
