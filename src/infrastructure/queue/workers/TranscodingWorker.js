@@ -62,17 +62,28 @@ class TranscodingWorker {
         this.worker.on('failed', async (job, err) => {
             console.error(`❌ Transcoding job failed: ${job?.id}`, err.message);
 
-            // Re-enqueue after all retries exhausted
+            // Re-enqueue after all retries exhausted, but cap the number of manual requeues
             if (job && job.attemptsMade >= (job.opts?.attempts || 3)) {
+                const requeueCount = job.data?._requeueCount || 0;
+                const MAX_REQUEUES = 1;
+
                 // Don't re-enqueue if video doesn't exist (permanent failure)
                 if (err.message && err.message.includes('Video not found')) {
                     console.log(`⚠️  Video ${job.data?.videoId} not found - removing from queue permanently`);
                     return;
                 }
 
-                console.log(`🔄 Re-enqueueing failed job: ${job.id} (attempt ${job.attemptsMade})`);
+                if (requeueCount >= MAX_REQUEUES) {
+                    console.log(`🛑 Max requeues reached for job ${job.id}; leaving failed to avoid infinite loop`);
+                    return;
+                }
+
+                console.log(`🔄 Re-enqueueing failed job: ${job.id} (attempt ${job.attemptsMade}, requeue #${requeueCount + 1})`);
                 try {
-                    await this.queue.add('transcode-video', job.data, {
+                    await this.queue.add('transcode-video', {
+                        ...job.data,
+                        _requeueCount: requeueCount + 1,
+                    }, {
                         attempts: 3,
                         backoff: {
                             type: 'exponential',
