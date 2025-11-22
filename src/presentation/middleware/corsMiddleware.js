@@ -9,7 +9,37 @@ function corsMiddleware(req, res, next) {
 
     const origin = req.headers.origin;
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const rejectOrigin = () => {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+            success: false,
+            error: {
+                code: 'CORS_ERROR',
+                message: 'Origin not allowed'
+            }
+        }));
+    };
+
+    const isAllowedInProduction = () => allowedOrigins.length > 0 && allowedOrigins.includes(origin);
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+
+    if (origin) {
+        if (allowedOrigins.length > 0) {
+            if (!isAllowedInProduction()) {
+                return rejectOrigin();
+            }
+            res.setHeader('Access-Control-Allow-Origin', origin);
+        } else if (isDevelopment) {
+            // In development, reflect the origin when no whitelist is configured
+            res.setHeader('Access-Control-Allow-Origin', origin);
+        } else {
+            // In production with no configured whitelist, reject to avoid open access
+            return rejectOrigin();
+        }
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range, X-User-Id, X-User-Email, X-User-Username');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Content-Type');

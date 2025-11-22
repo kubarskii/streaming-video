@@ -54,11 +54,13 @@ class TranscodeVideoUseCase {
             // Download or get local path to source video
             sourceVideoPath = await this.getSourceVideoPath(video);
 
-            // Extract source video metadata if not already available
-            let sourceMetadata;
-            if (!video.width || !video.height) {
-                sourceMetadata = await this.videoTranscoder.getVideoMetadata(sourceVideoPath);
+            const validation = await this.validateSourceVideo(video, sourceVideoPath);
+            sourceVideoPath = validation.sourcePath;
 
+            // Extract source video metadata if not already available
+            let sourceMetadata = validation.metadata;
+            if (!video.width || !video.height) {
+                
                 // Update video record with metadata
                 video.width = sourceMetadata.width;
                 video.height = sourceMetadata.height;
@@ -68,8 +70,8 @@ class TranscodeVideoUseCase {
                 sourceMetadata = {
                     width: video.width,
                     height: video.height,
-                    duration: video.durationMs ? video.durationMs / 1000 : null,
-                    bitrate: null
+                    duration: video.durationMs ? video.durationMs / 1000 : sourceMetadata?.duration || null,
+                    bitrate: sourceMetadata?.bitrate || null
                 };
             }
 
@@ -513,6 +515,11 @@ class TranscodeVideoUseCase {
         if (this.storageRepository.getFilePath) {
             const localPath = this.storageRepository.getFilePath(video.storageKey);
             if (fs.existsSync(localPath)) {
+                const stats = fs.statSync(localPath);
+                if (stats.size === 0) {
+                    throw new Error(`Local source file is empty: ${localPath}`);
+                }
+
                 console.log(`📂 Using local storage file: ${localPath}`);
                 return localPath;
             }
@@ -559,6 +566,18 @@ class TranscodeVideoUseCase {
 
                 file.on('finish', () => {
                     file.close();
+
+                    // Validate download completeness
+                    if (downloadedBytes === 0) {
+                        fs.unlinkSync(tempPath);
+                        return reject(new Error('Downloaded source video is empty'));
+                    }
+
+                    if (totalBytes > 0 && downloadedBytes !== totalBytes) {
+                        fs.unlinkSync(tempPath);
+                        return reject(new Error(`Download incomplete: expected ${totalBytes} bytes, received ${downloadedBytes}`));
+                    }
+
                     console.log(`✅ Download complete: ${(downloadedBytes / 1024 / 1024).toFixed(2)} MB`);
                     resolve(tempPath);
                 });
@@ -586,6 +605,46 @@ class TranscodeVideoUseCase {
                 reject(new Error('Download timeout: file too large or connection too slow'));
             });
         });
+    }
+
+    /**
+     * Validate a source video is readable by ffprobe and retry download once if it is a temporary source
+     * @param {Object} video - Video entity
+     * @param {string} sourceVideoPath - Path to the downloaded or local source video
+     * @param {boolean} [allowRetry=true] - Whether to attempt a single re-download on failure
+     * @returns {Promise<{sourcePath: string, metadata: {width: number, height: number, duration: number, bitrate: number | null}}>} Validation result
+     */
+    async validateSourceVideo(video, sourceVideoPath, allowRetry = true) {
+        if (!sourceVideoPath || !fs.existsSync(sourceVideoPath)) {
+            throw new Error(`Source video not found locally at ${sourceVideoPath}`);
+        }
+
+        const stats = fs.statSync(sourceVideoPath);
+        if (stats.size === 0) {
+            throw new Error(`Source video is empty: ${sourceVideoPath}`);
+        }
+
+        try {
+            const metadata = await this.videoTranscoder.getVideoMetadata(sourceVideoPath);
+            return { sourcePath: sourceVideoPath, metadata };
+        } catch (error) {
+            const isTempSource = sourceVideoPath.includes(`${path.sep}videos${path.sep}temp${path.sep}`);
+
+            if (allowRetry && isTempSource) {
+                console.warn(`⚠️  Failed to read source video (${error.message}). Retrying download once...`);
+
+                try {
+                    fs.unlinkSync(sourceVideoPath);
+                } catch (cleanupError) {
+                    console.warn(`⚠️  Failed to delete corrupted source before retry: ${cleanupError.message}`);
+                }
+
+                const redownloadedPath = await this.getSourceVideoPath(video);
+                return this.validateSourceVideo(video, redownloadedPath, false);
+            }
+
+            throw error;
+        }
     }
 }
 
