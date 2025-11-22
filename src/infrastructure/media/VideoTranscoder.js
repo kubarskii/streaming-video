@@ -62,7 +62,11 @@ class VideoTranscoder {
      */
     async getVideoMetadata(inputPath) {
         return new Promise((resolve, reject) => {
-            ffmpeg.ffprobe(inputPath, (err, metadata) => {
+            ffmpeg.ffprobe(inputPath, [
+                '-v', 'error',
+                '-analyzeduration', '50000000', // 50s in microseconds
+                '-probesize', '100M'
+            ], (err, metadata) => {
                 if (err) {
                     return reject(err);
                 }
@@ -79,6 +83,42 @@ class VideoTranscoder {
                     bitrate: metadata.format.bit_rate ? parseInt(metadata.format.bit_rate) : null
                 });
             });
+        });
+    }
+
+    /**
+     * Rewrite an MP4/MOV file with a fresh moov atom for better compatibility (e.g., some Samsung recordings)
+     * @param {string} inputPath - Path to the potentially problematic source file
+     * @returns {Promise<string>} Path to the rewritten file
+     */
+    async rewriteMp4Container(inputPath) {
+        const parsed = path.parse(inputPath);
+        const outputPath = path.join(parsed.dir, `${parsed.name}_rewrap${parsed.ext || '.mp4'}`);
+
+        return new Promise((resolve, reject) => {
+            const command = ffmpeg(inputPath)
+                .outputOptions([
+                    '-c copy',
+                    '-map 0',
+                    '-movflags +faststart',
+                    '-ignore_unknown'
+                ])
+                .on('end', () => {
+                    try {
+                        const stats = fs.statSync(outputPath);
+                        if (stats.size === 0) {
+                            throw new Error('Rewrapped file is empty');
+                        }
+                        resolve(outputPath);
+                    } catch (statError) {
+                        reject(statError);
+                    }
+                })
+                .on('error', (err) => {
+                    reject(new Error(`Failed to rewrite MP4 container: ${err.message}`));
+                });
+
+            command.save(outputPath);
         });
     }
 
